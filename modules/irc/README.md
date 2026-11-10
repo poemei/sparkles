@@ -52,4 +52,6 @@ sudo make -C modules/irc install MODULE_USER=stnlabz MODULE_GROUP=stnlabz
 sha256sum modules/irc/build/irc.so /opt/sparkles/modules/irc/irc.so
 ```
 
-The updated Core binary must be installed before the IRC module is tested: an older Core binary may still use the legacy `digit.router.dispatch` service identifier and will not match the new IRC module's `sparkles.router.dispatch` endpoint. Restart Sparkles after updating the Core binary.\n\nThe installed module is `/opt/sparkles/modules/irc/irc.so`, with `/opt/sparkles/modules/irc/module.conf` containing `id=irc`. Hotload qualification runs protocol self-tests. IRC activation additionally needs a valid credential file and live authenticated channel joins. Source migration alone does not establish a successful connection or accepted operational behavior.
+The updated Core binary must be installed before the IRC module is tested: an older Core binary may still use the legacy `digit.router.dispatch` service identifier and will not match the new IRC module's `sparkles.router.dispatch` endpoint. Restart Sparkles after updating the Core binary.
+
+The installed module is `/opt/sparkles/modules/irc/irc.so`, with `/opt/sparkles/modules/irc/module.conf` containing `id=irc`. Hotload qualification runs protocol self-tests. IRC activation additionally needs a valid credential file and live authenticated channel joins. Source migration alone does not establish a successful connection or accepted operational behavior.
