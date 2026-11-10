@@ -1,4 +1,4 @@
-# STN-LABZ Rictus executable (Linux)
+# STN-LABZ Sparkles executable (Linux)
 # The shared STN-LABZ ABI is maintained outside this repository.
 #
 # Default layout:
@@ -20,11 +20,11 @@ ABI_SRC_DIR ?= $(ABI_DIR)/src
 CPPFLAGS += -Iinclude -I$(ABI_INCLUDE_DIR) -Iinclude/stnlabz_abi
 
 BUILD_DIR ?= build
-TARGET ?= bin/rictus
+TARGET ?= bin/sparkles
 
-PREFIX ?= /opt/rictus
-INSTALL_USER ?= rictus
-INSTALL_GROUP ?= rictus
+PREFIX ?= /opt/sparkles
+INSTALL_USER ?= sparkles
+INSTALL_GROUP ?= sparkles
 BINDIR ?= $(PREFIX)/bin
 LOGDIR ?= $(PREFIX)/logs
 MODULEDIR ?= $(PREFIX)/modules
@@ -64,10 +64,10 @@ $(BUILD_DIR)/abi/%.o: $(ABI_SRC_DIR)/%.c
 install: $(TARGET)
 	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(BINDIR) $(MODULEDIR) $(CONFIGDIR)
 	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0750 $(LOGDIR) $(STATEDIR)
-	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(TARGET) $(BINDIR)/rictus
+	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(TARGET) $(BINDIR)/sparkles
 
 uninstall:
-	rm -f $(BINDIR)/rictus
+	rm -f $(BINDIR)/sparkles
 
 clean:
 	rm -rf $(BUILD_DIR) $(TARGET)
