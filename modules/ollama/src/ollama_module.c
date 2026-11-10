@@ -11,13 +11,12 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 0U
-#define OLLAMA_VERSION_PATCH 11U
+#define OLLAMA_VERSION_PATCH 12U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
 static int service_registered;
 static int command_registered;
-static char selected_model[128];
 
 static int valid_peer_char(char c)
 {
@@ -104,7 +103,7 @@ static stnlabz_module_result_t generate(const void *request,size_t request_size,
     !memchr(in->prompt,0,sizeof in->prompt)||!in->prompt[0])
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  memset(out,0,sizeof(*out));
- if(!sparkles_ollama_build_request(selected_model,in->prompt,body,sizeof body))
+ if(!sparkles_ollama_build_request(SPARKLES_OLLAMA_MODEL,in->prompt,body,sizeof body))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  curl=curl_easy_init(); if(!curl)return STNLABZ_MODULE_ERR_START_FAILED;
  headers=curl_slist_append(headers,"Content-Type: application/json");
@@ -205,17 +204,6 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     !h->register_service||!h->unregister_service||
     !h->register_command||!h->unregister_command)
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
- {
-  const char *configured=getenv("SPARKLES_OLLAMA_MODEL");
-  size_t n;
-  if(!configured||!configured[0]){
-   fprintf(stderr,"[OLLAMA] Set SPARKLES_OLLAMA_MODEL to an installed model name; module not activated\n");
-   return STNLABZ_MODULE_ERR_START_FAILED;
-  }
-  n=strlen(configured);
-  if(n>=sizeof selected_model) return STNLABZ_MODULE_ERR_START_FAILED;
-  memcpy(selected_model,configured,n+1U);
- }
  if(curl_global_init(CURL_GLOBAL_DEFAULT)!=CURLE_OK)
   return STNLABZ_MODULE_ERR_START_FAILED;
  if(!h->register_service(SPARKLES_LLM_GENERATE_SERVICE,generate,NULL)){
@@ -229,7 +217,7 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
  }
  command_registered=1;owner=h;
  fprintf(stderr,"[OLLAMA] service active model=%s endpoint=%s\n",
-         selected_model,SPARKLES_OLLAMA_ENDPOINT);
+         SPARKLES_OLLAMA_MODEL,SPARKLES_OLLAMA_ENDPOINT);
  return STNLABZ_MODULE_OK;
 }
 
