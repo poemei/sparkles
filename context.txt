@@ -1,0 +1,244 @@
+STN-LABZ / RICTUS — DEVELOPMENT CONTEXT AND HANDOFF
+Snapshot date: 2026-11-03 (America/Los_Angeles)
+Document type: Project continuity record; informational, not a controlled policy
+Status: DEVELOPMENT HOLD — no implementation, commits, installation, or activation until the human operator directs otherwise.
+
+======================================================================
+1. PURPOSE OF THIS FILE
+======================================================================
+This file exists to carry verified project context into a new ChatGPT
+conversation when the previous conversation becomes too long or is lost.
+It records the state described and observed during the present development
+session. It does not create, amend, or supersede STN-LABZ policies, mission
+assignments, architecture, roadmaps, or human authorization.
+
+Read this file and AGENTS.md before any subsequent development work.
+Check the current repository state and controlled documents rather than
+assuming this snapshot is permanently current. Preserve discrepancies;
+do not silently reinterpret missing or conflicting metadata.
+
+======================================================================
+2. PROJECT IDENTITY AND ARCHITECTURE
+======================================================================
+Project: Rictus — STN-LABZ Control Automated Agent
+GitHub repository: https://github.com/poemei/rictus
+Repository branch used during this session: default/main
+Mission: Mission operations and control, under human-directed authority.
+
+Rictus is a distinct agent derived from the shared STN-LABZ Core
+foundation. STN-LABZ owns Core and the shared module ABI; mission-specific
+behavior belongs in independent modules. The shared Module ABI is 1.5.
+Core policy evaluation is the existing service stnlabz.policy.evaluate.
+The Compliance module uses a governance-backed control broker; it must
+not treat policy-text matches as permission. Executor remains deliberately
+suppressed; no restart, stop, deployment, mutation, or similar live
+operational authority has been granted by the work documented here.
+
+Operator statement: Rictus's roadmap is synchronized with Digit Web.
+This synchronization is operator-reported; it was NOT independently
+verified in this conversation. Do not create an independent Rictus roadmap
+or modify either roadmap based solely on this context file.
+
+======================================================================
+3. GOVERNING MATERIAL AND DEVELOPMENT PRACTICE
+======================================================================
+Consult and comply with the actual authoritative sources, including:
+- AGENTS.md (the supplied STN-LABZ engineering instructions).
+- Repository README.md and docs/ROADMAP.md.
+- STN-LABZ controlled policies, General Orders, engineering workflow,
+  documentation rules, change-request provisions, and mission directives.
+- Relevant controlled documents supplied with the STN-LABZ project.
+
+Human direction is final within applicable boundaries. One authorized
+engineering step at a time. Keep these gates distinct:
+(1) source commit, (2) compilation/tests, (3) module qualification,
+(4) authorized activation, (5) end-to-end operator client test,
+(6) explicit operator acceptance, (7) authorization of the next step.
+Passing tests or working runtime output alone does NOT establish formal
+operator acceptance or permission to begin another development step.
+
+The operator has strongly preferred GitHub repository changes to be made
+through GitHub directly; do NOT redirect repository work to ChatGPT Work.
+Never commit the controlled policy archive, full-text catalog, or generated
+policy_index.tsv to the public/project source repository without explicit
+operator direction. Preserve AI code annotations required by controlled
+engineering documentation when changes are authorized.
+
+======================================================================
+4. POLICY CORPUS AND RETRIEVAL PIPELINE
+======================================================================
+Operator-supplied policy archive: STN_POLICIES_TXT.zip
+Corpus observed in this session: 47 TXT documents / 41 root families.
+Original/root documents are R0, with Revision ID NONE; R0 is not an
+additional revision. Some documents carry declared metadata discrepancies
+(e.g. heading or filename revision mismatch, filename/root ID mismatch).
+These are reported as evidence, not silently corrected.
+
+Repository tool chain:
+- tools/policy_inventory.py: ZIP inventory and optional full-text export.
+- tools/policy_lookup.py: literal lookup, with optional whole-term mode.
+- tools/policy_control_evidence.py: operation/target evidence packet,
+  retaining UNKNOWN governing facts and NOT_EVALUATED decision.
+- tools/policy_runtime_index.py: full-corpus TSV index exporter, with
+  filename-root fallback for documents lacking declared root metadata.
+- tools/test_policy*.py: regression tests.
+
+Locally used commands:
+  python3 tools/policy_inventory.py STN_POLICIES_TXT.zip --include-text > policy_catalog.json
+  python3 -m unittest discover -s tools -p 'test_policy*.py' -v
+  python3 tools/policy_runtime_index.py policy_catalog.json > policy_index.tsv
+
+Operator observed the 17-test Python suite passing (17 tests, OK), and
+subsequently generated policy_index.tsv without exporter error.
+No claim is made here that those checks establish module qualification.
+
+Installed runtime index path:
+  /opt/rictus/modules/compliance/policy_index.tsv
+The file was initially missing, causing index=UNAVAILABLE. After the
+operator provisioned it, the live Rictus client returned index=AVAILABLE.
+The index is read when queried and is separate from source-controlled code.
+
+======================================================================
+5. CURRENT COMPLIANCE IMPLEMENTATION
+======================================================================
+Latest source stage discussed: Compliance 1.1.4.
+Relevant files:
+- modules/compliance/src/compliance_module.c
+- modules/compliance/src/policy_index.c
+- modules/compliance/tests/test_policy_index.c
+- modules/compliance/README.md
+- include/rictus_policy_evidence.h
+- modules/compliance/data/governance.conf
+
+Main routes and service:
+- /control <operation> <target>: existing governance-backed request to
+  Core policy evaluator; executor remains SUPPRESSED.
+- /policy-evidence <operation> <target>: read-only policy index query.
+- rictus.policy.evidence: internal source-evidence lookup service.
+
+The /policy-evidence output includes independent operation/target match
+counts, first matching document and line, plus same_line and joint_source.
+The same_line count reflects both terms occurring on the SAME indexed line.
+It is a lexical correlation signal ONLY. It does not establish relevance
+in a legal/policy sense, policy applicability, controlling revision,
+conflict resolution, instruction authorization, or delegated authority.
+A same_line=0 result does not mean no governing policy exists.
+
+The scanner preserves source fingerprints internally. Earlier lookup
+reports preserve original filename, root, declared revision, source line,
+SHA-256 file bytes, and metadata issue markers. Do not claim that the
+runtime command independently determines authoritative policy revision.
+
+Last code commit reported for the 1.1.4 evidence-correlation step:
+  e816df0de34ca2dad40121343adf944be246b553
+This is not a guarantee it remains the HEAD of the repository later.
+
+======================================================================
+6. OBSERVED OPERATOR CLIENT TESTS — COMPLIANCE 1.1.4
+======================================================================
+The operator supplied these actual client results:
+
+Input:
+  /policy-evidence restart digit
+Observed:
+  Policy evidence: operation=restart target=digit index=AVAILABLE
+  matches=2/129 op_source=20260822.2:203
+  target_source=20260729.1:19 same_line=0 joint_source=NONE:0
+  decision=NOT_EVALUATED execution=SUPPRESSED
+
+Input:
+  /policy-evidence nonexistent unknown
+Observed:
+  Policy evidence: operation=nonexistent target=unknown index=AVAILABLE
+  matches=0/58 op_source=NONE:0 target_source=20260729.5:1
+  same_line=0 joint_source=NONE:0
+  decision=NOT_EVALUATED execution=SUPPRESSED
+
+Note: 'unknown' has 58 independent lexical matches in the corpus.
+The second query is not a combined 0-match result. Both queries had zero
+SAME-LINE co-occurrences. Independent term counts must not be conflated
+with operation-specific applicability or permissions.
+
+Input:
+  /control restart digit
+Observed:
+  Control: decision=ESCALATE policy=CORE.UNKNOWN
+  reason=governing_state_unknown operation=restart target=digit
+  assigned_mission=VERIFIED known=0/0/0/0
+  executor=BLOCKED execution=SUPPRESSED
+
+Interpretation:
+- Client command routing and index availability were demonstrated.
+- The same-line evidence fields were present and zero in both scenarios.
+- Mission identity verification does not prove operation authorization.
+- Governing facts remained unknown; restart was NOT authorized.
+- Core/ABI were not modified in the policy evidence development steps.
+
+The operator submitted live client results and the assistant marked the
+runtime scenarios PASS. Formal operator acceptance was not separately
+stated as such. The operator subsequently explicitly ordered a HOLD.
+
+The earlier instruction to run:
+  make -C modules/compliance clean all test
+was given, but no complete output of that C build/test command appears in
+the shared conversation context. Do NOT record its results as independently
+verified merely because the runtime command was observed working.
+
+======================================================================
+7. OPEN TECHNICAL LIMITATION AND DIRECTION
+======================================================================
+Rictus can find policy words and demonstrate same-line co-occurrence, but
+cannot yet resolve which controlled requirements actually govern a
+particular proposed action. The existing operation-specific governance
+record continues to determine known/unknown governing facts for /control.
+
+The operator criticized repeated cycles of keyword counts, narrow
+correlation features, and tests that did not solve applicability. Do not
+restart that repetitive pattern or present small retrieval refinements as
+major mission advancement. Any future direction must come from the human
+operator and be checked against the synchronized Digit Web roadmap and
+the actual controlled policy/mission documents.
+
+This paragraph is a description of a limitation, NOT authorization to
+implement semantic applicability, automated permissions, a new evaluator,
+new policy rules, changes to Core, or an operational executor.
+
+======================================================================
+8. CURRENT HUMAN DIRECTIVE — HOLD
+======================================================================
+The operator said 'hold'. The assistant confirmed:
+  'All Rictus development is paused. No further changes, commits, or
+   development actions until you direct otherwise.'
+The operator later stated the roadmap is synchronized with Digit Web.
+This did not lift the hold. The operator also expressed dissatisfaction
+with loss of long-chat continuity and requested a context.txt handoff.
+
+CURRENT DEVELOPMENT AUTHORIZATION: NONE.
+CURRENT STOPPING POINT: Compliance 1.1.4 live client evidence reported;
+  /control remains ESCALATE/CORE.UNKNOWN, executor BLOCKED/SUPPRESSED.
+NEXT AUTHORIZED STEP: NONE — await human direction.
+
+This file is a continuity deliverable only. Writing or reading it does
+not lift the hold or authorize modifications to GitHub, local runtime,
+roadmaps, or controlled policy.
+
+======================================================================
+9. INSTRUCTIONS FOR THE NEXT SESSION
+======================================================================
+1. Read this context.txt and AGENTS.md before suggesting development.
+2. Check repository README.md, docs/ROADMAP.md, and current GitHub HEAD
+   against this snapshot when the operator requests relevant work.
+3. Preserve the HOLD until the operator explicitly changes it.
+4. Distinguish factual observations from unverified claims, plans,
+   speculative suggestions, and formal operator acceptance.
+5. Never infer ALLOW, governing applicability, or delegated authority
+   from lexical search results, co-occurrence, or an approved document
+   status alone.
+6. Avoid unnecessary repetition and relitigating established decisions.
+7. Do not edit synchronized roadmaps, controlled documentation, Core,
+   shared ABI, or deploy/activate executors without specific direction.
+8. Do not silently alter this snapshot to make future activity appear
+   approved; update the context record when there is a real, authorized
+   milestone and record source evidence.
+
+END OF CONTEXT — 2026-11-03 (America/Los_Angeles)
