@@ -34,3 +34,9 @@ The Core hotloader discovers, qualifies, and activates the module, which registe
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
+
+## Inference limits (v1.0.13)
+
+The Ollama request uses `num_predict=512`, `CURLOPT_TIMEOUT_MS=120000L` (120 seconds), and the unchanged connection timeout `CURLOPT_CONNECTTIMEOUT_MS=1000L` (1 second). These are source constants, not environment variables.
+
+**Known limitation:** `sparkles_llm_response_t.text` remains 512 bytes and Core/IRC replies are also limited to 512 bytes. A longer generated response can exceed the output buffer and cause response parsing to fail; increasing `num_predict` does not by itself permit 512 tokens to be delivered over IRC. The output-size contract and multi-message handling require a separate authorized change. Timeout and answer consistency require operator retesting.
