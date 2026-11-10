@@ -5,18 +5,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include "stnlabz_abi/module.h"
-#include "rictus_llm.h"
-#include "rictus_identity.h"
+#include "sparkles_llm.h"
+#include "sparkles_identity.h"
 #include "ollama_internal.h"
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 0U
-#define OLLAMA_VERSION_PATCH 10U
+#define OLLAMA_VERSION_PATCH 11U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
 static int service_registered;
 static int command_registered;
+static char selected_model[128];
 
 static int valid_peer_char(char c)
 {
@@ -55,7 +56,7 @@ static int extract_peer_target(const char *prompt,char *target,size_t target_siz
 
 static int ensure_peer_prefix(const char *prompt,char *text,size_t text_size)
 {
- char target[128],prefixed[sizeof(((rictus_llm_response_t *)0)->text)];
+ char target[128],prefixed[sizeof(((sparkles_llm_response_t *)0)->text)];
  size_t target_len,text_len;
  if(!extract_peer_target(prompt,target,sizeof target))return 1;
  target_len=strlen(target);text_len=strlen(text);
@@ -81,12 +82,12 @@ static size_t write_cb(void *contents,size_t size,size_t nmemb,void *ctx)
  buffer_t *b=ctx; size_t bytes,need; char *next;
  if(!b||!contents||!size||!nmemb||nmemb>SIZE_MAX/size)return 0;
  bytes=size*nmemb;
- if(b->used>RICTUS_OLLAMA_HTTP_MAX||bytes>RICTUS_OLLAMA_HTTP_MAX-b->used)return 0;
+ if(b->used>SPARKLES_OLLAMA_HTTP_MAX||bytes>SPARKLES_OLLAMA_HTTP_MAX-b->used)return 0;
  need=b->used+bytes+1U;
  if(need>b->capacity){
   size_t cap=b->capacity?b->capacity:4096U;
-  while(cap<need){ if(cap>=RICTUS_OLLAMA_HTTP_MAX/2U){cap=RICTUS_OLLAMA_HTTP_MAX+1U;break;} cap*=2U; }
-  if(cap>RICTUS_OLLAMA_HTTP_MAX+1U)return 0;
+  while(cap<need){ if(cap>=SPARKLES_OLLAMA_HTTP_MAX/2U){cap=SPARKLES_OLLAMA_HTTP_MAX+1U;break;} cap*=2U; }
+  if(cap>SPARKLES_OLLAMA_HTTP_MAX+1U)return 0;
   next=realloc(b->data,cap); if(!next)return 0; b->data=next;b->capacity=cap;
  }
  memcpy(b->data+b->used,contents,bytes);b->used+=bytes;b->data[b->used]=0;return bytes;
@@ -95,7 +96,7 @@ static size_t write_cb(void *contents,size_t size,size_t nmemb,void *ctx)
 static stnlabz_module_result_t generate(const void *request,size_t request_size,
  void *response,size_t response_size,size_t *used,void *ctx)
 {
- const rictus_llm_request_t *in=request; rictus_llm_response_t *out=response;
+ const sparkles_llm_request_t *in=request; sparkles_llm_response_t *out=response;
  CURL *curl=NULL; struct curl_slist *headers=NULL; CURLcode rc; long status=0;
  char body[4096]; buffer_t received={0}; (void)ctx;
  if(used)*used=0;
@@ -103,11 +104,11 @@ static stnlabz_module_result_t generate(const void *request,size_t request_size,
     !memchr(in->prompt,0,sizeof in->prompt)||!in->prompt[0])
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  memset(out,0,sizeof(*out));
- if(!rictus_ollama_build_request(in->prompt,body,sizeof body))
+ if(!sparkles_ollama_build_request(selected_model,in->prompt,body,sizeof body))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  curl=curl_easy_init(); if(!curl)return STNLABZ_MODULE_ERR_START_FAILED;
  headers=curl_slist_append(headers,"Content-Type: application/json");
- curl_easy_setopt(curl,CURLOPT_URL,RICTUS_OLLAMA_ENDPOINT);
+ curl_easy_setopt(curl,CURLOPT_URL,SPARKLES_OLLAMA_ENDPOINT);
  curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers);
  curl_easy_setopt(curl,CURLOPT_POSTFIELDS,body);
  curl_easy_setopt(curl,CURLOPT_POSTFIELDSIZE,(long)strlen(body));
@@ -122,7 +123,7 @@ static stnlabz_module_result_t generate(const void *request,size_t request_size,
   fprintf(stderr,"[OLLAMA] request failed curl=%d http=%ld\n",(int)rc,status);
   free(received.data); return STNLABZ_MODULE_ERR_INVALID_STATE;
  }
- if(!rictus_ollama_extract_response(received.data,out->text,sizeof out->text)){
+ if(!sparkles_ollama_extract_response(received.data,out->text,sizeof out->text)){
   fprintf(stderr,"[OLLAMA] response parse failed bytes=%zu\n",received.used);
   free(received.data); return STNLABZ_MODULE_ERR_INVALID_STATE;
  }
@@ -138,8 +139,8 @@ static stnlabz_module_result_t chat_controller(
  stnlabz_module_command_reply_fn reply,
  void *reply_context, void *handler_context)
 {
- rictus_llm_request_t in;
- rictus_llm_response_t out;
+ sparkles_llm_request_t in;
+ sparkles_llm_response_t out;
  char peer_target[128];
  size_t used=0U,len;
  stnlabz_module_result_t result;
@@ -149,15 +150,15 @@ static stnlabz_module_result_t chat_controller(
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
  if(owner&&owner->invoke_service){
-  rictus_identity_question_t question={{0}};
-  rictus_identity_answer_t identity={{0}};
+  sparkles_identity_question_t question={{0}};
+  sparkles_identity_answer_t identity={{0}};
   size_t identity_used=0U;
   stnlabz_module_result_t identity_result;
   size_t question_length=strlen(command->arguments);
   if(question_length>=sizeof question.question)
    return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
   memcpy(question.question,command->arguments,question_length+1U);
-  identity_result=owner->invoke_service(RICTUS_IDENTITY_ANSWER_SERVICE,
+  identity_result=owner->invoke_service(SPARKLES_IDENTITY_ANSWER_SERVICE,
       &question,sizeof question,&identity,sizeof identity,&identity_used);
   if(identity_result==STNLABZ_MODULE_OK){
    if(identity_used!=sizeof identity||
@@ -192,7 +193,7 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  unsigned int e=0,p=0;int ne=0,np=0;int ok;
  if(!q)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  memset(q,0,sizeof(*q));
- ok=rictus_ollama_run_selftests(&e,&p,&ne,&np);
+ ok=sparkles_ollama_run_selftests(&e,&p,&ne,&np);
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
  return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_QUALIFICATION;
@@ -204,20 +205,31 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     !h->register_service||!h->unregister_service||
     !h->register_command||!h->unregister_command)
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+ {
+  const char *configured=getenv("SPARKLES_OLLAMA_MODEL");
+  size_t n;
+  if(!configured||!configured[0]){
+   fprintf(stderr,"[OLLAMA] Set SPARKLES_OLLAMA_MODEL to an installed model name; module not activated\\n");
+   return STNLABZ_MODULE_ERR_START_FAILED;
+  }
+  n=strlen(configured);
+  if(n>=sizeof selected_model) return STNLABZ_MODULE_ERR_START_FAILED;
+  memcpy(selected_model,configured,n+1U);
+ }
  if(curl_global_init(CURL_GLOBAL_DEFAULT)!=CURLE_OK)
   return STNLABZ_MODULE_ERR_START_FAILED;
- if(!h->register_service(RICTUS_LLM_GENERATE_SERVICE,generate,NULL)){
+ if(!h->register_service(SPARKLES_LLM_GENERATE_SERVICE,generate,NULL)){
   curl_global_cleanup();return STNLABZ_MODULE_ERR_START_FAILED;
  }
  service_registered=1;
  if(!h->register_command("chat",chat_controller,NULL)){
-  (void)h->unregister_service(RICTUS_LLM_GENERATE_SERVICE,NULL);
+  (void)h->unregister_service(SPARKLES_LLM_GENERATE_SERVICE,NULL);
   service_registered=0;curl_global_cleanup();
   return STNLABZ_MODULE_ERR_START_FAILED;
  }
  command_registered=1;owner=h;
  fprintf(stderr,"[OLLAMA] service active model=%s endpoint=%s\n",
-         RICTUS_OLLAMA_MODEL,RICTUS_OLLAMA_ENDPOINT);
+         selected_model,SPARKLES_OLLAMA_ENDPOINT);
  return STNLABZ_MODULE_OK;
 }
 
@@ -227,13 +239,13 @@ static stnlabz_module_result_t stop(void)
   (void)owner->unregister_command("chat",NULL);
  command_registered=0;
  if(service_registered&&owner)
-  (void)owner->unregister_service(RICTUS_LLM_GENERATE_SERVICE,NULL);
+  (void)owner->unregister_service(SPARKLES_LLM_GENERATE_SERVICE,NULL);
  service_registered=0;owner=NULL;curl_global_cleanup();
  return STNLABZ_MODULE_OK;
 }
 
 static const stnlabz_module_descriptor_t descriptor={
- "ollama","Rictus Ollama LLM",OLLAMA_VERSION_MAJOR,OLLAMA_VERSION_MINOR,
+ "ollama","Sparkles Ollama LLM",OLLAMA_VERSION_MAJOR,OLLAMA_VERSION_MINOR,
  OLLAMA_VERSION_PATCH,STNLABZ_MODULE_API_MAJOR,STNLABZ_MODULE_API_MINOR,
  qualify,start,stop
 };
