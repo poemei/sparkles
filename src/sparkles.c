@@ -46,6 +46,29 @@ static int sparkles_terminal_dispatch(void *context, const char *message,
     return 1;
 }
 
+/* Display the actual ABI registry state, not assumptions about files on disk.
+ * Module hotload/qualification remains owned by Core. */
+static void sparkles_terminal_module_status(const stnlabz_module_registry_t *registry)
+{
+    size_t i, count = stnlabz_core_inventory_count(registry);
+    stnlabz_core_inventory_entry_t entry;
+
+    printf("[MODULES] Registered: %zu\n", count);
+    if (!count) {
+        puts("[MODULES] No modules registered.");
+        return;
+    }
+    for (i = 0; i < count; ++i) {
+        if (!stnlabz_core_inventory_get(registry, i, &entry)) {
+            puts("[MODULES] Inventory unavailable.");
+            return;
+        }
+        printf("[MODULE] %s v%u.%u.%u: %s\n",
+               entry.id, entry.version_major, entry.version_minor,
+               entry.version_patch, stnlabz_module_state_string(entry.state));
+    }
+}
+
 /* Core identity and operations never depend on any one capability module. */
 int stnlabz_initialize(void)
 {
@@ -107,6 +130,7 @@ int stnlabz_initialize(void)
         !stnlabz_log_sync()) goto log_failure;
 
     if (isatty(STDIN_FILENO)) {
+        sparkles_terminal_module_status(&modules);
         puts("Ms. Sparkles is standing by.");
         puts("CTRL + C to quit.");
         fflush(stdout);
