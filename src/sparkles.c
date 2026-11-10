@@ -13,6 +13,7 @@
 #include "stnlabz_abi/module_loader.h"
 #include "runtime.h"
 #include "sparkles_route.h"
+#include "sparkles_identity.h"
 
 #define SPARKLES_MODULE_DIRECTORY STNLABZ_INSTALL_PATH "/modules"
 
@@ -36,6 +37,27 @@ static int sparkles_terminal_dispatch(void *context, const char *message,
     result = host->invoke_service(SPARKLES_ROUTER_DISPATCH_SERVICE,
                                   &request, sizeof request,
                                   &reply, sizeof reply, &used);
+    if (result == STNLABZ_MODULE_ERR_NOT_FOUND && message[0] != '/') {
+        /* No chat controller is registered. Ask the existing Identity service
+         * whether this is an identity question; do not replace normal chat. */
+        sparkles_identity_question_t question = {{0}};
+        sparkles_identity_answer_t identity = {{0}};
+        size_t identity_used = 0U;
+        if (length >= sizeof question.question) return 0;
+        memcpy(question.question, message, length + 1U);
+        result = host->invoke_service(SPARKLES_IDENTITY_ANSWER_SERVICE,
+                                      &question, sizeof question,
+                                      &identity, sizeof identity,
+                                      &identity_used);
+        if (result != STNLABZ_MODULE_OK ||
+            identity_used != sizeof identity ||
+            !memchr(identity.answer, 0, sizeof identity.answer) ||
+            !identity.answer[0] ||
+            strlen(identity.answer) >= capacity)
+            return 0;
+        memcpy(output, identity.answer, strlen(identity.answer) + 1U);
+        return 1;
+    }
     if (result != STNLABZ_MODULE_OK || used != sizeof reply ||
         !reply.replied || !memchr(reply.text, 0, sizeof reply.text) ||
         !reply.text[0])
