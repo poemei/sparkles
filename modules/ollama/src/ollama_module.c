@@ -209,7 +209,7 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
   const char *configured=getenv("SPARKLES_OLLAMA_MODEL");
   size_t n;
   if(!configured||!configured[0]){
-   fprintf(stderr,"[OLLAMA] Set SPARKLES_OLLAMA_MODEL to an installed model name; module not activated\\n");
+   fprintf(stderr,"[OLLAMA] Set SPARKLES_OLLAMA_MODEL to an installed model name; module not activated\n");
    return STNLABZ_MODULE_ERR_START_FAILED;
   }
   n=strlen(configured);
