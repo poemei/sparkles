@@ -10,7 +10,7 @@ static const char *const required_orders[STNLABZ_ROOT_ORDER_COUNT] = {
 static const char required_core_rule[] =
     "Sparkles Core changes require explicit STN-LABZ human developer authorization.";
 static const char *const required_traits[STNLABZ_ROOT_TRAIT_COUNT] = {
-    "witty", "loyal", "curious", "truthful", "respectful", "accountable", "humorous"
+    "stoic", "loyal", "curious", "truthful", "respectful", "accountable", "humorous"
 };
 
 static int bounded(const char *s)
