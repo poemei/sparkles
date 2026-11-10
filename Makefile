@@ -40,7 +40,7 @@ ABI_OBJS := $(patsubst $(ABI_SRC_DIR)/%.c,$(BUILD_DIR)/abi/%.o,$(ABI_SRCS))
 OBJS := $(CORE_OBJS) $(ABI_OBJS)
 DEPS := $(OBJS:.o=.d)
 
-.PHONY: all clean install uninstall
+.PHONY: all clean install uninstall test test-terminal
 all: $(TARGET)
 
 .PHONY: check-abi
@@ -62,6 +62,17 @@ $(BUILD_DIR)/%.o: src/%.c
 $(BUILD_DIR)/abi/%.o: $(ABI_SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+
+# Terminal Core ingress regression: adapted from Digit's tested terminal loop.
+$(BUILD_DIR)/test_core_terminal: tests/test_core_terminal.c src/runtime.c src/logging.c include/runtime.h include/sparkles_route.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ tests/test_core_terminal.c src/logging.c
+
+test-terminal: $(BUILD_DIR)/test_core_terminal
+	./$(BUILD_DIR)/test_core_terminal
+
+test: $(TARGET) test-terminal
+	@echo "Sparkles Core terminal regression complete; operator runtime acceptance remains separate."
 
 install: $(TARGET)
 	@id -u "$(RUNTIME_USER)" >/dev/null 2>&1 || { echo "ERROR: unknown runtime user $(RUNTIME_USER)" >&2; exit 1; }
