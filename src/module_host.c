@@ -5,13 +5,11 @@
 
 #include "module_host.h"
 #include "core_diagnostics.h"
-#include "rictus_transport.h"
-#include "rictus_route.h"
-#include "rictus_policy.h"
-#include "core_policy.h"
+#include "sparkles_transport.h"
+#include "sparkles_route.h"
 
-#define RICTUS_HOST_SERVICE_MAX 32U
-#define RICTUS_HOST_COMMAND_MAX 32U
+#define SPARKLES_HOST_SERVICE_MAX 32U
+#define SPARKLES_HOST_COMMAND_MAX 32U
 
 typedef struct {
     char name[STNLABZ_MODULE_SERVICE_NAME_MAX];
@@ -20,7 +18,7 @@ typedef struct {
     void *context;
     unsigned int in_flight;
     int withdrawing;
-} rictus_service_entry_t;
+} sparkles_service_entry_t;
 
 typedef struct {
     char name[STNLABZ_MODULE_COMMAND_NAME_MAX];
@@ -29,38 +27,38 @@ typedef struct {
     void *context;
     unsigned int in_flight;
     int withdrawing;
-} rictus_command_entry_t;
+} sparkles_command_entry_t;
 
-static rictus_service_entry_t services[RICTUS_HOST_SERVICE_MAX];
-static rictus_command_entry_t commands[RICTUS_HOST_COMMAND_MAX];
+static sparkles_service_entry_t services[SPARKLES_HOST_SERVICE_MAX];
+static sparkles_command_entry_t commands[SPARKLES_HOST_COMMAND_MAX];
 static atomic_flag service_lock = ATOMIC_FLAG_INIT;
 static atomic_flag command_lock = ATOMIC_FLAG_INIT;
 static _Thread_local char registering_module[STNLABZ_MODULE_ID_MAX];
 
-typedef struct rictus_service_frame {
-    const rictus_service_entry_t *entry;
-    struct rictus_service_frame *previous;
-} rictus_service_frame_t;
+typedef struct sparkles_service_frame {
+    const sparkles_service_entry_t *entry;
+    struct sparkles_service_frame *previous;
+} sparkles_service_frame_t;
 
-typedef struct rictus_command_frame {
-    const rictus_command_entry_t *entry;
-    struct rictus_command_frame *previous;
-} rictus_command_frame_t;
+typedef struct sparkles_command_frame {
+    const sparkles_command_entry_t *entry;
+    struct sparkles_command_frame *previous;
+} sparkles_command_frame_t;
 
-static _Thread_local rictus_service_frame_t *current_service_frame;
-static _Thread_local rictus_command_frame_t *current_command_frame;
+static _Thread_local sparkles_service_frame_t *current_service_frame;
+static _Thread_local sparkles_command_frame_t *current_command_frame;
 
-static int on_service_stack(const rictus_service_entry_t *entry)
+static int on_service_stack(const sparkles_service_entry_t *entry)
 {
-    const rictus_service_frame_t *frame;
+    const sparkles_service_frame_t *frame;
     for (frame = current_service_frame; frame; frame = frame->previous)
         if (frame->entry == entry) return 1;
     return 0;
 }
 
-static int on_command_stack(const rictus_command_entry_t *entry)
+static int on_command_stack(const sparkles_command_entry_t *entry)
 {
-    const rictus_command_frame_t *frame;
+    const sparkles_command_frame_t *frame;
     for (frame = current_command_frame; frame; frame = frame->previous)
         if (frame->entry == entry) return 1;
     return 0;
@@ -84,7 +82,7 @@ static void unlock(atomic_flag *flag)
     atomic_flag_clear_explicit(flag, memory_order_release);
 }
 
-void rictus_module_host_begin_registration(const char *module_id)
+void sparkles_module_host_begin_registration(const char *module_id)
 {
     size_t length;
     registering_module[0] = '\0';
@@ -94,7 +92,7 @@ void rictus_module_host_begin_registration(const char *module_id)
     memcpy(registering_module, module_id, length + 1U);
 }
 
-void rictus_module_host_end_registration(void)
+void sparkles_module_host_end_registration(void)
 {
     registering_module[0] = '\0';
 }
@@ -104,25 +102,25 @@ static int register_service(const char *name,
                             void *context)
 {
     size_t i;
-    size_t free_slot = RICTUS_HOST_SERVICE_MAX;
+    size_t free_slot = SPARKLES_HOST_SERVICE_MAX;
     size_t length;
 
     if (!name || !handler ||
-        !strcmp(name, RICTUS_ROUTER_DISPATCH_SERVICE) ||
-        !strcmp(name, STNLABZ_POLICY_EVALUATE_SERVICE)) return 0;
+        !strcmp(name, SPARKLES_ROUTER_DISPATCH_SERVICE) ||
+        0 /* reserved for Core router */) return 0;
     length = bounded_length(name, STNLABZ_MODULE_SERVICE_NAME_MAX);
     if (!length || length >= STNLABZ_MODULE_SERVICE_NAME_MAX) return 0;
 
     lock(&service_lock);
-    for (i = 0; i < RICTUS_HOST_SERVICE_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_SERVICE_MAX; ++i) {
         if (services[i].handler && !strcmp(services[i].name, name)) {
             unlock(&service_lock);
             return 0;
         }
-        if (!services[i].handler && free_slot == RICTUS_HOST_SERVICE_MAX)
+        if (!services[i].handler && free_slot == SPARKLES_HOST_SERVICE_MAX)
             free_slot = i;
     }
-    if (free_slot == RICTUS_HOST_SERVICE_MAX) {
+    if (free_slot == SPARKLES_HOST_SERVICE_MAX) {
         unlock(&service_lock);
         return 0;
     }
@@ -137,12 +135,12 @@ static int register_service(const char *name,
 
 static int unregister_service(const char *name, void *context)
 {
-    rictus_service_entry_t *entry = NULL;
+    sparkles_service_entry_t *entry = NULL;
     size_t i;
 
     if (!name) return 0;
     lock(&service_lock);
-    for (i = 0; i < RICTUS_HOST_SERVICE_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_SERVICE_MAX; ++i) {
         if (services[i].handler &&
             !services[i].withdrawing &&
             services[i].context == context &&
@@ -173,73 +171,6 @@ static int unregister_service(const char *name, void *context)
 static stnlabz_module_result_t route_dispatch_service(
     const void *, size_t, void *, size_t, size_t *, void *);
 
-static stnlabz_module_result_t policy_evaluate_service(
-    const void *request, size_t request_size,
-    void *response, size_t response_size, size_t *response_used,
-    void *context)
-{
-    const rictus_policy_evaluate_request_t *in = request;
-    rictus_policy_evaluate_response_t *out = response;
-    stnlabz_policy_request_t policy_request;
-    stnlabz_policy_result_t policy_result;
-
-    (void)context;
-    if (response_used) *response_used = 0U;
-    if (!in || request_size != sizeof *in || !out ||
-        response_size < sizeof *out ||
-        !memchr(in->actor, 0, sizeof in->actor) ||
-        !memchr(in->mission, 0, sizeof in->mission) ||
-        !memchr(in->operation, 0, sizeof in->operation) ||
-        !memchr(in->module_id, 0, sizeof in->module_id) ||
-        !memchr(in->escalation_target, 0, sizeof in->escalation_target) ||
-        !memchr(in->verification_source, 0, sizeof in->verification_source) ||
-        (in->mission_known != 0 && in->mission_known != 1) ||
-        (in->within_mission != 0 && in->within_mission != 1) ||
-        (in->policy_known != 0 && in->policy_known != 1) ||
-        (in->complies_with_policy != 0 && in->complies_with_policy != 1) ||
-        (in->instruction_known != 0 && in->instruction_known != 1) ||
-        (in->instruction_authorized != 0 && in->instruction_authorized != 1) ||
-        (in->authority_known != 0 && in->authority_known != 1) ||
-        (in->authority_granted != 0 && in->authority_granted != 1) ||
-        (in->context_verified != 0 && in->context_verified != 1))
-        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-
-    memset(&policy_request, 0, sizeof policy_request);
-    policy_request.actor = in->actor;
-    policy_request.mission = in->mission;
-    policy_request.operation = in->operation;
-    policy_request.module_id = in->module_id;
-    policy_request.escalation_target = in->escalation_target[0] ?
-        in->escalation_target : NULL;
-    policy_request.verification_source = in->verification_source;
-    policy_request.mission_known = in->mission_known;
-    policy_request.within_mission = in->within_mission;
-    policy_request.policy_known = in->policy_known;
-    policy_request.complies_with_policy = in->complies_with_policy;
-    policy_request.instruction_known = in->instruction_known;
-    policy_request.instruction_authorized = in->instruction_authorized;
-    policy_request.authority_known = in->authority_known;
-    policy_request.authority_granted = in->authority_granted;
-    policy_request.context_verified = in->context_verified;
-
-    if (!stnlabz_core_policy_evaluate(&policy_request, &policy_result))
-        return STNLABZ_MODULE_ERR_INVALID_STATE;
-
-    memset(out, 0, sizeof *out);
-    out->decision = (int)policy_result.decision;
-    out->escalation_status = (int)policy_result.escalation_status;
-    if (snprintf(out->policy_id, sizeof out->policy_id, "%s",
-                 policy_result.policy_id ? policy_result.policy_id : "unknown") >=
-        (int)sizeof out->policy_id ||
-        snprintf(out->reason, sizeof out->reason, "%s",
-                 policy_result.reason ? policy_result.reason : "unknown") >=
-        (int)sizeof out->reason)
-        return STNLABZ_MODULE_ERR_INVALID_STATE;
-
-    if (response_used) *response_used = sizeof *out;
-    return STNLABZ_MODULE_OK;
-}
-
 static stnlabz_module_result_t invoke_service(
     const char *name,
     const void *request,
@@ -248,7 +179,7 @@ static stnlabz_module_result_t invoke_service(
     size_t response_size,
     size_t *response_used)
 {
-    rictus_service_entry_t *entry = NULL;
+    sparkles_service_entry_t *entry = NULL;
     stnlabz_module_service_handler_fn handler = NULL;
     void *context = NULL;
     stnlabz_module_result_t result;
@@ -261,7 +192,7 @@ static stnlabz_module_result_t invoke_service(
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
     lock(&service_lock);
-    for (i = 0; i < RICTUS_HOST_SERVICE_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_SERVICE_MAX; ++i) {
         if (services[i].handler &&
             !services[i].withdrawing &&
             !strcmp(services[i].name, name)) {
@@ -274,16 +205,13 @@ static stnlabz_module_result_t invoke_service(
     }
     unlock(&service_lock);
 
-    if (!handler && !strcmp(name, RICTUS_ROUTER_DISPATCH_SERVICE))
+    if (!handler && !strcmp(name, SPARKLES_ROUTER_DISPATCH_SERVICE))
         return route_dispatch_service(request, request_size, response,
                                       response_size, response_used, NULL);
-    if (!handler && !strcmp(name, STNLABZ_POLICY_EVALUATE_SERVICE))
-        return policy_evaluate_service(request, request_size, response,
-                                       response_size, response_used, NULL);
-    if (!handler) { rictus_diag_service(name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND); return STNLABZ_MODULE_ERR_NOT_FOUND; }
+    if (!handler) { sparkles_diag_service(name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND); return STNLABZ_MODULE_ERR_NOT_FOUND; }
 
     {
-        rictus_service_frame_t frame = {entry, current_service_frame};
+        sparkles_service_frame_t frame = {entry, current_service_frame};
         current_service_frame = &frame;
         result = handler(request, request_size, response, response_size,
                          response_used, context);
@@ -297,13 +225,13 @@ static stnlabz_module_result_t invoke_service(
         memcpy(service_owner, "core/unknown", sizeof "core/unknown");
     entry->in_flight--;
     unlock(&service_lock);
-    rictus_diag_service(name, service_owner, result);
+    sparkles_diag_service(name, service_owner, result);
     return result;
 }
 
 static int send_message(const char *message)
 {
-    rictus_transport_channel_request_t request;
+    sparkles_transport_channel_request_t request;
     size_t length;
 
     if (!message) return 0;
@@ -312,14 +240,14 @@ static int send_message(const char *message)
     memset(&request, 0, sizeof request);
     memcpy(request.message, message, length + 1U);
 
-    return invoke_service(RICTUS_TRANSPORT_CHANNEL_SEND_SERVICE,
+    return invoke_service(SPARKLES_TRANSPORT_CHANNEL_SEND_SERVICE,
                           &request, sizeof request,
                           NULL, 0U, NULL) == STNLABZ_MODULE_OK;
 }
 
 static int send_private_message(const char *target, const char *message)
 {
-    rictus_transport_private_request_t request;
+    sparkles_transport_private_request_t request;
     size_t target_length;
     size_t message_length;
 
@@ -334,7 +262,7 @@ static int send_private_message(const char *target, const char *message)
     memcpy(request.target, target, target_length + 1U);
     memcpy(request.message, message, message_length + 1U);
 
-    return invoke_service(RICTUS_TRANSPORT_PRIVATE_SEND_SERVICE,
+    return invoke_service(SPARKLES_TRANSPORT_PRIVATE_SEND_SERVICE,
                           &request, sizeof request,
                           NULL, 0U, NULL) == STNLABZ_MODULE_OK;
 }
@@ -344,7 +272,7 @@ static int register_command(const char *name,
                             void *context)
 {
     size_t i;
-    size_t free_slot = RICTUS_HOST_COMMAND_MAX;
+    size_t free_slot = SPARKLES_HOST_COMMAND_MAX;
     size_t length;
 
     if (!name || !handler) return 0;
@@ -352,15 +280,15 @@ static int register_command(const char *name,
     if (!length || length >= STNLABZ_MODULE_COMMAND_NAME_MAX) return 0;
 
     lock(&command_lock);
-    for (i = 0; i < RICTUS_HOST_COMMAND_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_COMMAND_MAX; ++i) {
         if (commands[i].handler && !strcmp(commands[i].name, name)) {
             unlock(&command_lock);
             return 0;
         }
-        if (!commands[i].handler && free_slot == RICTUS_HOST_COMMAND_MAX)
+        if (!commands[i].handler && free_slot == SPARKLES_HOST_COMMAND_MAX)
             free_slot = i;
     }
-    if (free_slot == RICTUS_HOST_COMMAND_MAX) {
+    if (free_slot == SPARKLES_HOST_COMMAND_MAX) {
         unlock(&command_lock);
         return 0;
     }
@@ -375,12 +303,12 @@ static int register_command(const char *name,
 
 static int unregister_command(const char *name, void *context)
 {
-    rictus_command_entry_t *entry = NULL;
+    sparkles_command_entry_t *entry = NULL;
     size_t i;
 
     if (!name) return 0;
     lock(&command_lock);
-    for (i = 0; i < RICTUS_HOST_COMMAND_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_COMMAND_MAX; ++i) {
         if (commands[i].handler &&
             !commands[i].withdrawing &&
             commands[i].context == context &&
@@ -409,9 +337,9 @@ static int unregister_command(const char *name, void *context)
 }
 
 /* Core performs only named dispatch. Controller handlers own internal routing. */
-static int rictus_route_capture(void *ctx, const char *message)
+static int sparkles_route_capture(void *ctx, const char *message)
 {
-    rictus_route_reply_t *out = ctx;
+    sparkles_route_reply_t *out = ctx;
     size_t len;
     if (!out || !message || out->replied) return 0;
     len = bounded_length(message, sizeof out->text);
@@ -427,9 +355,9 @@ static stnlabz_module_result_t dispatch_command(
     void *context)
 {
     const stnlabz_module_command_t *cmd = request;
-    rictus_route_reply_t *out = response;
+    sparkles_route_reply_t *out = response;
     stnlabz_module_command_handler_fn handler = NULL;
-    rictus_command_entry_t *entry = NULL;
+    sparkles_command_entry_t *entry = NULL;
     stnlabz_module_result_t result;
     void *handler_context = NULL;
     char command_owner[STNLABZ_MODULE_ID_MAX];
@@ -449,7 +377,7 @@ static stnlabz_module_result_t dispatch_command(
 
     memset(out, 0, sizeof *out);
     lock(&command_lock);
-    for (i = 0; i < RICTUS_HOST_COMMAND_MAX; ++i) {
+    for (i = 0; i < SPARKLES_HOST_COMMAND_MAX; ++i) {
         if (commands[i].handler &&
             !commands[i].withdrawing &&
             !strcmp(commands[i].name, cmd->name)) {
@@ -462,11 +390,11 @@ static stnlabz_module_result_t dispatch_command(
     }
     unlock(&command_lock);
 
-    if (!handler) { rictus_diag_command(cmd->name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND, 0); return STNLABZ_MODULE_ERR_NOT_FOUND; }
+    if (!handler) { sparkles_diag_command(cmd->name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND, 0); return STNLABZ_MODULE_ERR_NOT_FOUND; }
     {
-        rictus_command_frame_t frame = {entry, current_command_frame};
+        sparkles_command_frame_t frame = {entry, current_command_frame};
         current_command_frame = &frame;
-        result = handler(cmd, rictus_route_capture, out, handler_context);
+        result = handler(cmd, sparkles_route_capture, out, handler_context);
         current_command_frame = frame.previous;
     }
     lock(&command_lock);
@@ -479,7 +407,7 @@ static stnlabz_module_result_t dispatch_command(
 
     if (result == STNLABZ_MODULE_OK && response_used)
         *response_used = sizeof *out;
-    rictus_diag_command(cmd->name, command_owner, result, out->replied);
+    sparkles_diag_command(cmd->name, command_owner, result, out->replied);
     return result;
 }
 
@@ -489,7 +417,7 @@ static stnlabz_module_result_t route_dispatch_service(
     void *response, size_t response_size, size_t *response_used,
     void *context)
 {
-    const rictus_route_request_t *in = request;
+    const sparkles_route_request_t *in = request;
     stnlabz_module_command_t command;
     const char *cursor, *end;
     size_t name_len, arg_len;
@@ -500,13 +428,13 @@ static stnlabz_module_result_t route_dispatch_service(
         !memchr(in->sender, 0, sizeof in->sender) ||
         !memchr(in->account, 0, sizeof in->account) ||
         !memchr(in->text, 0, sizeof in->text) ||
-        !in->text[0] || !response || response_size < sizeof(rictus_route_reply_t))
+        !in->text[0] || !response || response_size < sizeof(sparkles_route_reply_t))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
     if (!strcasecmp(in->text, "diagnose my last request")) {
-        char diagnostic[RICTUS_ROUTE_REPLY_MAX];
-        rictus_route_reply_t *out = response;
-        if (!rictus_diag_render(in->sender, in->account,
+        char diagnostic[SPARKLES_ROUTE_REPLY_MAX];
+        sparkles_route_reply_t *out = response;
+        if (!sparkles_diag_render(in->sender, in->account,
                                 diagnostic, sizeof diagnostic))
             return STNLABZ_MODULE_ERR_INVALID_STATE;
         memset(out, 0, sizeof *out);
@@ -516,7 +444,7 @@ static stnlabz_module_result_t route_dispatch_service(
         return STNLABZ_MODULE_OK;
     }
 
-    rictus_diag_begin(in->sender, in->account, in->text);
+    sparkles_diag_begin(in->sender, in->account, in->text);
     memset(&command, 0, sizeof command);
     memcpy(command.sender, in->sender, sizeof command.sender);
     memcpy(command.account, in->account, sizeof command.account);
@@ -536,7 +464,7 @@ static stnlabz_module_result_t route_dispatch_service(
         memcpy(command.name, "chat", sizeof "chat");
     }
 
-    rictus_diag_route(command.name);
+    sparkles_diag_route(command.name);
     arg_len = bounded_length(cursor, sizeof command.arguments);
     if (arg_len >= sizeof command.arguments)
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
@@ -556,7 +484,7 @@ static const stnlabz_module_host_t host = {
     .invoke_service = invoke_service
 };
 
-const stnlabz_module_host_t *rictus_module_host(void)
+const stnlabz_module_host_t *sparkles_module_host(void)
 {
     return &host;
 }
