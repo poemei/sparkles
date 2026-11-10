@@ -22,6 +22,76 @@ static int audit(const char *event, const char *id,
     return stnlabz_log_event("MODULE", event, detail) && stnlabz_log_sync();
 }
 
+stnlabz_module_result_t stnlabz_core_authorize(stnlabz_module_registry_t *registry,
+    const char *module_id, const stnlabz_policy_request_t *request)
+{
+    stnlabz_module_result_t rc;
+    stnlabz_policy_result_t decision;
+    if (!registry || !module_id || !stnlabz_log_is_open())
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    if (!audit("AUTHORIZE_REQUEST", module_id, STNLABZ_MODULE_OK,
+               stnlabz_module_registry_find(registry, module_id)))
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    /* No authority may be inferred from qualification or module presence.
+       Only trusted Core callers may supply verified request context. */
+    if (!request || !request->operation || !request->module_id ||
+        strcmp(request->operation, "module.activate") != 0 ||
+        strcmp(request->module_id, module_id) != 0 ||
+        !stnlabz_core_policy_evaluate(request, &decision))
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    if (decision.decision != STNLABZ_POLICY_ALLOW) {
+        if (!audit("AUTHORIZE_REJECT", module_id, STNLABZ_MODULE_ERR_NOT_AUTHORIZED,
+                   stnlabz_module_registry_find(registry, module_id)))
+            return STNLABZ_MODULE_ERR_INVALID_STATE;
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    }
+    rc = stnlabz_module_registry_authorize_activation(registry, module_id);
+    if (!audit(rc == STNLABZ_MODULE_OK ? "AUTHORIZE_GRANTED" : "AUTHORIZE_REJECT",
+               module_id, rc, stnlabz_module_registry_find(registry, module_id)))
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return rc;
+}
+
+stnlabz_module_result_t stnlabz_core_activate(stnlabz_module_registry_t *registry,
+    const char *module_id, const stnlabz_module_host_t *host,
+    const stnlabz_policy_request_t *request)
+{
+    const stnlabz_module_record_t *record;
+    stnlabz_module_result_t rc;
+    stnlabz_policy_result_t decision;
+    if (!registry || !module_id || !stnlabz_log_is_open())
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    record = stnlabz_module_registry_find(registry, module_id);
+    if (!audit("ACTIVATE_REQUEST", module_id, STNLABZ_MODULE_OK, record))
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    /* Guard before start(): unauthorized callbacks must never run. */
+    if (!record) rc = STNLABZ_MODULE_ERR_NOT_FOUND;
+    else if (record->state != STNLABZ_MODULE_STATE_QUALIFIED &&
+             record->state != STNLABZ_MODULE_STATE_STOPPED)
+        rc = STNLABZ_MODULE_ERR_NOT_QUALIFIED;
+    else if (!record->activation_authorized)
+        rc = STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    else if (!request || !request->operation || !request->module_id ||
+             strcmp(request->operation, "module.activate") != 0 ||
+             strcmp(request->module_id, module_id) != 0)
+        rc = STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    else if (!stnlabz_core_policy_evaluate(request, &decision))
+        rc = STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    else if (decision.decision != STNLABZ_POLICY_ALLOW)
+        rc = STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    else {
+        /* The shared ABI owns the start->active transition and failure handling.
+           Its combined helper repeats authorization only AFTER the explicit gate. */
+        sparkles_module_host_begin_registration(module_id);
+        rc = stnlabz_module_abi_authorize_and_activate(registry, module_id, host);
+        sparkles_module_host_end_registration();
+    }
+    if (!audit(rc == STNLABZ_MODULE_OK ? "HOTLOAD_ACTIVE" : "ACTIVATE_REJECT",
+               module_id, rc, stnlabz_module_registry_find(registry, module_id)))
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return rc;
+}
+
 stnlabz_module_result_t stnlabz_core_activate_qualified(
     stnlabz_module_registry_t *registry,
     const char *module_id,
@@ -39,8 +109,8 @@ stnlabz_module_result_t stnlabz_core_activate_qualified(
         return STNLABZ_MODULE_ERR_NOT_QUALIFIED;
 
     sparkles_module_host_begin_registration(module_id);
-    rc = stnlabz_module_abi_authorize_and_activate(registry, module_id, host);
-    sparkles_module_host_end_registration();
+        rc = stnlabz_module_abi_authorize_and_activate(registry, module_id, host);
+        sparkles_module_host_end_registration();
     if (!audit(rc == STNLABZ_MODULE_OK ? "AUTO_ACTIVE" : "AUTO_ACTIVATION_FAILED",
                module_id, rc, stnlabz_module_registry_find(registry, module_id)))
         return STNLABZ_MODULE_ERR_INVALID_STATE;
