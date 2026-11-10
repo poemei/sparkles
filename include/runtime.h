@@ -1,6 +1,8 @@
 #ifndef STNLABZ_RUNTIME_H
 #define STNLABZ_RUNTIME_H
 
+#include <stddef.h>
+
 typedef enum {
     STNLABZ_OPERATIONAL_NORMAL = 0,
     STNLABZ_OPERATIONAL_SAFE_MODE = 1,
@@ -23,6 +25,9 @@ typedef struct {
     int preservation_cause_set;
     void (*module_poll)(void *context);
     void *module_poll_context;
+    int (*terminal_dispatch)(void *context, const char *message,
+                             char *response, size_t capacity);
+    void *terminal_context;
 } stnlabz_runtime_t;
 
 /* Core runtime functions do not require any installed modules. */
