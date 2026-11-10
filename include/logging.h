@@ -2,9 +2,9 @@
 #define STNLABZ_LOGGING_H
 
 #define STNLABZ_INSTALL_PATH "/opt/sparkles"
-#define STNLABZ_LOG_DIRECTORY "./logs"
-#define STNLABZ_LOG_PATH "./logs/sparkles.log"
-#define STNLABZ_LEGACY_MODULE_LOG_PATH "./logs/modules.log"
+#define STNLABZ_LOG_DIRECTORY STNLABZ_INSTALL_PATH "/logs"
+#define STNLABZ_LOG_PATH STNLABZ_LOG_DIRECTORY "/sparkles.log"
+#define STNLABZ_LEGACY_MODULE_LOG_PATH STNLABZ_LOG_DIRECTORY "/modules.log"
 
 int stnlabz_log_open(void);
 int stnlabz_log_open_path(const char *absolute_path); /* tests only */
