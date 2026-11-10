@@ -1,7 +1,7 @@
 # Sparkles — Engineering Roadmap
 
 **Project:** Ms. Sparkles, STN-Labz Executive Assistant  
-**Status:** Rictus-derived source adaptation incomplete  
+**Status:** Ezra-derived source adaptation incomplete  
 **Authority:** Human-directed development only
 
 A roadmap is not permission to implement future stages.
@@ -15,7 +15,7 @@ A roadmap is not permission to implement future stages.
 - Preserve generic Core lifecycle, routing, module management and logging.
 - Verify a native WSL2 build and installation, module qualification and initial runtime in operator environment.
 
-**Status:** Not qualified; incomplete source adaptation.
+**Status:** Ezra Core source migration committed; compilation and operator acceptance outstanding.
 
 ## Stage 1 — IRC and inference
 
