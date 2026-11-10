@@ -25,6 +25,8 @@ TARGET ?= bin/sparkles
 PREFIX ?= /opt/sparkles
 INSTALL_USER ?= $(shell stat -c %U .)
 INSTALL_GROUP ?= $(shell stat -c %G .)
+RUNTIME_USER ?= $(INSTALL_USER)
+RUNTIME_GROUP ?= $(INSTALL_GROUP)
 BINDIR ?= $(PREFIX)/bin
 LOGDIR ?= $(PREFIX)/logs
 MODULEDIR ?= $(PREFIX)/modules
@@ -62,9 +64,14 @@ $(BUILD_DIR)/abi/%.o: $(ABI_SRC_DIR)/%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 install: $(TARGET)
-	install -d -m 0755 $(PREFIX) $(BINDIR) $(MODULEDIR) $(CONFIGDIR)
-	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0750 $(LOGDIR) $(STATEDIR)
-	install -m 0755 $(TARGET) $(BINDIR)/sparkles
+	@id -u "$(RUNTIME_USER)" >/dev/null 2>&1 || { echo "ERROR: unknown runtime user $(RUNTIME_USER)" >&2; exit 1; }
+	@getent group "$(RUNTIME_GROUP)" >/dev/null 2>&1 || { echo "ERROR: unknown runtime group $(RUNTIME_GROUP)" >&2; exit 1; }
+	install -d -m 0755 "$(PREFIX)" "$(BINDIR)" "$(MODULEDIR)" "$(CONFIGDIR)"
+	install -d -o "$(RUNTIME_USER)" -g "$(RUNTIME_GROUP)" -m 0750 "$(LOGDIR)" "$(STATEDIR)"
+	@touch "$(LOGDIR)/sparkles.log" "$(LOGDIR)/modules.log"
+	chown "$(RUNTIME_USER):$(RUNTIME_GROUP)" "$(LOGDIR)/sparkles.log" "$(LOGDIR)/modules.log"
+	chmod 0640 "$(LOGDIR)/sparkles.log" "$(LOGDIR)/modules.log"
+	install -m 0755 "$(TARGET)" "$(BINDIR)/sparkles"
 
 uninstall:
 	rm -f $(BINDIR)/sparkles
