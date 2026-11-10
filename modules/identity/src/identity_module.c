@@ -4,7 +4,7 @@
 #include <string.h>
 #include "stnlabz_abi/module.h"
 #include "identity_internal.h"
-#define IDENTITY_RECORD "/opt/rictus/modules/identity/identity.conf"
+#define IDENTITY_RECORD "/opt/sparkles/modules/identity/identity.conf"
 static identity_record_t record;
 static const stnlabz_module_host_t *owner;
 static int command_active,service_active;
@@ -62,7 +62,7 @@ static int answer(const char *topic,char *output,size_t cap)
 static stnlabz_module_result_t controller(const stnlabz_module_command_t *cmd,
  stnlabz_module_command_reply_fn reply,void *context,void *unused)
 {
- char output[RICTUS_IDENTITY_ANSWER_MAX];
+ char output[SPARKLES_IDENTITY_ANSWER_MAX];
  (void)unused;
  if (!cmd||!reply||!memchr(cmd->arguments,0,sizeof cmd->arguments))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
@@ -73,8 +73,8 @@ static stnlabz_module_result_t controller(const stnlabz_module_command_t *cmd,
 static stnlabz_module_result_t answer_service(const void *request,size_t request_size,
  void *response,size_t response_size,size_t *used,void *ctx)
 {
- const rictus_identity_question_t *in=request;
- rictus_identity_answer_t *out=response;
+ const sparkles_identity_question_t *in=request;
+ sparkles_identity_answer_t *out=response;
  char topic[80];
  (void)ctx;
  if(used)*used=0;
@@ -111,7 +111,7 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *host)
  owner=host;
  if(!host->register_command("identity",controller,NULL))goto fail;
  command_active=1;
- if(!host->register_service(RICTUS_IDENTITY_ANSWER_SERVICE,answer_service,NULL))goto fail;
+ if(!host->register_service(SPARKLES_IDENTITY_ANSWER_SERVICE,answer_service,NULL))goto fail;
  service_active=1;
  fprintf(stderr,"[IDENTITY] mission and General Orders loaded from module data\n");
  return STNLABZ_MODULE_OK;
@@ -122,7 +122,7 @@ fail:
 }
 static stnlabz_module_result_t stop(void)
 {
- if(service_active&&owner&&!owner->unregister_service(RICTUS_IDENTITY_ANSWER_SERVICE,NULL))
+ if(service_active&&owner&&!owner->unregister_service(SPARKLES_IDENTITY_ANSWER_SERVICE,NULL))
   return STNLABZ_MODULE_ERR_STOP_FAILED;
  service_active=0;
  if(command_active&&owner&&!owner->unregister_command("identity",NULL))
@@ -131,7 +131,7 @@ static stnlabz_module_result_t stop(void)
  return STNLABZ_MODULE_OK;
 }
 static const stnlabz_module_descriptor_t descriptor={
- "identity","Rictus Identity and Mission",1,1,3,
+ "identity","Sparkles Identity and Mission",1,1,3,
  STNLABZ_MODULE_API_MAJOR,STNLABZ_MODULE_API_MINOR,qualify,start,stop
 };
 const stnlabz_module_descriptor_t *stnlabz_module_get_descriptor(void){return &descriptor;}
