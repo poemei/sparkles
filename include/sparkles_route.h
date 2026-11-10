@@ -2,7 +2,7 @@
 #define SPARKLES_ROUTE_H
 
 /* Transport-neutral Core ingress. Existing ABI 1.5 host layout stays unchanged. */
-#define SPARKLES_ROUTER_DISPATCH_SERVICE "digit.router.dispatch"
+#define SPARKLES_ROUTER_DISPATCH_SERVICE "sparkles.router.dispatch"
 #define SPARKLES_ROUTE_TEXT_MAX 2048
 #define SPARKLES_ROUTE_REPLY_MAX 512
 
