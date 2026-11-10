@@ -44,14 +44,7 @@ test: $(TEST_TARGET)
 install: $(TARGET)
 	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(MODULEDIR)
 	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 module.conf $(MODULEDIR)/module.conf
-	@set -eu; \
-	  stage=$(mktemp "$(MODULEDIR)/.ollama.so.XXXXXX"); \
-	  trap 'rm -f "$stage"' EXIT HUP INT TERM; \
-	  install -o "$(INSTALL_USER)" -g "$(INSTALL_GROUP)" -m 0755 "$(TARGET)" "$stage"; \
-	  cmp -s "$(TARGET)" "$stage"; \
-	  mv -f "$stage" "$(MODULEDIR)/ollama.so"; \
-	  trap - EXIT HUP INT TERM; \
-	  cmp -s "$(TARGET)" "$(MODULEDIR)/ollama.so"
+	install -o "$(INSTALL_USER)" -g "$(INSTALL_GROUP)" -m 0755 "$(TARGET)" "$(MODULEDIR)/ollama.so"
 
 uninstall:
 	rm -f $(MODULEDIR)/$(MODULE_NAME).so $(MODULEDIR)/module.conf
