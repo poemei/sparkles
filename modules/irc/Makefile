@@ -13,10 +13,10 @@ MODULE_NAME := irc
 TARGET := $(BUILD_DIR)/$(MODULE_NAME).so
 TEST_TARGET := $(BUILD_DIR)/test_irc
 
-PREFIX ?= /opt/rictus
-INSTALL_USER ?= rictus
-INSTALL_GROUP ?= rictus
+PREFIX ?= /opt/sparkles
 MODULEDIR ?= $(PREFIX)/modules/$(MODULE_NAME)
+MODULE_USER ?= stnlabz
+MODULE_GROUP ?= stnlabz
 
 CPPFLAGS += -I$(INCLUDE_DIR) -I$(ABI_INCLUDE_DIR)
 MODULE_CFLAGS := $(CFLAGS) -fPIC
@@ -43,9 +43,20 @@ test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
 install: $(TARGET)
-	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(MODULEDIR)
-	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 module.conf $(MODULEDIR)/module.conf
-	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(TARGET) $(MODULEDIR)/$(MODULE_NAME).so
+	@id -u "$(MODULE_USER)" >/dev/null 2>&1 || { echo "ERROR: missing install user $(MODULE_USER)" >&2; exit 1; }
+	@getent group "$(MODULE_GROUP)" >/dev/null 2>&1 || { echo "ERROR: missing install group $(MODULE_GROUP)" >&2; exit 1; }
+	install -d -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0755 "$(MODULEDIR)"
+	install -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0644 module.conf "$(MODULEDIR)/module.conf"
+	@set -eu; \
+	  staging=$$(mktemp "$(MODULEDIR)/.$(MODULE_NAME).so.XXXXXX"); \
+	  trap 'rm -f "$$staging"' EXIT HUP INT TERM; \
+	  install -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0755 "$(TARGET)" "$$staging"; \
+	  cmp -s "$(TARGET)" "$$staging" || { echo "ERROR: staged module differs from build" >&2; exit 1; }; \
+	  mv -f "$$staging" "$(MODULEDIR)/$(MODULE_NAME).so"; \
+	  trap - EXIT HUP INT TERM; \
+	  cmp -s "$(TARGET)" "$(MODULEDIR)/$(MODULE_NAME).so" || { echo "ERROR: installed module differs from build" >&2; exit 1; }; \
+	  test "$$(stat -c %U:%G "$(MODULEDIR)/$(MODULE_NAME).so")" = "$(MODULE_USER):$(MODULE_GROUP)" || { echo "ERROR: module ownership incorrect" >&2; exit 1; }; \
+	  echo "Installed verified $(MODULE_NAME).so as $(MODULE_USER):$(MODULE_GROUP)"
 
 uninstall:
 	rm -f $(MODULEDIR)/$(MODULE_NAME).so $(MODULEDIR)/module.conf
