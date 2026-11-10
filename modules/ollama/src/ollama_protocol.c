@@ -49,15 +49,18 @@ static int append_json_string(char *output, size_t output_size, size_t *used,
     return 1;
 }
 
-int sparkles_ollama_build_request(const char *prompt,
+int sparkles_ollama_build_request(const char *model, const char *prompt,
                                 char *output, size_t output_size)
 {
     size_t used = 0U;
     const char *prefix =
-        "{\"model\":\"llama3.2:1b\",\"stream\":false,"
-        "\"system\":\"You are Sparkles, the STN-LABZ Control Automated Agent. "
-        "Your identity is Sparkles. Digit is a separate STN-LABZ terrestrial AI agent. "
-        "Never identify yourself as Digit or speak as Digit. "
+        "{\"model\":\""
+        /* runtime model name is inserted below */
+        ;
+    const char *body =
+        "\",\"stream\":false,"
+        "\"system\":\"You are Sparkles, the STN-LABZ Executive Assistant AI Agent. "
+        "Your identity is Sparkles. Answer as an executive assistant, not as another agent. "
         "When the operator asks you to say, tell, ask, or otherwise speak to an IRC participant, "
         "address that participant directly using their exact IRC nickname followed by a colon, "
         "then the message. Preserve the operator's intent: say/tell relays a statement, while ask "
@@ -69,9 +72,12 @@ int sparkles_ollama_build_request(const char *prompt,
     const char *suffix =
         "\",\"options\":{\"temperature\":0.4,\"num_predict\":96}}";
 
-    if (!prompt || !*prompt || !output || output_size < 2U) return 0;
+    if (!model || !*model || !prompt || !*prompt ||
+        !output || output_size < 2U) return 0;
     output[0] = '\0';
     if (!append_text(output, output_size, &used, prefix) ||
+        !append_json_string(output, output_size, &used, model) ||
+        !append_text(output, output_size, &used, body) ||
         !append_json_string(output, output_size, &used, prompt) ||
         !append_text(output, output_size, &used, suffix))
         return 0;
@@ -169,17 +175,17 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
     unsigned int e = 0U, p = 0U;
     int ne = 0, np = 0;
 
-    expect(sparkles_ollama_build_request("hello", request, sizeof request) &&
-           strstr(request, "\"model\":\"llama3.2:1b\"") &&
+    expect(sparkles_ollama_build_request("test-model", "hello", request, sizeof request) &&
+           strstr(request, "\"model\":\"test-model\"") &&
            strstr(request, "\"prompt\":\"hello\""), &e, &p);
-    expect(sparkles_ollama_build_request("say \"hi\"", request, sizeof request) &&
+    expect(sparkles_ollama_build_request("test-model", "say \"hi\"", request, sizeof request) &&
            strstr(request, "say \\\"hi\\\""), &e, &p);
-    expect(sparkles_ollama_build_request("identity", request, sizeof request) &&
+    expect(sparkles_ollama_build_request("test-model", "identity", request, sizeof request) &&
            strstr(request, "Your identity is Sparkles.") &&
-           strstr(request, "Digit is a separate STN-LABZ terrestrial AI agent.") &&
-           strstr(request, "Never identify yourself as Digit or speak as Digit."),
+           strstr(request, "Executive Assistant AI Agent") &&
+           strstr(request, "not as another agent"),
            &e, &p);
-    expect(sparkles_ollama_build_request("say hi to digicat", request, sizeof request) &&
+    expect(sparkles_ollama_build_request("test-model", "say hi to digicat", request, sizeof request) &&
            strstr(request, "exact IRC nickname followed by a colon") &&
            strstr(request, "say/tell relays a statement") &&
            strstr(request, "ask must produce a question") &&
@@ -197,10 +203,10 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
            response, sizeof response) && !strcmp(response, "caf\xc3\xa9"), &e, &p);
     expect(!sparkles_ollama_extract_response("{\"done\":true}",
            response, sizeof response), &e, &p);
-    expect(!sparkles_ollama_build_request("", request, sizeof request), &e, &p);
-    expect(sparkles_ollama_build_request("line1\nline2", request, sizeof request) &&
+    expect(!sparkles_ollama_build_request("test-model", "", request, sizeof request), &e, &p);
+    expect(sparkles_ollama_build_request("test-model", "line1\nline2", request, sizeof request) &&
            strstr(request, "line1\\nline2"), &e, &p);
-    expect(sparkles_ollama_build_request("back\\slash", request, sizeof request) &&
+    expect(sparkles_ollama_build_request("test-model", "back\\slash", request, sizeof request) &&
            strstr(request, "back\\\\slash"), &e, &p);
     expect(!sparkles_ollama_extract_response(
            "{\"response\":\"\"}", response, sizeof response), &e, &p);
