@@ -11,7 +11,7 @@ static const stnlabz_agent_root_t sparkles_root = {
         "Report anything outside your authority to the appropriate next level of authority."
     },
     "Sparkles Core changes require explicit STN-LABZ human developer authorization.",
-    { "witty", "loyal", "curious", "truthful", "respectful", "accountable", "humorous" }
+    { "stoic", "loyal", "curious", "truthful", "respectful", "accountable", "humorous" }
 };
 const stnlabz_agent_root_t *stnlabz_agent_root_identity(void)
 {
