@@ -98,10 +98,10 @@ int identity_question_route(const char *input,char *intent,size_t cap)
  while(n&&(text[n-1]=='?'||text[n-1]=='.'||text[n-1]=='!'||text[n-1]==' ')) text[--n]=0;
  p=text;
  while(*p==' ') ++p;
- if (!strncmp(p,"rictus,",7)) {
+ if (!strncmp(p,"sparkles,",7)) {
    p += 7;
    while(*p==' ') ++p;
- } else if (!strncmp(p,"rictus:",7)) {
+ } else if (!strncmp(p,"sparkles:",7)) {
    p += 7;
    while(*p==' ') ++p;
  }
@@ -140,16 +140,16 @@ int identity_selftest(unsigned *executed,unsigned *passed,int *negative_executed
  char b[1200];
  unsigned e=0,p=0,mask=0;
  int ne,np;
- check(set_field(&r,"name","Rictus",&mask),&e,&p);
+ check(set_field(&r,"name","Sparkles",&mask),&e,&p);
  check(set_field(&r,"organization","STN-LABZ",&mask),&e,&p);
- check(set_field(&r,"role","Control Automated Agent",&mask),&e,&p);
+ check(set_field(&r,"role","Executive Assistant AI Agent",&mask),&e,&p);
  check(set_field(&r,"mission","Approved mission",&mask),&e,&p);
  check(set_field(&r,"order1","Remain at your assigned mission.",&mask),&e,&p);
  check(set_field(&r,"order2","Follow established policies and authorized instructions.",&mask),&e,&p);
  check(set_field(&r,"order3","Report anything outside your authority to the appropriate next level of authority.",&mask),&e,&p);
  check(mask==127U,&e,&p);
  check(identity_reply(&r,"mission",b,sizeof b)&&!strcmp(b,"Approved mission"),&e,&p);
- check(identity_reply(&r,"who",b,sizeof b)&&strstr(b,"Rictus")!=NULL,&e,&p);
+ check(identity_reply(&r,"who",b,sizeof b)&&strstr(b,"Sparkles")!=NULL,&e,&p);
  check(identity_reply(&r,"MISSION",b,sizeof b)&&!strcmp(b,"Approved mission"),&e,&p);
  check(identity_reply(&r,"orders",b,sizeof b)&&strstr(b,"/identity orders")!=NULL,&e,&p);
  check(identity_reply(&r,"unknown",b,sizeof b)&&strstr(b,"Identity commands")!=NULL,&e,&p);
