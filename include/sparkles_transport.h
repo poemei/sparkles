@@ -1,8 +1,8 @@
 #ifndef SPARKLES_TRANSPORT_H
 #define SPARKLES_TRANSPORT_H
 
-#define SPARKLES_TRANSPORT_CHANNEL_SEND_SERVICE "digit.transport.channel.send"
-#define SPARKLES_TRANSPORT_PRIVATE_SEND_SERVICE "digit.transport.private.send"
+#define SPARKLES_TRANSPORT_CHANNEL_SEND_SERVICE "sparkles.transport.channel.send"
+#define SPARKLES_TRANSPORT_PRIVATE_SEND_SERVICE "sparkles.transport.private.send"
 
 #define SPARKLES_TRANSPORT_TARGET_MAX 128
 #define SPARKLES_TRANSPORT_MESSAGE_MAX 512
