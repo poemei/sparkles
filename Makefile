@@ -23,8 +23,8 @@ BUILD_DIR ?= build
 TARGET ?= bin/sparkles
 
 PREFIX ?= /opt/sparkles
-INSTALL_USER ?= sparkles
-INSTALL_GROUP ?= sparkles
+INSTALL_USER ?= $(shell stat -c %U .)
+INSTALL_GROUP ?= $(shell stat -c %G .)
 BINDIR ?= $(PREFIX)/bin
 LOGDIR ?= $(PREFIX)/logs
 MODULEDIR ?= $(PREFIX)/modules
@@ -62,9 +62,9 @@ $(BUILD_DIR)/abi/%.o: $(ABI_SRC_DIR)/%.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 install: $(TARGET)
-	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(BINDIR) $(MODULEDIR) $(CONFIGDIR)
+	install -d -m 0755 $(PREFIX) $(BINDIR) $(MODULEDIR) $(CONFIGDIR)
 	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0750 $(LOGDIR) $(STATEDIR)
-	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(TARGET) $(BINDIR)/sparkles
+	install -m 0755 $(TARGET) $(BINDIR)/sparkles
 
 uninstall:
 	rm -f $(BINDIR)/sparkles
