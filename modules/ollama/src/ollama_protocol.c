@@ -70,7 +70,7 @@ int sparkles_ollama_build_request(const char *model, const char *prompt,
         "Answer concisely and directly. Do not invent operational facts.\","
         "\"prompt\":\"";
     const char *suffix =
-        "\",\"options\":{\"temperature\":0.4,\"num_predict\":96}}";
+        "\",\"options\":{\"temperature\":0.4,\"num_predict\":512}}";
 
     if (!model || !*model || !prompt || !*prompt ||
         !output || output_size < 2U) return 0;
