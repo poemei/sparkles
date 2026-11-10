@@ -11,7 +11,7 @@
 #include "stnlabz_abi/module_loader.h"
 #include "runtime.h"
 
-#define SPARKLES_MODULE_DIRECTORY "./modules"
+#define SPARKLES_MODULE_DIRECTORY STNLABZ_INSTALL_PATH "/modules"
 
 /* Core identity and operations never depend on any one capability module. */
 int stnlabz_initialize(void)
