@@ -1,10 +1,7 @@
 #include <stdatomic.h>
-#include <stdio.h>
 #include <string.h>
-#include <strings.h>
 
 #include "module_host.h"
-#include "core_diagnostics.h"
 #include "sparkles_transport.h"
 #include "sparkles_route.h"
 
@@ -34,17 +31,17 @@ static sparkles_command_entry_t commands[SPARKLES_HOST_COMMAND_MAX];
 static atomic_flag service_lock = ATOMIC_FLAG_INIT;
 static atomic_flag command_lock = ATOMIC_FLAG_INIT;
 static _Thread_local char registering_module[STNLABZ_MODULE_ID_MAX];
-
+/* A callback cannot synchronously withdraw itself: its own in_flight
+ * reference would make unregister wait forever. Keep a per-thread stack
+ * to catch both direct and nested reentrant withdrawal attempts. */
 typedef struct sparkles_service_frame {
     const sparkles_service_entry_t *entry;
     struct sparkles_service_frame *previous;
 } sparkles_service_frame_t;
-
 typedef struct sparkles_command_frame {
     const sparkles_command_entry_t *entry;
     struct sparkles_command_frame *previous;
 } sparkles_command_frame_t;
-
 static _Thread_local sparkles_service_frame_t *current_service_frame;
 static _Thread_local sparkles_command_frame_t *current_command_frame;
 
@@ -55,7 +52,6 @@ static int on_service_stack(const sparkles_service_entry_t *entry)
         if (frame->entry == entry) return 1;
     return 0;
 }
-
 static int on_command_stack(const sparkles_command_entry_t *entry)
 {
     const sparkles_command_frame_t *frame;
@@ -63,6 +59,7 @@ static int on_command_stack(const sparkles_command_entry_t *entry)
         if (frame->entry == entry) return 1;
     return 0;
 }
+
 
 static size_t bounded_length(const char *text, size_t maximum)
 {
@@ -105,9 +102,7 @@ static int register_service(const char *name,
     size_t free_slot = SPARKLES_HOST_SERVICE_MAX;
     size_t length;
 
-    if (!name || !handler ||
-        !strcmp(name, SPARKLES_ROUTER_DISPATCH_SERVICE) ||
-        0 /* reserved for Core router */) return 0;
+    if (!name || !handler || !strcmp(name, SPARKLES_ROUTER_DISPATCH_SERVICE)) return 0;
     length = bounded_length(name, STNLABZ_MODULE_SERVICE_NAME_MAX);
     if (!length || length >= STNLABZ_MODULE_SERVICE_NAME_MAX) return 0;
 
@@ -126,7 +121,9 @@ static int register_service(const char *name,
     }
 
     memcpy(services[free_slot].name, name, length + 1U);
-    if (registering_module[0]) memcpy(services[free_slot].owner, registering_module, strlen(registering_module) + 1U);
+    if (registering_module[0])
+        memcpy(services[free_slot].owner, registering_module,
+               strlen(registering_module) + 1U);
     services[free_slot].handler = handler;
     services[free_slot].context = context;
     unlock(&service_lock);
@@ -183,10 +180,8 @@ static stnlabz_module_result_t invoke_service(
     stnlabz_module_service_handler_fn handler = NULL;
     void *context = NULL;
     stnlabz_module_result_t result;
-    char service_owner[STNLABZ_MODULE_ID_MAX];
     size_t i;
 
-    service_owner[0] = '\0';
     if (response_used) *response_used = 0U;
     if (!name || (request_size && !request) || (response_size && !response))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
@@ -208,7 +203,7 @@ static stnlabz_module_result_t invoke_service(
     if (!handler && !strcmp(name, SPARKLES_ROUTER_DISPATCH_SERVICE))
         return route_dispatch_service(request, request_size, response,
                                       response_size, response_used, NULL);
-    if (!handler) { sparkles_diag_service(name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND); return STNLABZ_MODULE_ERR_NOT_FOUND; }
+    if (!handler) return STNLABZ_MODULE_ERR_NOT_FOUND;
 
     {
         sparkles_service_frame_t frame = {entry, current_service_frame};
@@ -219,13 +214,8 @@ static stnlabz_module_result_t invoke_service(
     }
 
     lock(&service_lock);
-    if (entry->owner[0])
-        memcpy(service_owner, entry->owner, strlen(entry->owner) + 1U);
-    else
-        memcpy(service_owner, "core/unknown", sizeof "core/unknown");
     entry->in_flight--;
     unlock(&service_lock);
-    sparkles_diag_service(name, service_owner, result);
     return result;
 }
 
@@ -294,7 +284,9 @@ static int register_command(const char *name,
     }
 
     memcpy(commands[free_slot].name, name, length + 1U);
-    if (registering_module[0]) memcpy(commands[free_slot].owner, registering_module, strlen(registering_module) + 1U);
+    if (registering_module[0])
+        memcpy(commands[free_slot].owner, registering_module,
+               strlen(registering_module) + 1U);
     commands[free_slot].handler = handler;
     commands[free_slot].context = context;
     unlock(&command_lock);
@@ -305,12 +297,10 @@ static int unregister_command(const char *name, void *context)
 {
     sparkles_command_entry_t *entry = NULL;
     size_t i;
-
     if (!name) return 0;
     lock(&command_lock);
     for (i = 0; i < SPARKLES_HOST_COMMAND_MAX; ++i) {
-        if (commands[i].handler &&
-            !commands[i].withdrawing &&
+        if (commands[i].handler && !commands[i].withdrawing &&
             commands[i].context == context &&
             !strcmp(commands[i].name, name)) {
             if (on_command_stack(&commands[i])) {
@@ -324,7 +314,6 @@ static int unregister_command(const char *name, void *context)
     }
     unlock(&command_lock);
     if (!entry) return 0;
-
     for (;;) {
         lock(&command_lock);
         if (!entry->in_flight) {
@@ -349,6 +338,7 @@ static int sparkles_route_capture(void *ctx, const char *message)
     return 1;
 }
 
+
 static stnlabz_module_result_t dispatch_command(
     const void *request, size_t request_size,
     void *response, size_t response_size, size_t *response_used,
@@ -360,26 +350,20 @@ static stnlabz_module_result_t dispatch_command(
     sparkles_command_entry_t *entry = NULL;
     stnlabz_module_result_t result;
     void *handler_context = NULL;
-    char command_owner[STNLABZ_MODULE_ID_MAX];
     size_t i;
-    command_owner[0] = '\0';
     (void)context;
-
     if (response_used) *response_used = 0U;
     if (!cmd || request_size != sizeof *cmd || !out ||
         response_size < sizeof *out ||
-        !memchr(cmd->sender, 0, sizeof cmd->sender) ||
-        !memchr(cmd->account, 0, sizeof cmd->account) ||
-        !memchr(cmd->name, 0, sizeof cmd->name) ||
+        !memchr(cmd->name, 0, sizeof cmd->name) || !cmd->name[0] ||
         !memchr(cmd->arguments, 0, sizeof cmd->arguments) ||
-        !cmd->name[0])
+        !memchr(cmd->sender, 0, sizeof cmd->sender) ||
+        !memchr(cmd->account, 0, sizeof cmd->account))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-
     memset(out, 0, sizeof *out);
     lock(&command_lock);
     for (i = 0; i < SPARKLES_HOST_COMMAND_MAX; ++i) {
-        if (commands[i].handler &&
-            !commands[i].withdrawing &&
+        if (commands[i].handler && !commands[i].withdrawing &&
             !strcmp(commands[i].name, cmd->name)) {
             entry = &commands[i];
             entry->in_flight++;
@@ -389,8 +373,7 @@ static stnlabz_module_result_t dispatch_command(
         }
     }
     unlock(&command_lock);
-
-    if (!handler) { sparkles_diag_command(cmd->name, "core/unknown", STNLABZ_MODULE_ERR_NOT_FOUND, 0); return STNLABZ_MODULE_ERR_NOT_FOUND; }
+    if (!handler) return STNLABZ_MODULE_ERR_NOT_FOUND;
     {
         sparkles_command_frame_t frame = {entry, current_command_frame};
         current_command_frame = &frame;
@@ -398,20 +381,14 @@ static stnlabz_module_result_t dispatch_command(
         current_command_frame = frame.previous;
     }
     lock(&command_lock);
-    if (entry->owner[0])
-        memcpy(command_owner, entry->owner, strlen(entry->owner) + 1U);
-    else
-        memcpy(command_owner, "core/unknown", sizeof "core/unknown");
     entry->in_flight--;
     unlock(&command_lock);
-
     if (result == STNLABZ_MODULE_OK && response_used)
         *response_used = sizeof *out;
-    sparkles_diag_command(cmd->name, command_owner, result, out->replied);
     return result;
 }
 
-/* Core-owned transport-neutral ingress; modules only register command controllers. */
+/* A Core-owned endpoint; no module has to register or know another module. */
 static stnlabz_module_result_t route_dispatch_service(
     const void *request, size_t request_size,
     void *response, size_t response_size, size_t *response_used,
@@ -422,33 +399,18 @@ static stnlabz_module_result_t route_dispatch_service(
     const char *cursor, *end;
     size_t name_len, arg_len;
     (void)context;
-
     if (response_used) *response_used = 0U;
     if (!in || request_size != sizeof *in ||
         !memchr(in->sender, 0, sizeof in->sender) ||
         !memchr(in->account, 0, sizeof in->account) ||
-        !memchr(in->text, 0, sizeof in->text) ||
-        !in->text[0] || !response || response_size < sizeof(sparkles_route_reply_t))
+        !memchr(in->text, 0, sizeof in->text) || !in->text[0])
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
-    if (!strcasecmp(in->text, "diagnose my last request")) {
-        char diagnostic[SPARKLES_ROUTE_REPLY_MAX];
-        sparkles_route_reply_t *out = response;
-        if (!sparkles_diag_render(in->sender, in->account,
-                                diagnostic, sizeof diagnostic))
-            return STNLABZ_MODULE_ERR_INVALID_STATE;
-        memset(out, 0, sizeof *out);
-        memcpy(out->text, diagnostic, strlen(diagnostic) + 1U);
-        out->replied = 1;
-        if (response_used) *response_used = sizeof *out;
-        return STNLABZ_MODULE_OK;
-    }
-
-    sparkles_diag_begin(in->sender, in->account, in->text);
     memset(&command, 0, sizeof command);
     memcpy(command.sender, in->sender, sizeof command.sender);
     memcpy(command.account, in->account, sizeof command.account);
 
+    /* Explicit /module operation; ordinary conversation uses registered chat. */
     cursor = in->text;
     if (*cursor == '/') {
         ++cursor;
@@ -463,13 +425,10 @@ static stnlabz_module_result_t route_dispatch_service(
     } else {
         memcpy(command.name, "chat", sizeof "chat");
     }
-
-    sparkles_diag_route(command.name);
     arg_len = bounded_length(cursor, sizeof command.arguments);
     if (arg_len >= sizeof command.arguments)
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memcpy(command.arguments, cursor, arg_len + 1U);
-
     return dispatch_command(&command, sizeof command,
                             response, response_size, response_used, NULL);
 }
