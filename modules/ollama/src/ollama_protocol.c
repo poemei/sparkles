@@ -178,7 +178,7 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
     expect(sparkles_ollama_build_request(SPARKLES_OLLAMA_MODEL, "hello", request, sizeof request) &&
            strstr(request, "\"model\":\"qwen3:4b-instruct\"") &&
            strstr(request, "\"prompt\":\"hello\"") &&
-           strstr(request, "\\\"num_predict\\\":512"), &e, &p);
+           strstr(request, "\"num_predict\":512"), &e, &p);
     expect(sparkles_ollama_build_request("test-model", "say \"hi\"", request, sizeof request) &&
            strstr(request, "say \\\"hi\\\""), &e, &p);
     expect(sparkles_ollama_build_request("test-model", "identity", request, sizeof request) &&
