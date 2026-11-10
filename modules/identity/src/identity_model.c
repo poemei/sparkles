@@ -98,8 +98,8 @@ int identity_question_route(const char *input,char *intent,size_t cap)
  while(n&&(text[n-1]=='?'||text[n-1]=='.'||text[n-1]=='!'||text[n-1]==' ')) text[--n]=0;
  p=text;
  while(*p==' ') ++p;
- if (!strncmp(p,"sparkles,",7)) {
-   p += 7;
+ if (!strncmp(p,"sparkles,",9)) {
+   p += 9;
    while(*p==' ') ++p;
  } else if (!strncmp(p,"sparkles:",9)) {
    p += 9;
