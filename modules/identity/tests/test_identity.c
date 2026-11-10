@@ -20,16 +20,16 @@ int main(void)
      strcmp(record.orders[1],"Follow established policies and authorized instructions.") ||
      strcmp(record.orders[2],"Report anything outside of my authority to the appropriate people levels above me.")) ok=0;
  if (!identity_reply(&record,"mission",answer,sizeof answer) ||
-     strcmp(answer,"I exist to help STN-LABZ observe, understand, coordinate, and control operational activity across its systems."))
+     strcmp(answer,"I am Ms. Sparkles, an AI Executive Assistant supporting authorized scheduling, coordination, communication, and organizational assistance."))
   ok=0;
  {
   static const struct { const char *question; const char *expected; } positive[] = {
    {"what is your mission?", "mission"},
-   {"rictus, what is your mission?", "mission"},
-   {"rictus: what is your mission?", "mission"},
+   {"sparkles, what is your mission?", "mission"},
+   {"sparkles: what is your mission?", "mission"},
    {"who are you?", "who"},
-   {"rictus, who are you?", "who"},
-   {"rictus: who are you?", "who"},
+   {"sparkles, who are you?", "who"},
+   {"sparkles: who are you?", "who"},
    {"what is your 1st general order?", "1"},
    {"what is your 2nd general order?", "2"},
    {"what is your 3rd general order?", "3"},
