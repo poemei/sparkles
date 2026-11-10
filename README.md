@@ -18,10 +18,10 @@ Core is responsible for the generic runtime, routing, logging and module lifecyc
 
 ## Adaptation boundary
 
-The current source tree was derived from Rictus and **has not yet been fully adapted or qualified as Sparkles**. Rictus-specific identity, control, compliance broker, operational threat intelligence, governance configuration, and supervisory functionality must not be considered Sparkles requirements or activated automatically.
+The current source tree was derived from Rictus and **has not yet been fully adapted or qualified as Sparkles**. Ezra is the designated Core source. Sparkles' independent mission must not inherit spacecraft-specific modules or agent identity; imported modules remain outside this Core migration.
 
-Preserve the shared STN-Labz ABI contract. Do not introduce canned conversational responses. Rictus' source repository remains independent.
+Preserve the shared STN-Labz ABI contract. Do not introduce canned conversational responses. Ezra's source repository remains independent.
 
 ## Engineering status
 
-**Migration in progress; runtime not verified.** There is no claim yet that the Sparkles code builds, installs, loads modules, or functions end-to-end. Consult [docs/ROADMAP.md](docs/ROADMAP.md) for the scoped adaptation stages.
+**Ezra-derived Core source migration committed; runtime not verified.** There is no claim yet that the Sparkles code builds, installs, loads modules, or functions end-to-end. Consult [docs/ROADMAP.md](docs/ROADMAP.md) for the scoped adaptation stages.
