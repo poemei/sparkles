@@ -101,8 +101,11 @@ int identity_question_route(const char *input,char *intent,size_t cap)
  if (!strncmp(p,"sparkles,",7)) {
    p += 7;
    while(*p==' ') ++p;
- } else if (!strncmp(p,"sparkles:",7)) {
-   p += 7;
+ } else if (!strncmp(p,"sparkles:",9)) {
+   p += 9;
+   while(*p==' ') ++p;
+ } else if (!strncmp(p,"sparkles ",9)) {
+   p += 9;
    while(*p==' ') ++p;
  }
  if (!strncmp(p,"what is ",8)) p+=8;
