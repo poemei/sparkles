@@ -12,9 +12,9 @@ BUILD_DIR ?= build
 MODULE_NAME := ollama
 TARGET := $(BUILD_DIR)/$(MODULE_NAME).so
 TEST_TARGET := $(BUILD_DIR)/test_ollama
-PREFIX ?= /opt/rictus
-INSTALL_USER ?= rictus
-INSTALL_GROUP ?= rictus
+PREFIX ?= /opt/sparkles
+INSTALL_USER ?= $(shell stat -c %U $(ROOT))
+INSTALL_GROUP ?= $(shell stat -c %G $(ROOT))
 MODULEDIR ?= $(PREFIX)/modules/$(MODULE_NAME)
 
 CPPFLAGS += -I$(INCLUDE_DIR) -I$(ABI_INCLUDE_DIR)
@@ -44,7 +44,14 @@ test: $(TEST_TARGET)
 install: $(TARGET)
 	install -d -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(MODULEDIR)
 	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0644 module.conf $(MODULEDIR)/module.conf
-	install -o $(INSTALL_USER) -g $(INSTALL_GROUP) -m 0755 $(TARGET) $(MODULEDIR)/$(MODULE_NAME).so
+	@set -eu; \
+	  stage=$(mktemp "$(MODULEDIR)/.ollama.so.XXXXXX"); \
+	  trap 'rm -f "$stage"' EXIT HUP INT TERM; \
+	  install -o "$(INSTALL_USER)" -g "$(INSTALL_GROUP)" -m 0755 "$(TARGET)" "$stage"; \
+	  cmp -s "$(TARGET)" "$stage"; \
+	  mv -f "$stage" "$(MODULEDIR)/ollama.so"; \
+	  trap - EXIT HUP INT TERM; \
+	  cmp -s "$(TARGET)" "$(MODULEDIR)/ollama.so"
 
 uninstall:
 	rm -f $(MODULEDIR)/$(MODULE_NAME).so $(MODULEDIR)/module.conf
