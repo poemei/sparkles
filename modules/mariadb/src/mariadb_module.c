@@ -11,6 +11,7 @@ static MYSQL *db;
 static pthread_mutex_t db_lock = PTHREAD_MUTEX_INITIALIZER;
 static const stnlabz_module_host_t *host_owner;
 static int registered;
+static int command_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
 {
@@ -168,6 +169,64 @@ static stnlabz_module_result_t appointments_service(
     return STNLABZ_MODULE_OK;
 }
 
+/* Explicit, authenticated IRC schedule lookup. No model-generated SQL or writes.
+ * Read results are sent privately to the requesting nick, never to a channel. */
+static stnlabz_module_result_t schedule_command(
+    const stnlabz_module_command_t *command,
+    stnlabz_module_command_reply_fn reply,
+    void *reply_context, void *context)
+{
+    sparkles_mariadb_appointments_request_t request = {{0}};
+    sparkles_mariadb_appointments_reply_t result = {0};
+    char extra;
+    char text[SPARKLES_MARIADB_APPOINTMENTS_MAX + 512U];
+    size_t used=0U, i;
+    stnlabz_module_result_t rc;
+    (void)context;
+    if (!command || !reply ||
+        !memchr(command->arguments,0,sizeof command->arguments) ||
+        !memchr(command->account,0,sizeof command->account) ||
+        !memchr(command->sender,0,sizeof command->sender))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    /* A nickname is only a delivery address, never the authority source. */
+    if (!sparkles_mariadb_account_allowed(
+            SPARKLES_MARIADB_IRC_ACCOUNTS,command->account))
+        return reply(reply_context,"Schedule access denied.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    /* Exact explicit dates: no implicit day, timezone or free-text parsing. */
+    if (sscanf(command->arguments,"%10s %10s %c",
+               request.from_date,request.until_date,&extra)!=2 ||
+        !sparkles_mariadb_valid_range(request.from_date,request.until_date))
+        return reply(reply_context,
+          "Usage: /schedule YYYY-MM-DD YYYY-MM-DD (end date exclusive)")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    rc=appointments_service(&request,sizeof request,&result,sizeof result,&used,NULL);
+    if (rc!=STNLABZ_MODULE_OK || used!=sizeof result)
+        return reply(reply_context,"Schedule lookup unavailable.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    if (!host_owner || !host_owner->send_private_message ||
+        !command->sender[0]) return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if (!result.count) {
+        if (!host_owner->send_private_message(command->sender,
+             "No scheduled appointments stored for that date range."))
+            return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
+    for (i=0U;i<result.count;++i) {
+        int len=snprintf(text,sizeof text,"%s to %s: %s",
+             result.records[i].start_time,result.records[i].end_time,
+             result.records[i].title);
+        if (len<0 || (size_t)len>=sizeof text ||
+            !host_owner->send_private_message(command->sender,text))
+            return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
+    if (result.has_more &&
+        !host_owner->send_private_message(command->sender,
+             "More appointments exist; narrow the date range."))
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return reply(reply_context,"Schedule lookup sent privately.")
+        ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+}
+
 static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
 {
     unsigned int e = 0U, p = 0U;
@@ -193,7 +252,9 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     sparkles_mariadb_config_t config;
     MYSQL *candidate;
     unsigned int timeout = 3U;
-    if (!h || !h->register_service || !h->unregister_service)
+    if (!h || !h->register_service || !h->unregister_service ||
+        !h->register_command || !h->unregister_command ||
+        !h->send_private_message)
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     if (!sparkles_mariadb_load_config(SPARKLES_MARIADB_CONFIG, &config)) {
         fprintf(stderr, "[MARIADB] credential file missing or invalid\n");
@@ -235,12 +296,26 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     }
     host_owner = h;
     registered = 1;
+    if (!h->register_command("schedule",schedule_command,NULL)) {
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        registered=0;
+        host_owner=NULL;
+        db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    command_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if (command_registered && host_owner &&
+        !host_owner->unregister_command("schedule",NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    command_registered=0;
     if (registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE, NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -257,7 +332,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 1U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 2U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
