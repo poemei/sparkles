@@ -59,6 +59,14 @@ Version 1.0.15 gives event extraction its **own** lower-temperature calendar sys
 
 The exact model behavior on the VPS is unverified until the operator builds and hotloads this revision and reruns the original IRC sentence. A green module qualification alone does not prove that a model produces two usable EVENT records.
 
+## Persistent conversational recall (v1.0.16)
+
+Ordinary IRC messages from a server-verified `account-tag` are sent to the new MariaDB `sparkles.mariadb.context.exchange` service. The service retrieves previous account-scoped utterances before optionally recording the current one. Short messages such as `Hey`, `confirm`, or bare dates are recall-only, so these do not displace a meaningful earlier statement. Retrieved text is explicitly labeled as **previous unverified speaker statements**, not instructions or authoritative facts, in the Ollama request. Nickname changes do not fragment memory when the underlying verified IRC account remains constant.
+
+**Privacy behavior:** Context is marked `PRIVATE`. If an Ollama reply uses retrieved private memories, Sparkles sends the response to the verified speaker's IRC nickname in a direct message and returns only `I've replied to you privately.` to the original conversation. This conservatively avoids leaking private context into a public channel; when speaking to Sparkles in an existing DM, the same acknowledgment may appear there too. Absence of verified account or an unavailable context service means normal chat proceeds without persistent recall.
+
+Persistent memory is **not** Ollama training, a verified knowledge graph, a private multi-transport identity linkage, or semantic long-range retrieval. It is a bounded recent-history foundation (up to three recent observations, clipped for prompt size). It does not record anonymous IRC accounts or automatically merge Second Life display names with IRC identities. Neither a module build nor a green hotload proves the six-month return scenario: test with a verified IRC speaker and an actual restart.
+
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
