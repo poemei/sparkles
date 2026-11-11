@@ -314,6 +314,7 @@ static void sanitize_irc_text(char *text)
 static void handle_conversation_message(const char *line)
 {
     char sender[SPARKLES_IRC_NICK_MAX];
+    char verified_account[SPARKLES_IRC_ACCOUNT_MAX] = {0};
     char target[SPARKLES_IRC_CHANNEL_MAX];
     char message[SPARKLES_ROUTE_TEXT_MAX];
     const char *input = NULL;
@@ -352,6 +353,11 @@ static void handle_conversation_message(const char *line)
     memset(&request, 0, sizeof request);
     memset(&response, 0, sizeof response);
     memcpy(request.sender, sender, strlen(sender) + 1U);
+    /* account-tag is asserted by the TLS-authenticated IRC server, not by
+     * the sender nickname; missing/anonymous tags remain empty. */
+    if (sparkles_irc_parse_account_tag(line,verified_account,
+                                       sizeof verified_account))
+        memcpy(request.account,verified_account,strlen(verified_account)+1U);
     memcpy(request.text, input, input_length + 1U);
 
     result = module_host->invoke_service(SPARKLES_ROUTER_DISPATCH_SERVICE,
