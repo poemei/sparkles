@@ -22,7 +22,7 @@ typedef struct {
 
 typedef struct {
     unsigned long long id;
-    char title[128];
+    char title[801];
     char start_time[20];
     char end_time[20];
 } sparkles_mariadb_appointment_t;
