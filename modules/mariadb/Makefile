@@ -1,6 +1,6 @@
 CC ?= cc
 CPPFLAGS ?=
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -pthread
 LDFLAGS ?=
 ROOT ?= ../..
 BUILD ?= build
@@ -11,8 +11,8 @@ INSTALL_GROUP ?= $(shell stat -c %G $(ROOT))
 TARGET := $(BUILD)/mariadb.so
 TEST := $(BUILD)/test_mariadb
 CPPFLAGS += -Iinclude -I$(ROOT)/include $(shell pkg-config --cflags libmariadb)
-LDLIBS := $(shell pkg-config --libs libmariadb)
-OBJS := $(BUILD)/mariadb_module.o $(BUILD)/mariadb_config.o
+LDLIBS := $(shell pkg-config --libs libmariadb) -pthread
+OBJS := $(BUILD)/mariadb_module.o $(BUILD)/mariadb_config.o $(BUILD)/mariadb_dates.o
 
 .PHONY: all test install clean
 all: $(TARGET)
@@ -24,7 +24,7 @@ $(BUILD)/%.o: src/%.c
 $(TARGET): $(OBJS)
 	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(TEST): tests/test_mariadb.c src/mariadb_config.c
+$(TEST): tests/test_mariadb.c src/mariadb_config.c src/mariadb_dates.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
