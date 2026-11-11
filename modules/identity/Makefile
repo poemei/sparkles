@@ -9,8 +9,8 @@ TARGET := $(BUILD)/identity.so
 TEST := $(BUILD)/test_identity
 PREFIX ?= /opt/sparkles
 MODULEDIR := $(PREFIX)/modules/identity
-MODULE_USER ?= sparkles
-MODULE_GROUP ?= sparkles
+MODULE_USER ?= stnchain
+MODULE_GROUP ?= stnchain
 OBJS := $(BUILD)/identity_model.o $(BUILD)/identity_module.o
 .PHONY: all test clean install
 all: $(TARGET)
