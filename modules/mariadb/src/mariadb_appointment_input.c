@@ -29,8 +29,11 @@ int sparkles_mariadb_parse_new_appointment(
     if (arguments[10]!=' '||arguments[16]!=' '||
         arguments[22]!=' ') return 0;
     memcpy(day,arguments,10U);
+    day[10]='\0';
     memcpy(begin,arguments+11U,5U);
+    begin[5]='\0';
     memcpy(finish,arguments+17U,5U);
+    finish[5]='\0';
     if (!sparkles_mariadb_valid_date(day)||
         !valid_clock(begin)||!valid_clock(finish)||
         strcmp(begin,finish)>=0) return 0;
