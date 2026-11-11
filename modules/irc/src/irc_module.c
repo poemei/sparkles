@@ -17,11 +17,12 @@
 #include "stnlabz_abi/module.h"
 #include "sparkles_transport.h"
 #include "sparkles_route.h"
+#include "sparkles_memory.h"
 #include "irc_internal.h"
 
 #define IRC_VERSION_MAJOR 1U
 #define IRC_VERSION_MINOR 1U
-#define IRC_VERSION_PATCH 3U
+#define IRC_VERSION_PATCH 4U
 #define IRC_OUTBOUND_MAX 32U
 #define IRC_STARTUP_WAIT_SECONDS 30U
 
@@ -340,6 +341,26 @@ static void handle_conversation_message(const char *line)
         input = message;
     } else if (channel_index(target) >= 0) {
         if (!channel_prompt(message, &input)) {
+            /* Ambient channel observations are memory-only; never trigger
+             * a conversational reply. The server-verified account is the
+             * only persistent identity; nickname alone is insufficient.
+             * Confine this to channels already explicitly configured for
+             * Sparkles and do not capture private third-party messages. */
+            sparkles_memory_exchange_request_t observation={{0}};
+            sparkles_memory_exchange_reply_t ignored={{0}};
+            size_t ignored_used=0U;
+            if(sparkles_irc_parse_account_tag(line,verified_account,
+                                              sizeof verified_account) &&
+               strlen(message)<=SPARKLES_MEMORY_TEXT_MAX &&
+               strlen(verified_account)<sizeof observation.account) {
+                memcpy(observation.account,verified_account,
+                       strlen(verified_account)+1U);
+                memcpy(observation.utterance,message,strlen(message)+1U);
+                observation.record=1U;
+                (void)module_host->invoke_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,
+                       &observation,sizeof observation,&ignored,sizeof ignored,
+                       &ignored_used);
+            }
             return;
         }
     } else {
