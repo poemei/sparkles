@@ -2,6 +2,8 @@
 #define SPARKLES_MARIADB_INTERNAL_H
 
 #include <stddef.h>
+#include <mysql.h>
+#include "sparkles_memory.h"
 
 #define SPARKLES_MARIADB_IRC_ACCOUNTS "/opt/sparkles/auth/mariadb/irc-accounts.conf"
 int sparkles_mariadb_account_allowed(const char *path, const char *account);
@@ -33,6 +35,14 @@ int sparkles_mariadb_appointment_selftests(unsigned int *executed,
 
 int sparkles_mariadb_date_selftests(unsigned int *executed,
                                   unsigned int *passed);
+
+int sparkles_mariadb_memory_valid(
+    const sparkles_memory_exchange_request_t *request);
+int sparkles_mariadb_memory_selftests(
+    unsigned int *executed,unsigned int *passed);
+int sparkles_mariadb_context_exchange(
+    MYSQL *db,const sparkles_memory_exchange_request_t *request,
+    sparkles_memory_exchange_reply_t *reply);
 
 int sparkles_mariadb_selftests(unsigned int *executed, unsigned int *passed,
                               int *negative_executed, int *negative_passed);
