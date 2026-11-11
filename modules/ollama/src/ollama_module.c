@@ -4,19 +4,276 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <pthread.h>
 #include "stnlabz_abi/module.h"
 #include "sparkles_llm.h"
 #include "sparkles_identity.h"
+#include "sparkles_mariadb.h"
+#include "ollama_schedule.h"
 #include "ollama_internal.h"
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 0U
-#define OLLAMA_VERSION_PATCH 13U
+#define OLLAMA_VERSION_PATCH 14U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
 static int service_registered;
 static int command_registered;
+static stnlabz_module_result_t generate(const void *,size_t,void *,size_t,size_t *,void *);
+
+#define SPARKLES_PENDING_MAX 8U
+#define SPARKLES_PENDING_SECONDS 600
+
+typedef struct {
+    char account[128];
+    char sender[128];
+    time_t expires;
+    int waiting_for_date;
+    sparkles_schedule_plan_t plan;
+} pending_schedule_t;
+
+static pending_schedule_t pending[SPARKLES_PENDING_MAX];
+static pthread_mutex_t pending_lock=PTHREAD_MUTEX_INITIALIZER;
+
+/* Only server-verified account names can create a conversation pending state. */
+static int pending_find(const char *account,const char *sender,time_t now)
+{
+    unsigned int i;
+    for(i=0U;i<SPARKLES_PENDING_MAX;++i) {
+        if(pending[i].expires && pending[i].expires<=now)
+            memset(&pending[i],0,sizeof pending[i]);
+        if(pending[i].expires && !strcmp(pending[i].account,account) &&
+           !strcmp(pending[i].sender,sender))return (int)i;
+    }
+    return -1;
+}
+static int pending_save(const char *account,const char *sender,
+                        const sparkles_schedule_plan_t *plan,int needs_date)
+{
+    time_t now=time(NULL);
+    int slot;
+    unsigned int i;
+    if(!account||!*account||!sender||!*sender||!plan||
+       strlen(account)>=sizeof pending[0].account||
+       strlen(sender)>=sizeof pending[0].sender)return 0;
+    (void)pthread_mutex_lock(&pending_lock);
+    slot=pending_find(account,sender,now);
+    if(slot<0)for(i=0U;i<SPARKLES_PENDING_MAX;++i)
+        if(!pending[i].expires){slot=(int)i;break;}
+    if(slot>=0) {
+        memset(&pending[slot],0,sizeof pending[slot]);
+        memcpy(pending[slot].account,account,strlen(account)+1U);
+        memcpy(pending[slot].sender,sender,strlen(sender)+1U);
+        pending[slot].expires=now+SPARKLES_PENDING_SECONDS;
+        pending[slot].waiting_for_date=needs_date;
+        pending[slot].plan=*plan;
+    }
+    (void)pthread_mutex_unlock(&pending_lock);
+    return slot>=0;
+}
+static int schedule_reply(stnlabz_module_command_reply_fn reply,void *ctx,
+                          const char *text)
+{
+    return reply(ctx,text)?1:0;
+}
+static int send_schedule_summary(const char *sender,
+                                 const sparkles_schedule_plan_t *plan)
+{
+    char message[512];
+    size_t used=0U;
+    unsigned int i;
+    int n;
+    if(!owner||!owner->send_private_message)return 0;
+    n=snprintf(message,sizeof message,"Please confirm these appointments: ");
+    if(n<0 || (size_t)n>=sizeof message)return 0;
+    used=(size_t)n;
+    for(i=0U;i<plan->count;++i) {
+        const sparkles_schedule_item_t *e=&plan->items[i];
+        n=snprintf(message+used,sizeof message-used,"%s%s %s-%s %s",
+            i?"; ":"",e->date,e->begin,e->end,e->title);
+        if(n<0 || (size_t)n>=sizeof message-used)return 0;
+        used+=(size_t)n;
+    }
+    n=snprintf(message+used,sizeof message-used,
+               ". Reply 'confirm' to save, or 'cancel'.");
+    if(n<0 || (size_t)n>=sizeof message-used)return 0;
+    return owner->send_private_message(sender,message);
+}
+static int find_explicit_date(const char *text,char date[11])
+{
+    size_t i,n;
+    if(!text)return 0;
+    n=strlen(text);
+    for(i=0U;i+10U<=n;++i) {
+        char sample[11];
+        if(i>0U && text[i-1U]>='0' && text[i-1U]<='9')continue;
+        if(i+10U<n && text[i+10U]>='0' && text[i+10U]<='9')continue;
+        memcpy(sample,text+i,10U);
+        sample[10]='\0';
+        if(sparkles_schedule_date(sample,date))return 1;
+    }
+    return 0;
+}
+static int finish_schedule(const sparkles_schedule_plan_t *plan,
+                           const char *account)
+{
+    unsigned int i;
+    unsigned int saved=0U,conflicts=0U;
+    int ambiguous=0;
+    if(!owner||!owner->invoke_service)return 0;
+    for(i=0U;i<plan->count;++i) {
+        const sparkles_schedule_item_t *e=&plan->items[i];
+        sparkles_mariadb_create_request_t request={{0}};
+        sparkles_mariadb_create_reply_t result={0};
+        size_t used=0U;
+        stnlabz_module_result_t rc;
+        if(snprintf(request.start_time,sizeof request.start_time,"%s %s:00",
+                    e->date,e->begin)!=19 ||
+           snprintf(request.end_time,sizeof request.end_time,"%s %s:00",
+                    e->date,e->end)!=19)
+            return 0;
+        memcpy(request.account,account,strlen(account)+1U);
+        memcpy(request.title,e->title,strlen(e->title)+1U);
+        rc=owner->invoke_service(SPARKLES_MARIADB_CREATE_SERVICE,
+            &request,sizeof request,&result,sizeof result,&used);
+        if(rc!=STNLABZ_MODULE_OK||used!=sizeof result)return 0;
+        if(result.status==SPARKLES_MARIADB_CREATE_SAVED)++saved;
+        else if(result.status==SPARKLES_MARIADB_CREATE_CONFLICT)++conflicts;
+        else if(result.status==SPARKLES_MARIADB_CREATE_UNCERTAIN)ambiguous=1;
+        else return 0;
+    }
+    /* Caller reports counts without claiming success on uncertain outcome. */
+    return ambiguous?-3:conflicts?(saved?-2:-1):(int)saved;
+}
+
+/* Returns 1 if this utterance is fully handled as a scheduling turn. */
+static int schedule_conversation(const stnlabz_module_command_t *command,
+    stnlabz_module_command_reply_fn reply,void *ctx)
+{
+    sparkles_schedule_plan_t plan={0};
+    int slot;
+    int waiting=0;
+    time_t now=time(NULL);
+    char date[11];
+    char account[128],sender[128];
+    char prompt[SPARKLES_LLM_PROMPT_MAX];
+    sparkles_llm_request_t req={{0}};
+    sparkles_llm_response_t out={{0}};
+    size_t used=0U;
+    int n;
+    stnlabz_module_result_t rc;
+    const char *text=command->arguments;
+    if(!command->account[0] || !command->sender[0])return 0;
+    if(strlen(command->account)>=sizeof account ||
+       strlen(command->sender)>=sizeof sender)return 0;
+    memcpy(account,command->account,strlen(command->account)+1U);
+    memcpy(sender,command->sender,strlen(command->sender)+1U);
+    (void)pthread_mutex_lock(&pending_lock);
+    slot=pending_find(account,sender,now);
+    if(slot>=0) {
+        plan=pending[slot].plan;
+        waiting=pending[slot].waiting_for_date;
+    }
+    (void)pthread_mutex_unlock(&pending_lock);
+    if(slot>=0) {
+        if(!strcmp(text,"cancel")||!strcmp(text,"no")) {
+            (void)pthread_mutex_lock(&pending_lock);
+            slot=pending_find(account,sender,time(NULL));
+            if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
+            (void)pthread_mutex_unlock(&pending_lock);
+            return schedule_reply(reply,ctx,"Appointment proposal cancelled.");
+        }
+        if(waiting) {
+            unsigned int i;
+            if(!find_explicit_date(text,date))
+                return schedule_reply(reply,ctx,
+                    "Which date? Please give the calendar date, e.g. 2026-11-11.");
+            for(i=0U;i<plan.count;++i)
+                if(!strcmp(plan.items[i].date,"UNKNOWN"))
+                    memcpy(plan.items[i].date,date,11U);
+            if(!pending_save(account,sender,&plan,0))
+                return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
+            if(!send_schedule_summary(sender,&plan))
+                return schedule_reply(reply,ctx,"Private confirmation unavailable.");
+            return schedule_reply(reply,ctx,
+                "I sent your appointment details privately for confirmation.");
+        }
+        if(!strcmp(text,"confirm")||!strcmp(text,"yes")) {
+            int result;
+            /* Single use: clear pending before any network/database operation. */
+            (void)pthread_mutex_lock(&pending_lock);
+            slot=pending_find(account,sender,time(NULL));
+            if(slot<0) {
+                (void)pthread_mutex_unlock(&pending_lock);
+                return schedule_reply(reply,ctx,"The appointment proposal expired.");
+            }
+            plan=pending[slot].plan;
+            memset(&pending[slot],0,sizeof pending[slot]);
+            (void)pthread_mutex_unlock(&pending_lock);
+            result=finish_schedule(&plan,account);
+            if(result==(int)plan.count)
+                return schedule_reply(reply,ctx,
+                    "Your confirmed appointments were saved in the calendar.");
+            if(result==-1)
+                return schedule_reply(reply,ctx,
+                    "Nothing saved; the proposed times conflict with existing appointments.");
+            if(result==-2)
+                return schedule_reply(reply,ctx,
+                    "Some appointments were saved; others conflicted. Check your schedule.");
+            if(result==-3)
+                return schedule_reply(reply,ctx,
+                    "Database confirmation uncertain. Check your schedule before retrying.");
+            return schedule_reply(reply,ctx,
+                "Calendar save failed or incomplete. Check your schedule before retrying.");
+        }
+        /* A new message can supersede the old proposal, but never confirm it. */
+        (void)pthread_mutex_lock(&pending_lock);
+        slot=pending_find(account,sender,time(NULL));
+        if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
+        (void)pthread_mutex_unlock(&pending_lock);
+    }
+    /* Model extracts intentions, but cannot write or make authoritative
+     * decisions. Strict parsing and a separate human confirmation are required. */
+    if(strlen(text)>700U)return 0;
+    n=snprintf(prompt,sizeof prompt,
+        "Extract at most 2 calendar events directly stated by the human. "
+        "Output ONLY NONE if no proposed/specified event is given, or one "
+        "EVENT|DATE|HH:MM|HH:MM|TITLE per line. DATE must be an explicit "
+        "YYYY-MM-DD in the message; otherwise use UNKNOWN. "
+        "Use 24-hour times. Never invent a date, time, venue or person. "
+        "Do not add prose or formatting. For multiple events use two lines. "
+        "Human: %s",text);
+    if(n<=0||(size_t)n>=sizeof prompt)return 0;
+    memcpy(req.prompt,prompt,(size_t)n+1U);
+    rc=generate(&req,sizeof req,&out,sizeof out,&used,NULL);
+    if(rc!=STNLABZ_MODULE_OK||used!=sizeof out||
+       !sparkles_schedule_parse(out.text,&plan)||!plan.count)return 0;
+    {
+        unsigned int i;
+        int needs_date=0;
+        char explicit_date[11];
+        int has_explicit=find_explicit_date(text,explicit_date);
+        for(i=0U;i<plan.count;++i) {
+            /* Ignore model-invented dates; only an explicitly supplied
+             * ISO calendar date can be used. */
+            if(!has_explicit || strcmp(plan.items[i].date,explicit_date))
+                memcpy(plan.items[i].date,"UNKNOWN",8U);
+            if(!strcmp(plan.items[i].date,"UNKNOWN"))needs_date=1;
+        }
+        if(!pending_save(account,sender,&plan,needs_date))
+            return schedule_reply(reply,ctx,"Calendar proposal unavailable.");
+        if(needs_date)
+            return schedule_reply(reply,ctx,
+                "I have your event details. Which date (YYYY-MM-DD)?");
+        if(!send_schedule_summary(sender,&plan))
+            return schedule_reply(reply,ctx,"Private confirmation unavailable.");
+        return schedule_reply(reply,ctx,
+            "I sent your appointment details privately for confirmation.");
+    }
+}
+
 
 static int valid_peer_char(char c)
 {
@@ -170,6 +427,7 @@ static stnlabz_module_result_t chat_controller(
    return STNLABZ_MODULE_ERR_INVALID_STATE;
  }
 
+ if(schedule_conversation(command,reply,reply_context))return STNLABZ_MODULE_OK;
  len=strlen(command->arguments);
  if(!len||len>=sizeof in.prompt)
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
@@ -190,9 +448,12 @@ static stnlabz_module_result_t chat_controller(
 static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
 {
  unsigned int e=0,p=0;int ne=0,np=0;int ok;
+ unsigned int se=0,sp=0;
  if(!q)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  memset(q,0,sizeof(*q));
  ok=sparkles_ollama_run_selftests(&e,&p,&ne,&np);
+ ok=sparkles_schedule_selftests(&se,&sp)&&ok;
+ e+=se;p+=sp;
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
  return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_QUALIFICATION;
