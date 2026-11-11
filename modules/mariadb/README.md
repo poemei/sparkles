@@ -1,6 +1,6 @@
-# Sparkles MariaDB module — v1.0.0
+# Sparkles MariaDB module — v1.1.0
 
-This is the **initial MariaDB connection and schema-verification foundation** for Sparkles. It follows the Core ABI 1.5 lifecycle and registers one named service, `sparkles.mariadb.status`. It does **not** access contact, appointment, task, interaction or permission records, does not grant permissions, and does not modify Core/chat routing, IRC or Ollama. No model inference is treated as authority over database records.
+This module uses the Core ABI 1.5 lifecycle and registers two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. It does not insert, update, delete or authorize appointments; nor does it modify Core/chat routing, IRC or Ollama. No model inference is treated as authority over database records.
 
 ## Database prerequisite
 
@@ -35,14 +35,22 @@ make -C modules/mariadb clean all test
 sudo make -C modules/mariadb install INSTALL_USER=stnchain INSTALL_GROUP=stnchain
 ```
 
-Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.0.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
+Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.1.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
 
 ## Service contract
 
-Header: `include/sparkles_mariadb.h`. A trusted Core module can invoke `sparkles.mariadb.status` with NULL request and zero request size; a successful response is `sparkles_mariadb_status_t` with `connected=1` and `tables_found=7`. The service rejects other request shapes and returns INVALID_STATE when the connection or schema check fails. The service exposes no confidential record data.
+Header: `include/sparkles_mariadb.h`. A trusted Core module can invoke `sparkles.mariadb.status` with NULL request and zero request size; a successful response is `sparkles_mariadb_status_t` with `connected=1` and `tables_found=7`. The service rejects other request shapes and returns INVALID_STATE when the connection or schema check fails. The status service exposes no confidential record data.
+
+### Appointment lookup service (not exposed to chat)
+
+Header: `include/sparkles_mariadb.h`. The private service `sparkles.mariadb.appointments.read` accepts a `sparkles_mariadb_appointments_request_t` with `from_date` (inclusive) and `until_date` (exclusive), both strict `YYYY-MM-DD` dates. The service replies with `sparkles_mariadb_appointments_reply_t`: up to eight scheduled appointments in start-time order, each with ID, title, start and end times; `has_more=1` indicates the result was capped. Empty results mean **no matching stored appointments in that range**, not that the user has no external commitments. Cancelled records are omitted. Stored `DATETIME` values have no timezone; the calling application must establish timezone semantics before relying on times.
+
+This service uses bound SQL parameters; no SQL is constructed from natural-language inputs. It reads only the `appointments` table. It does not verify whether DJ names or venue details are stored in other systems.
+
+**Privacy/authority limitation:** the shared Core ABI does not supply the identity of the *module* invoking a service, and the current IRC transport does not populate a verified account in the route request. Consequently, **no IRC, conversational or terminal schedule-retrieval handler is registered in this increment**. Do not expose this service through chat or a public slash command without a separately designed authenticated caller/authorization boundary. Only locally installed trusted modules can invoke the internal service currently; do not treat that as a user permission check.
 
 ## Scope and acceptance
 
-This increment is an installation/connection foundation, **not** a context retrieval feature or autonomous database assistant. Per-contact identity verification and authorization enforcement for reads/writes require separate design because ABI 1.5 service calls do not supply the caller identity. No automatic conversation logging, record updates, or calendar actions are authorized or implemented.
+This increment adds a private **read-only appointment retrieval service** to the existing connection foundation, **not** a user-facing schedule assistant. Per-contact identity verification and authorization enforcement for reads/writes require separate design because ABI 1.5 service calls do not supply the caller identity. No automatic conversation logging, record updates, or calendar actions are authorized or implemented.
 
 Source commit, automated qualification, runtime activation, end-to-end operation, and human acceptance are separate gates.
