@@ -179,7 +179,7 @@ static stnlabz_module_result_t schedule_command(
     sparkles_mariadb_appointments_request_t request = {{0}};
     sparkles_mariadb_appointments_reply_t result = {0};
     char extra;
-    char text[SPARKLES_MARIADB_APPOINTMENTS_MAX + 512U];
+    char text[512];
     size_t used=0U, i;
     stnlabz_module_result_t rc;
     (void)context;
@@ -210,6 +210,16 @@ static stnlabz_module_result_t schedule_command(
         if (!host_owner->send_private_message(command->sender,
              "No scheduled appointments stored for that date range."))
             return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
+    /* Validate all transport-sized messages before sending any records. */
+    for (i=0U;i<result.count;++i) {
+        int len=snprintf(text,sizeof text,"%s to %s: %s",
+             result.records[i].start_time,result.records[i].end_time,
+             result.records[i].title);
+        if (len<0 || (size_t)len>=sizeof text)
+            return reply(reply_context,
+              "Schedule contains an oversized title; cannot deliver safely.")
+                ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
     }
     for (i=0U;i<result.count;++i) {
         int len=snprintf(text,sizeof text,"%s to %s: %s",
