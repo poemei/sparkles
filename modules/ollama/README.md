@@ -33,7 +33,7 @@ The Core hotloader discovers, qualifies, and activates the module, which registe
 
 ## Conversational appointment capture (v1.0.14 source)
 
-The registered `chat` controller now asks the locally selected Ollama model to extract up to two calendar events stated in ordinary messages. A strict structured parser validates date/time/title output. The model does **not** write to MariaDB. Sparkles keeps a short-lived proposal tied to the IRC sender and server-verified account; it asks for an explicit ISO calendar date when the conversation has not supplied one, and sends event details privately before asking for `confirm` or `cancel`. Only an explicit confirmation invokes the named MariaDB create service, which checks the account allowlist and enforces scheduled-appointment conflicts.
+The registered `chat` controller now asks the locally selected Ollama model to extract up to two calendar events stated in ordinary messages. A strict structured parser validates date/time/title output. The model does **not** write to MariaDB. Sparkles keeps a short-lived proposal tied to the IRC sender and server-verified account; it asks for an explicit ISO calendar date when the conversation has not supplied one, and sends event details privately before asking for `confirm` or `cancel`. Before requesting confirmation, Sparkles queries MariaDB's authenticated conflict-check service for each proposed time interval; any existing overlap blocks the proposal. Only an explicit confirmation invokes the named MariaDB create service, which rechecks the account allowlist and enforces scheduled-appointment conflicts.
 
 Example:
 
