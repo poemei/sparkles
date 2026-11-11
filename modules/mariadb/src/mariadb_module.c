@@ -13,6 +13,7 @@ static const stnlabz_module_host_t *host_owner;
 static int registered;
 static int command_registered;
 static int add_command_registered;
+static int create_service_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
 {
@@ -339,6 +340,57 @@ done:
     return outcome;
 }
 
+/* Typed service for the conversational controller. Only explicitly confirmed
+ * appointments may be submitted by its caller; database-side validation and
+ * authorization are repeated and never delegated to model output. */
+static stnlabz_module_result_t create_service(
+    const void *request, size_t request_size,
+    void *response, size_t response_size, size_t *used, void *ctx)
+{
+    const sparkles_mariadb_create_request_t *in=request;
+    sparkles_mariadb_create_reply_t *out=response;
+    sparkles_mariadb_new_appointment_t appointment;
+    appointment_write_result_t outcome;
+    char input[256];
+    unsigned long long id=0ULL;
+    int n;
+    (void)ctx;
+    if (used) *used=0U;
+    if (!in || request_size!=sizeof *in || !out || response_size<sizeof *out ||
+        !memchr(in->account,0,sizeof in->account) ||
+        !memchr(in->start_time,0,sizeof in->start_time) ||
+        !memchr(in->end_time,0,sizeof in->end_time) ||
+        !memchr(in->title,0,sizeof in->title))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    if (!sparkles_mariadb_account_allowed(
+            SPARKLES_MARIADB_IRC_ACCOUNTS,in->account)) {
+        out->status=SPARKLES_MARIADB_CREATE_DENIED;
+        if (used) *used=sizeof *out;
+        return STNLABZ_MODULE_OK;
+    }
+    if (strlen(in->start_time)!=19U || strlen(in->end_time)!=19U ||
+        memcmp(in->start_time,in->end_time,11U)!=0 ||
+        memcmp(in->start_time+16,":00",3U)!=0 ||
+        memcmp(in->end_time+16,":00",3U)!=0)
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    n=snprintf(input,sizeof input,"%.10s %.5s %.5s %s",
+        in->start_time,in->start_time+11,in->end_time+11,in->title);
+    if (n<0 || (size_t)n>=sizeof input ||
+        !sparkles_mariadb_parse_new_appointment(input,&appointment) ||
+        strcmp(appointment.start_time,in->start_time) ||
+        strcmp(appointment.end_time,in->end_time))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    outcome=insert_appointment(&appointment,&id);
+    out->id=outcome==APPOINTMENT_DB_SAVED?id:0ULL;
+    out->status=outcome==APPOINTMENT_DB_SAVED?SPARKLES_MARIADB_CREATE_SAVED:
+        outcome==APPOINTMENT_DB_CONFLICT?SPARKLES_MARIADB_CREATE_CONFLICT:
+        outcome==APPOINTMENT_DB_UNCERTAIN?SPARKLES_MARIADB_CREATE_UNCERTAIN:
+                                      SPARKLES_MARIADB_CREATE_ERROR;
+    if (used) *used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+
 /* Authorized human-directed insert, never an Ollama inference side effect. */
 static stnlabz_module_result_t appointment_add_command(
     const stnlabz_module_command_t *command,
@@ -461,9 +513,20 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         mysql_close(candidate);
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
+    if (!h->register_service(SPARKLES_MARIADB_CREATE_SERVICE,
+                             create_service,NULL)) {
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    create_service_registered=1;
     host_owner = h;
     registered = 1;
     if (!h->register_command("schedule",schedule_command,NULL)) {
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
         (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
         registered=0;
@@ -476,6 +539,8 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     if (!h->register_command("appointment-add",appointment_add_command,NULL)) {
         (void)h->unregister_command("schedule",NULL);
         command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
         (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
         registered=0;
@@ -505,6 +570,10 @@ static stnlabz_module_result_t stop(void)
     if (registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE, NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
+    if (create_service_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    create_service_registered=0;
     registered = 0;
     host_owner = NULL;
     (void)pthread_mutex_lock(&db_lock);
@@ -515,7 +584,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 3U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 4U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
