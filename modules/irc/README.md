@@ -56,3 +56,8 @@ sha256sum modules/irc/build/irc.so /opt/sparkles/modules/irc/irc.so
 The updated Core binary must be installed before the IRC module is tested: an older Core binary may still use the legacy `digit.router.dispatch` service identifier and will not match the new IRC module's `sparkles.router.dispatch` endpoint. Restart Sparkles after updating the Core binary.
 
 The installed module is `/opt/sparkles/modules/irc/irc.so`, with `/opt/sparkles/modules/irc/module.conf` containing `id=irc`. Hotload qualification runs protocol self-tests. IRC activation additionally needs a valid credential file and live authenticated channel joins. Source migration alone does not establish a successful connection or accepted operational behavior.
+
+
+## Configured-channel ambient memory (v1.1.4)
+
+IRC provides verified `account-tag` identities to a restricted in-process memory exchange service for regular messages visible in Sparkles' *already configured* channels, even when the sender does not address Sparkles. These ambient messages are persisted as unverified private speaker observations without producing replies. This does not monitor arbitrary IRC channels or third-party direct messages. Only messages bearing server-verified account identities and fitting the fixed memory limit are stored. IRC remains a temporary development transport; this is a source-level test of platform-independent contextual intake, not a Second Life implementation. A busy channel can increase synchronous database traffic, and the policy for broader audience consent/retention needs review before wider deployments.
