@@ -234,12 +234,11 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
            strstr(request, "Executive Assistant AI Agent") &&
            strstr(request, "not as another agent"),
            &e, &p);
-    expect(sparkles_ollama_build_request("test-model", "say hi to digicat", request, sizeof request) &&
-           strstr(request, "exact IRC nickname followed by a colon") &&
-           strstr(request, "say/tell relays a statement") &&
-           strstr(request, "ask must produce a question") &&
-           strstr(request, "must not answer on their behalf") &&
-           strstr(request, "Do not narrate that you will send the message"),
+    expect(sparkles_ollama_build_request("test-model", "did you scare Laurie?", request, sizeof request) &&
+           strstr(request, "Distinguish someone asking you ABOUT a person") &&
+           strstr(request, "Don't repeat the user's message verbatim") &&
+           strstr(request, "Feedback about talking too much") &&
+           strstr(request, "Do not announce that you sent a private"),
            &e, &p);
     expect(sparkles_ollama_extract_response(
            "{\"response\":\"Hello there\",\"done\":true}",
