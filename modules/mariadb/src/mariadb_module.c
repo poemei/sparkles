@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include "stnlabz_abi/module.h"
 #include "sparkles_mariadb.h"
+#include "sparkles_memory.h"
 #include "mariadb_internal.h"
 
 static MYSQL *db;
@@ -15,6 +16,7 @@ static int command_registered;
 static int add_command_registered;
 static int create_service_registered;
 static int check_service_registered;
+static int memory_service_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
 {
@@ -511,6 +513,30 @@ static stnlabz_module_result_t appointment_add_command(
         ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
 }
 
+/* Account-separated durable observations. A nickname is never an identity.
+ * No inferred memories are silently promoted to verified facts. */
+static stnlabz_module_result_t memory_exchange_service(
+    const void *request,size_t request_size,
+    void *response,size_t response_size,size_t *used,void *context)
+{
+    const sparkles_memory_exchange_request_t *in=request;
+    sparkles_memory_exchange_reply_t *out=response;
+    int ok=0;
+    (void)context;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||response_size<sizeof *out||
+       !sparkles_mariadb_memory_valid(in))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    (void)pthread_mutex_lock(&db_lock);
+    if(db && !mysql_ping(db))
+        ok=sparkles_mariadb_context_exchange(db,in,out);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!ok)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+
 static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
 {
     unsigned int e = 0U, p = 0U;
@@ -518,6 +544,7 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
     int ok;
     unsigned int date_e=0U, date_p=0U;
     unsigned int appointment_e=0U, appointment_p=0U;
+    unsigned int memory_e=0U, memory_p=0U;
     if (!q) return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(q, 0, sizeof *q);
     ok = sparkles_mariadb_selftests(&e, &p, &ne, &np);
@@ -527,6 +554,9 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
     ok = sparkles_mariadb_appointment_selftests(&appointment_e,&appointment_p) && ok;
     e += appointment_e;
     p += appointment_p;
+    ok = sparkles_mariadb_memory_selftests(&memory_e,&memory_p) && ok;
+    e += memory_e;
+    p += memory_p;
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
@@ -636,12 +666,35 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     add_command_registered=1;
+    if (!h->register_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,
+                             memory_exchange_service,NULL)) {
+        (void)h->unregister_command("appointment-add",NULL);
+        add_command_registered=0;
+        (void)h->unregister_command("schedule",NULL);
+        command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
+        check_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        registered=0;
+        host_owner=NULL;
+        db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    memory_service_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if (memory_service_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    memory_service_registered=0;
     if (add_command_registered && host_owner &&
         !host_owner->unregister_command("appointment-add",NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -674,7 +727,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 4U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 5U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
