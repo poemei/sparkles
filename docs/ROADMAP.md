@@ -1,7 +1,7 @@
 # Sparkles — Engineering Roadmap
 
 **Project:** Ms. Sparkles, STN-Labz Executive Assistant  
-**Status:** Core and local Ollama terminal integration operator-observed; broader agent capabilities remain unqualified  
+**Status:** Core, Identity, IRC and local Ollama conversation operator-observed; Executive v0.3.1 trained and separately tested, not activated in Sparkles  
 **Evidence updated:** 2026-11-10  
 **Authority:** Human-directed development only
 
@@ -29,16 +29,23 @@ A roadmap is not permission to implement future stages. Source implementation, b
 - Preserve sender, reply destination and independently authorized peer-action destination.
 - Avoid scripted/canned conversational replies.
 
-**Observed on 2026-11-10:**
-- Operator-reported local Ollama models included `qwen3:4b-instruct` and `qwen2.5-coder:3b`. The Ollama module's source selects `qwen3:4b-instruct` with no environment-variable export, and uses the local Ollama HTTP API.
-- The first terminal request to explain RAM versus storage returned `curl=28 http=0` (timeout, no HTTP status). A later request about executive-assistant capabilities completed successfully, followed by a successful retry of the RAM-versus-storage explanation. A cold-model-start delay is plausible but not confirmed.
-- The observed RAM explanation ended mid-sentence; the existing `num_predict=96` generation limit is a possible contributor, but truncation cause has not been isolated.
-- The model's fluent description of scheduling, email, meetings, tasks and follow-up is generated text, not proof of implemented executive integrations.
-- A training progress snapshot reported `321/364` steps, loss `1.87003 ± 0.11944`, accuracy `42.19 ± 0.76%`, and ETA `02:20:08`. This snapshot does not establish completed training, model identity, validation quality, packaging, or deployment.
+**Operator observations on 2026-11-10:**
+- SparklesR successfully responded on IRC to an Identity mission request; this exercised IRC -> Core -> Identity -> IRC.
+- SparklesR also generated an IRC greeting addressed to digicat (`digicat: hi`), and digicat replied `Hi!`. This demonstrates one successful peer greeting through IRC, not autonomous coordination or authoritative executive action.
+- Local Ollama models included `qwen3:4b-instruct` and `qwen2.5-coder:3b`; Sparkles' compiled default was `qwen3:4b-instruct` at the time. The existing Ollama integration had shown timeouts (`curl=28`), short output, and incorrect/conflicting scheduling answers. The source was revised to permit up to 512 generated tokens and a 120-second request timeout (Ollama module v1.0.13); its fixed-size 512-byte response and IRC buffers remain an output-length risk. These changes are separate from any claim that the trained model is active.
+- An IRC startup failure (`startup did not reach authenticated channel state`) was also observed during a service run. A subsequent successful IRC exchange does not by itself establish cold-start or reconnect reliability.
 
-**Outstanding:** Qualify cold-start and repeated-request reliability; investigate incomplete output; verify final training and validation results; package and qualify any trained model before integration; bring up and test IRC transport; verify routing and destination-preservation behavior across transports.
+**Executive v0.3.1 training and local qualification (operator-reported, November 2026):**
+- Training completed on a separate machine with `llama-finetune` using the original Ollama GGUF blob `sha256-85e4a5b7b8ef0e48af0e8658f5aaab9c2324c76c1641493f4d1e25fce54b18b9`, dataset `stn_executive_train_v0.3.1.jsonl`, rank 4, alpha 8, one epoch, and a 10% validation split.
+- Training reported best validation loss `1.42736`, saved `executive.lora.gguf.best` and a final `executive.lora.gguf`; 144 LoRA pairs were written. Validation loss is not equivalent to operational qualification.
+- The best adapter was merged on the training machine using `llama-export-lora`: `144` adapted tensors merged and `398` tensors written to `executive-merged.gguf`. The operator transferred the merged GGUF to the local machine and imported it separately in Ollama as `sparkles-executive:v0.3.1` (listed at 3.8 GB). The separate test model does not replace SparklesR's active compiled default.
+- Standalone Ollama scheduling checks correctly handled partial overlap, back-to-back endpoints, contained meetings, gaps, noon and midnight boundaries, individual 60-minute slots, contiguous free intervals, and a straightforward room-unavailability approval question.
+- **Known qualification failure:** in two 15-minute mandatory-break scenarios the model answered `YES` to a prohibited 11:05 AM start after an 11:00 AM meeting, despite correctly explaining the break ran until 11:15 AM. The same or simplified constraints later produced correct `NO` or `Decline` answers. This is inconsistent decision output, not a proven inability to compare times, and the later successes do not erase the failures.
+- Formatting was also inconsistent in some otherwise correct responses (e.g., an incorrect cross mark and an unfinished `Step` label). The observed tests were manual, limited, and unautomated; no statistical accuracy or reliability claim follows.
 
-**Status:** Local terminal inference operator-observed with latency and output-length issues. IRC, trained-model integration, and full Stage 1 qualification remain outstanding.
+**Outstanding:** Resolve or explicitly guard against inconsistent scheduling authorization; assess repeated-response reliability and output-size behavior; qualify cold-start/reconnect and end-to-end trained-model behavior; obtain human approval before changing Sparkles' active model or introducing executive actions.
+
+**Status:** IRC conversation and identity routing operator-observed; trained model completed, merged, imported and manually evaluated **as a separate Ollama test model**. Stage 1 full reliability/acceptance and trained-model activation are outstanding.
 
 ## Stage 2 — MariaDB context
 
@@ -53,7 +60,7 @@ A roadmap is not permission to implement future stages. Source implementation, b
 - Scheduling and conflict resolution, natural language intent discovery, multi-party coordination and authorized proactive follow-through.
 - Verify decisions using human-directed qualification scenarios.
 
-**Status:** Not implemented or verified in this record. A model-generated statement about these capabilities is not acceptance evidence.
+**Status:** Executive scheduling reasoning was exercised through a separate test model, with both correct answers and inconsistent authorization decisions observed. No authoritative calendar integration, scheduling action, or human acceptance is established.
 
 ## Stage 4 — Second Life transport
 
@@ -64,4 +71,4 @@ A roadmap is not permission to implement future stages. Source implementation, b
 
 ## Acceptance
 
-Source edit, build, module qualification, hotload, client behavior and operator acceptance are separate evidence gates. No source file is accepted solely because it was committed. The operator-observed terminal behavior above does not imply IRC, MariaDB, executive actions, Second Life, or a trained model have passed their respective acceptance tests.
+Source edit, build, module qualification, hotload, client behavior and operator acceptance are separate evidence gates. No source file is accepted solely because it was committed. Operator-observed IRC exchanges and separately imported trained-model responses do not establish full transport reliability, MariaDB context, executive actions, Second Life, live trained-model activation, or final acceptance.
