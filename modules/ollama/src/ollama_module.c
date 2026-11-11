@@ -15,13 +15,34 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 0U
-#define OLLAMA_VERSION_PATCH 14U
+#define OLLAMA_VERSION_PATCH 15U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
 static int service_registered;
 static int command_registered;
 static stnlabz_module_result_t generate(const void *,size_t,void *,size_t,size_t *,void *);
+static const int schedule_extraction_mode=1;
+static int calendar_request(const char *text)
+{
+    static const char *const terms[]={
+        "schedule","calendar","appointment","availability","conflict"
+    };
+    char lower[701];
+    size_t i,j,n;
+    if(!text)return 0;
+    n=strlen(text);
+    if(n>=sizeof lower)return 0;
+    for(i=0;i<n;++i) {
+        unsigned char c=(unsigned char)text[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
+    }
+    lower[n]='\0';
+    for(j=0;j<sizeof terms/sizeof terms[0];++j)
+        if(strstr(lower,terms[j]))return 1;
+    return 0;
+}
+
 
 #define SPARKLES_PENDING_MAX 8U
 #define SPARKLES_PENDING_SECONDS 600
@@ -299,9 +320,21 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         "Human: %s",text);
     if(n<=0||(size_t)n>=sizeof prompt)return 0;
     memcpy(req.prompt,prompt,(size_t)n+1U);
-    rc=generate(&req,sizeof req,&out,sizeof out,&used,NULL);
+    rc=generate(&req,sizeof req,&out,sizeof out,&used,
+                (void *)&schedule_extraction_mode);
     if(rc!=STNLABZ_MODULE_OK||used!=sizeof out||
-       !sparkles_schedule_parse(out.text,&plan)||!plan.count)return 0;
+       !sparkles_schedule_parse(out.text,&plan)) {
+        fprintf(stderr,"[OLLAMA] calendar extraction failed or output invalid\\n");
+        return calendar_request(text)
+            ? schedule_reply(reply,ctx,
+                "I couldn't reliably extract the appointments. Please repeat the details.")
+            : 0;
+    }
+    if(!plan.count)
+        return calendar_request(text)
+            ? schedule_reply(reply,ctx,
+                "I couldn't identify appointment times. Please clarify the event details.")
+            : 0;
     if(!account[0])return schedule_reply(reply,ctx,
        "Calendar changes require a verified IRC account.");
     {
@@ -416,13 +449,17 @@ static stnlabz_module_result_t generate(const void *request,size_t request_size,
 {
  const sparkles_llm_request_t *in=request; sparkles_llm_response_t *out=response;
  CURL *curl=NULL; struct curl_slist *headers=NULL; CURLcode rc; long status=0;
- char body[4096]; buffer_t received={0}; (void)ctx;
+ char body[4096]; buffer_t received={0};
  if(used)*used=0;
  if(!in||request_size!=sizeof(*in)||!out||response_size<sizeof(*out)||
     !memchr(in->prompt,0,sizeof in->prompt)||!in->prompt[0])
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  memset(out,0,sizeof(*out));
- if(!sparkles_ollama_build_request(SPARKLES_OLLAMA_MODEL,in->prompt,body,sizeof body))
+ if(!(ctx==&schedule_extraction_mode ?
+      sparkles_ollama_build_schedule_request(SPARKLES_OLLAMA_MODEL,in->prompt,
+                                           body,sizeof body) :
+      sparkles_ollama_build_request(SPARKLES_OLLAMA_MODEL,in->prompt,
+                                   body,sizeof body)))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
  curl=curl_easy_init(); if(!curl)return STNLABZ_MODULE_ERR_START_FAILED;
  headers=curl_slist_append(headers,"Content-Type: application/json");
