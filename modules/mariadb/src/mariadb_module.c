@@ -169,6 +169,14 @@ static stnlabz_module_result_t appointments_service(
     return STNLABZ_MODULE_OK;
 }
 
+static int safe_irc_title(const char *value)
+{
+    const unsigned char *p=(const unsigned char *)value;
+    if (!value) return 0;
+    for (;*p;++p) if (*p < 0x20U || *p == 0x7fU) return 0;
+    return 1;
+}
+
 /* Explicit, authenticated IRC schedule lookup. No model-generated SQL or writes.
  * Read results are sent privately to the requesting nick, never to a channel. */
 static stnlabz_module_result_t schedule_command(
@@ -216,7 +224,8 @@ static stnlabz_module_result_t schedule_command(
         int len=snprintf(text,sizeof text,"%s to %s: %s",
              result.records[i].start_time,result.records[i].end_time,
              result.records[i].title);
-        if (len<0 || (size_t)len>=sizeof text)
+        if (len<0 || (size_t)len>=sizeof text ||
+            !safe_irc_title(result.records[i].title))
             return reply(reply_context,
               "Schedule contains an oversized title; cannot deliver safely.")
                 ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
