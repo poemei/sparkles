@@ -669,7 +669,8 @@ static stnlabz_module_result_t chat_controller(
  stnlabz_module_result_t result;
  (void)handler_context;
  if(!command||!reply||
-    !memchr(command->arguments,0,sizeof command->arguments))
+    !memchr(command->arguments,0,sizeof command->arguments)||
+    !memchr(command->account,0,sizeof command->account))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
  memory_available=memory_exchange(command,&memory);
