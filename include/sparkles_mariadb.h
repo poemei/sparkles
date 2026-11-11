@@ -4,6 +4,7 @@
 /* Private Core ABI 1.5 services. Caller authentication is not part of the ABI.
  * Do not expose appointment lookup to IRC/chat until verified caller identity
  * and authorization are implemented. */
+#define SPARKLES_MARIADB_CHECK_SERVICE "sparkles.mariadb.appointments.check"
 #define SPARKLES_MARIADB_CREATE_SERVICE "sparkles.mariadb.appointments.create"
 #define SPARKLES_MARIADB_STATUS_SERVICE "sparkles.mariadb.status"
 #define SPARKLES_MARIADB_APPOINTMENTS_SERVICE "sparkles.mariadb.appointments.read"
@@ -42,6 +43,17 @@ typedef struct {
     char end_time[20];
     char title[201];
 } sparkles_mariadb_create_request_t;
+
+typedef enum {
+    SPARKLES_MARIADB_CHECK_ERROR=0,
+    SPARKLES_MARIADB_CHECK_FREE=1,
+    SPARKLES_MARIADB_CHECK_CONFLICT=2,
+    SPARKLES_MARIADB_CHECK_DENIED=3
+} sparkles_mariadb_check_status_t;
+
+typedef struct {
+    unsigned int status;
+} sparkles_mariadb_check_reply_t;
 
 typedef enum {
     SPARKLES_MARIADB_CREATE_ERROR = 0,
