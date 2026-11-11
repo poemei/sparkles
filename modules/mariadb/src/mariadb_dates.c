@@ -14,7 +14,7 @@ int sparkles_mariadb_valid_date(const char *date)
     static const unsigned month_days[12] = {
         31U,28U,31U,30U,31U,30U,31U,31U,30U,31U,30U,31U
     };
-    if (!date || strnlen(date, 11U) != 10U ||
+    if (!date || strlen(date) != 10U ||
         date[4] != '-' || date[7] != '-') return 0;
     for (i = 0; i < 10U; ++i) {
         if (i == 4U || i == 7U) continue;
