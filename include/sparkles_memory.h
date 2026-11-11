@@ -10,6 +10,7 @@
 
 typedef struct {
     char account[128];
+    unsigned int record;
     char utterance[SPARKLES_MEMORY_TEXT_MAX + 1];
 } sparkles_memory_exchange_request_t;
 
