@@ -34,6 +34,7 @@ Replace example server, channel, account, and SASL password with operator values
 - Nick/user registration, one or two channel joins, KICK recovery, PING/PONG, and bounded reconnection
 - Core-only conversational handoff through `sparkles.router.dispatch`; ordinary addressed text is not interpreted by IRC
 - Core reply is returned to its originating private sender or channel
+- IRCv3 `account` tag, when asserted by the authenticated server, is copied into Core route account identity (v1.1.3); nickname alone remains unverified. This supports the explicit, restricted MariaDB `/schedule` command, which delivers appointment details privately.
 - Outbound transport services: `sparkles.transport.channel.send` and `sparkles.transport.private.send`
 - Safe diagnostic categories, no raw credential logging
 
