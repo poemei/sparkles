@@ -1,4 +1,4 @@
-# Sparkles MariaDB module — v1.4.0
+# Sparkles MariaDB module — v1.5.0
 
 This module uses the Core ABI 1.5 lifecycle, registers authenticated explicit `/schedule` and `/appointment-add` commands and two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. An explicit authorized `/appointment-add` request can INSERT one appointment after rejecting overlaps with existing scheduled appointments. It does not update or delete appointments, alter Core/chat routing, IRC or Ollama, or grant unrelated users access. No model inference is treated as authority over database records.
 
@@ -35,7 +35,7 @@ make -C modules/mariadb clean all test
 sudo make -C modules/mariadb install INSTALL_USER=stnchain INSTALL_GROUP=stnchain
 ```
 
-Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.4.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
+Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.5.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
 
 ## Service contract
 
@@ -111,6 +111,14 @@ A read-only authenticated service `sparkles.mariadb.appointments.check` checks o
 Ollama module v1.0.14 is the conversational consumer. It requests explicit confirmation of the privately summarized event(s) before calling this service. Neither module automatically trusts a model-extracted date, and missing calendar dates require clarification. No database schema changes are needed. The Core ABI currently trusts in-process modules, so account assertions supplied by third-party installed modules are not independently authenticated by Core. Restrict installed modules accordingly.
 
 This version has GitHub source only until native compilation, qualification, hotload, conversational tests, and operator acceptance are observed.
+
+## Persistent conversation context (v1.5.0)
+
+The new service `sparkles.mariadb.context.exchange` consumes a server-verified IRC account, a bounded user utterance, and a `record` flag. It reads up to three earlier active, unexpired context observations **only for that account**, then optionally inserts the new utterance as an `OBSERVATION`, with `verification='UNVERIFIED'`, `source='IRC'`, `visibility='PRIVATE'`, `category='conversation'`, and `subject=account`. Data remains in MariaDB across module restarts and months of inactivity. Statements made by a speaker are **not** independent evidence about third parties.
+
+**Database prerequisite:** The operator-created `conversation_context` table must exist with the exact columns used in the previously approved phpMyAdmin DDL: `account`, `subject`, `category`, `content`, `context_type`, `source`, `verification`, `visibility`, `status`, `updated_at`, `expires_at`, and `id`. The module does not create or migrate the table. Its preexisting seven-table qualification remains unchanged; the context service returns unavailable on missing/incompatible schema, while calendar functionality remains available. No change to the operator's MariaDB CREATE privileges is made or requested.
+
+This is **IRC-account-specific** persistent observation memory, not a proven cross-platform identity map. Second Life accounts must be verified and explicitly linked before they can share history with IRC accounts. The existing `contacts`, `contact_identities`, `interactions`, and `contact_permissions` are untouched. Long-term summarization, semantic search, fact correction workflows, and resolved cross-transport contact linkage are not yet implemented.
 
 ## Scope and acceptance
 
