@@ -1,8 +1,8 @@
 CC ?= cc
 CPPFLAGS ?=
-CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic
+CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -pthread
 LDFLAGS ?=
-LDLIBS ?= -lcurl
+LDLIBS ?= -lcurl -pthread
 
 ROOT ?= ../..
 ABI_INCLUDE_DIR ?= $(ROOT)/include
@@ -19,9 +19,9 @@ MODULEDIR ?= $(PREFIX)/modules/$(MODULE_NAME)
 
 CPPFLAGS += -I$(INCLUDE_DIR) -I$(ABI_INCLUDE_DIR)
 MODULE_CFLAGS := $(CFLAGS) -fPIC
-MODULE_SRCS := src/ollama_module.c src/ollama_protocol.c
+MODULE_SRCS := src/ollama_module.c src/ollama_protocol.c src/ollama_schedule.c
 MODULE_OBJS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(MODULE_SRCS))
-TEST_SRCS := tests/test_ollama.c src/ollama_protocol.c
+TEST_SRCS := tests/test_ollama.c src/ollama_protocol.c src/ollama_schedule.c
 
 .PHONY: all test clean install uninstall
 all: $(TARGET)
