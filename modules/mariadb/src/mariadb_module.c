@@ -150,11 +150,11 @@ static stnlabz_module_result_t appointments_service(
             break;
         }
         memcpy(out->records[count].title,title,title_len);
-        out->records[count].title[title_len] = '\\0';
+        out->records[count].title[title_len] = '\0';
         memcpy(out->records[count].start_time,start,19U);
-        out->records[count].start_time[19] = '\\0';
+        out->records[count].start_time[19] = '\0';
         memcpy(out->records[count].end_time,end,19U);
-        out->records[count].end_time[19] = '\\0';
+        out->records[count].end_time[19] = '\0';
         ++count;
     }
     if (stmt) mysql_stmt_close(stmt);
