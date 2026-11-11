@@ -28,6 +28,10 @@ int sparkles_irc_line_command(const char *line, char *command, size_t command_si
 int sparkles_irc_word_present(const char *text, const char *word);
 int sparkles_irc_build_plain(const char *account, const char *password,
                            char *output, size_t output_size);
+/* Extract trusted IRCv3 server account-tag from an already TLS-verified line.
+ * Reject missing/anonymous/malformed tags; never infer account from nickname. */
+int sparkles_irc_parse_account_tag(const char *line, char *account,
+                                  size_t account_size);
 int sparkles_irc_parse_privmsg(const char *line,
                              char *sender, size_t sender_size,
                              char *target, size_t target_size,
