@@ -124,6 +124,39 @@ static int find_explicit_date(const char *text,char date[11])
     }
     return 0;
 }
+/* Authoritative pre-confirmation conflict check; never model arithmetic. */
+static int check_schedule_plan(const sparkles_schedule_plan_t *plan,
+                               const char *account)
+{
+    unsigned int i,j;
+    if(!owner||!owner->invoke_service)return -2;
+    for(i=0U;i<plan->count;++i) {
+        const sparkles_schedule_item_t *e=&plan->items[i];
+        sparkles_mariadb_create_request_t req={{0}};
+        sparkles_mariadb_check_reply_t out={0};
+        size_t used=0U;
+        stnlabz_module_result_t rc;
+        for(j=0U;j<i;++j) {
+            const sparkles_schedule_item_t *prev=&plan->items[j];
+            if(!strcmp(e->date,prev->date) &&
+               strcmp(e->begin,prev->end)<0 &&
+               strcmp(prev->begin,e->end)<0)
+                return -1;
+        }
+        if(snprintf(req.start_time,sizeof req.start_time,"%s %s:00",
+                    e->date,e->begin)!=19 ||
+           snprintf(req.end_time,sizeof req.end_time,"%s %s:00",
+                    e->date,e->end)!=19)return -2;
+        memcpy(req.account,account,strlen(account)+1U);
+        memcpy(req.title,e->title,strlen(e->title)+1U);
+        rc=owner->invoke_service(SPARKLES_MARIADB_CHECK_SERVICE,
+            &req,sizeof req,&out,sizeof out,&used);
+        if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return -2;
+        if(out.status==SPARKLES_MARIADB_CHECK_CONFLICT)return -1;
+        if(out.status!=SPARKLES_MARIADB_CHECK_FREE)return -2;
+    }
+    return 1;
+}
 static int finish_schedule(const sparkles_schedule_plan_t *plan,
                            const char *account)
 {
@@ -201,6 +234,15 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             for(i=0U;i<plan.count;++i)
                 if(!strcmp(plan.items[i].date,"UNKNOWN"))
                     memcpy(plan.items[i].date,date,11U);
+            {
+                int check=check_schedule_plan(&plan,account);
+                if(check!=1) {
+                    pending_clear(account,sender);
+                    return schedule_reply(reply,ctx,
+                        check==-1?"The proposed time conflicts with your calendar; nothing saved.":
+                                  "Calendar conflict check unavailable; nothing saved.");
+                }
+            }
             if(!pending_save(account,sender,&plan,0))
                 return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
             if(!send_schedule_summary(sender,&plan)) {
@@ -273,6 +315,12 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             if(!has_explicit || strcmp(plan.items[i].date,explicit_date))
                 memcpy(plan.items[i].date,"UNKNOWN",8U);
             if(!strcmp(plan.items[i].date,"UNKNOWN"))needs_date=1;
+        }
+        if(!needs_date) {
+            int check=check_schedule_plan(&plan,account);
+            if(check!=1)return schedule_reply(reply,ctx,
+                check==-1?"The proposed time conflicts with your calendar; nothing saved.":
+                          "Calendar conflict check unavailable; nothing saved.");
         }
         if(!pending_save(account,sender,&plan,needs_date))
             return schedule_reply(reply,ctx,"Calendar proposal unavailable.");
