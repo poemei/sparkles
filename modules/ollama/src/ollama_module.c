@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 0U
-#define OLLAMA_VERSION_PATCH 16U
+#define OLLAMA_VERSION_PATCH 17U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -308,8 +308,17 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
         (void)pthread_mutex_unlock(&pending_lock);
     }
-    /* Model extracts intentions, but cannot write or make authoritative
-     * decisions. Strict parsing and a separate human confirmation are required. */
+    /* Only invoke the calendar extractor when the utterance plausibly
+     * describes a scheduled commitment. Ordinary social conversation must
+     * not be reclassified as an appointment. */
+    if(!calendar_request(text) &&
+       !strstr(text,"pm") && !strstr(text,"am") &&
+       !strstr(text,"PM") && !strstr(text,"AM") &&
+       !strstr(text,"host") && !strstr(text,"Host") &&
+       !strstr(text,"meeting") && !strstr(text,"Meeting") &&
+       !strstr(text,"event") && !strstr(text,"Event"))
+        return 0;
+    /* The model proposes only; MariaDB and human confirmation authorize. */
     if(strlen(text)>700U)return 0;
     n=snprintf(prompt,sizeof prompt,
         "Extract at most 2 calendar events directly stated by the human. "
@@ -573,6 +582,10 @@ static stnlabz_module_result_t chat_controller(
  result=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
  if(result!=STNLABZ_MODULE_OK)return result;
  if(used!=sizeof out)return STNLABZ_MODULE_ERR_INVALID_STATE;
+ if(!strcmp(out.text,command->arguments)) {
+  fprintf(stderr,"[OLLAMA] rejected verbatim conversational echo\\n");
+  return STNLABZ_MODULE_ERR_INVALID_STATE;
+ }
  if(!ensure_peer_prefix(command->arguments,out.text,sizeof out.text))
   return STNLABZ_MODULE_ERR_INVALID_STATE;
  if(extract_peer_target(command->arguments,peer_target,sizeof peer_target))
@@ -580,12 +593,13 @@ static stnlabz_module_result_t chat_controller(
  /* Memory contains private account-scoped records. Never let a channel
   * reply disclose them; the account holder receives the response in DM. */
  if(memory_available && memory.recalled && memory.previous[0]) {
+  /* Transport delivers a single DM. No second route reply:
+   * the caller may already be inside a DM. */
   if(!owner || !owner->send_private_message ||
      !command->sender[0] ||
      !owner->send_private_message(command->sender,out.text))
    return STNLABZ_MODULE_ERR_INVALID_STATE;
-  return reply(reply_context,"I've replied to you privately.")
-    ? STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+  return STNLABZ_MODULE_OK;
  }
  return reply(reply_context,out.text)
   ? STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
