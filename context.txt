@@ -1,244 +1,257 @@
-STN-LABZ / RICTUS — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot date: 2026-11-03 (America/Los_Angeles)
-Document type: Project continuity record; informational, not a controlled policy
-Status: DEVELOPMENT HOLD — no implementation, commits, installation, or activation until the human operator directs otherwise.
+STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
+Snapshot date: 2026-11-10 (America/Los_Angeles)
+Document type: Conversation continuity record; informational, NOT controlled policy
+Repository: https://github.com/poemei/sparkles
+Status: READ / HANDOFF ONLY — this record does not authorize development
 
 ======================================================================
-1. PURPOSE OF THIS FILE
+1. PURPOSE AND CONTINUITY RULE
 ======================================================================
-This file exists to carry verified project context into a new ChatGPT
-conversation when the previous conversation becomes too long or is lost.
-It records the state described and observed during the present development
-session. It does not create, amend, or supersede STN-LABZ policies, mission
-assignments, architecture, roadmaps, or human authorization.
+This file preserves project context when ChatGPT conversations become too
+long, inaccessible, or disconnected. Future assistants will read it alongside
+AGENTS.md, README.md, docs/ROADMAP.md, and applicable STN-LABZ controlled
+engineering documentation before any requested development.
 
-Read this file and AGENTS.md before any subsequent development work.
-Check the current repository state and controlled documents rather than
-assuming this snapshot is permanently current. Preserve discrepancies;
-do not silently reinterpret missing or conflicting metadata.
+The operator has already established Sparkles' purpose and major design
+decisions. Do not require the operator to retell the project history merely
+because a ChatGPT conversation cannot be opened. Use documented evidence,
+distinguish known facts from gaps, and ask only about information genuinely
+missing for a newly authorized step.
 
-======================================================================
-2. PROJECT IDENTITY AND ARCHITECTURE
-======================================================================
-Project: Rictus — STN-LABZ Control Automated Agent
-GitHub repository: https://github.com/poemei/rictus
-Repository branch used during this session: default/main
-Mission: Mission operations and control, under human-directed authority.
+This is NOT a new policy, ratification, acceptance record, instruction to
+advance the roadmap, or permission to modify, deploy, or activate anything.
+The operator retains final engineering and development direction.
 
-Rictus is a distinct agent derived from the shared STN-LABZ Core
-foundation. STN-LABZ owns Core and the shared module ABI; mission-specific
-behavior belongs in independent modules. The shared Module ABI is 1.5.
-Core policy evaluation is the existing service stnlabz.policy.evaluate.
-The Compliance module uses a governance-backed control broker; it must
-not treat policy-text matches as permission. Executor remains deliberately
-suppressed; no restart, stop, deployment, mutation, or similar live
-operational authority has been granted by the work documented here.
-
-Operator statement: Rictus's roadmap is synchronized with Digit Web.
-This synchronization is operator-reported; it was NOT independently
-verified in this conversation. Do not create an independent Rictus roadmap
-or modify either roadmap based solely on this context file.
+SOURCE CORRECTION: The previous context.txt in THIS Sparkles repository
+contained a Rictus-only handoff dated 2026-11-03. That content referred
+to https://github.com/poemei/rictus, Compliance 1.1.4, and a Rictus HOLD.
+It did not describe Sparkles and must not be treated as Sparkles' mission
+state. Its prior Git blob was 250dad0d2b7939ce1f0c573c10c73e2beef8432a
+for historical recovery. Rictus is a separate project; do not alter its
+repository or import its mission, policy-control, supervisor, executor, or
+threat-intelligence responsibilities into Sparkles.
 
 ======================================================================
-3. GOVERNING MATERIAL AND DEVELOPMENT PRACTICE
+2. PROJECT IDENTITY AND DESTINATION
 ======================================================================
-Consult and comply with the actual authoritative sources, including:
-- AGENTS.md (the supplied STN-LABZ engineering instructions).
-- Repository README.md and docs/ROADMAP.md.
-- STN-LABZ controlled policies, General Orders, engineering workflow,
-  documentation rules, change-request provisions, and mission directives.
-- Relevant controlled documents supplied with the STN-LABZ project.
+Project: Ms. Sparkles — STN-Labz Executive Assistant AI Agent.
+Runtime IRC identity in observed tests: SparklesR.
+Sparkles is an independent executive-assistant agent, NOT Rictus renamed.
 
-Human direction is final within applicable boundaries. One authorized
-engineering step at a time. Keep these gates distinct:
-(1) source commit, (2) compilation/tests, (3) module qualification,
-(4) authorized activation, (5) end-to-end operator client test,
-(6) explicit operator acceptance, (7) authorization of the next step.
-Passing tests or working runtime output alone does NOT establish formal
-operator acceptance or permission to begin another development step.
+OPERATOR-ESTABLISHED DESTINATION: SECOND LIFE (SL).
+IRC is a temporary development and testing environment. It is NOT the
+end goal, and the operator explicitly directed developers NOT to get hung
+up on IRC-specific polish at the expense of Sparkles' lasting intelligence.
 
-The operator has strongly preferred GitHub repository changes to be made
-through GitHub directly; do NOT redirect repository work to ChatGPT Work.
-Never commit the controlled policy archive, full-text catalog, or generated
-policy_index.tsv to the public/project source repository without explicit
-operator direction. Preserve AI code annotations required by controlled
-engineering documentation when changes are authorized.
+The intended agent will function as an executive assistant who can
+converse naturally, remember people and interactions over time, understand
+relationships and roles, help with scheduling and coordination, and
+eventually interact in Second Life. These are intended capabilities, not
+blanket claims that the deployed system already performs them.
 
-======================================================================
-4. POLICY CORPUS AND RETRIEVAL PIPELINE
-======================================================================
-Operator-supplied policy archive: STN_POLICIES_TXT.zip
-Corpus observed in this session: 47 TXT documents / 41 root families.
-Original/root documents are R0, with Revision ID NONE; R0 is not an
-additional revision. Some documents carry declared metadata discrepancies
-(e.g. heading or filename revision mismatch, filename/root ID mismatch).
-These are reported as evidence, not silently corrected.
-
-Repository tool chain:
-- tools/policy_inventory.py: ZIP inventory and optional full-text export.
-- tools/policy_lookup.py: literal lookup, with optional whole-term mode.
-- tools/policy_control_evidence.py: operation/target evidence packet,
-  retaining UNKNOWN governing facts and NOT_EVALUATED decision.
-- tools/policy_runtime_index.py: full-corpus TSV index exporter, with
-  filename-root fallback for documents lacking declared root metadata.
-- tools/test_policy*.py: regression tests.
-
-Locally used commands:
-  python3 tools/policy_inventory.py STN_POLICIES_TXT.zip --include-text > policy_catalog.json
-  python3 -m unittest discover -s tools -p 'test_policy*.py' -v
-  python3 tools/policy_runtime_index.py policy_catalog.json > policy_index.tsv
-
-Operator observed the 17-test Python suite passing (17 tests, OK), and
-subsequently generated policy_index.tsv without exporter error.
-No claim is made here that those checks establish module qualification.
-
-Installed runtime index path:
-  /opt/rictus/modules/compliance/policy_index.tsv
-The file was initially missing, causing index=UNAVAILABLE. After the
-operator provisioned it, the live Rictus client returned index=AVAILABLE.
-The index is read when queried and is separate from source-controlled code.
+IRC and Second Life are transports; identity, memory, reasoning, and
+executive behavior must be platform-independent within approved module
+boundaries. Do not build separate intelligence systems per transport.
+Do not interpret the operator's temporary inability to operate in SL as
+authorization to change Sparkles' destination or priorities.
 
 ======================================================================
-5. CURRENT COMPLIANCE IMPLEMENTATION
+3. GOVERNING ARCHITECTURE AND AUTHORITY
 ======================================================================
-Latest source stage discussed: Compliance 1.1.4.
-Relevant files:
-- modules/compliance/src/compliance_module.c
-- modules/compliance/src/policy_index.c
-- modules/compliance/tests/test_policy_index.c
-- modules/compliance/README.md
-- include/rictus_policy_evidence.h
-- modules/compliance/data/governance.conf
+Current architecture: transport -> generic STN-LABZ Core router ->
+registered module(s) -> transport reply, with local Ollama inference
+and authorized MariaDB context through module services.
 
-Main routes and service:
-- /control <operation> <target>: existing governance-backed request to
-  Core policy evaluator; executor remains SUPPRESSED.
-- /policy-evidence <operation> <target>: read-only policy index query.
-- rictus.policy.evidence: internal source-evidence lookup service.
+Core owns generic lifecycle, routing, logging, module management.
+Transports own their protocol processing and delivery.
+Inference processes conversation; MariaDB supplies authorized context
+and structured records; executive features belong outside generic Core.
+Maintain the shared ABI contract. Do not change Core, Ezra's independent
+source repository, or shared ABI without explicit approval.
+Avoid canned conversational scripts and extra routing chains.
+Do not introduce Rictus-specific operational control into Sparkles.
 
-The /policy-evidence output includes independent operation/target match
-counts, first matching document and line, plus same_line and joint_source.
-The same_line count reflects both terms occurring on the SAME indexed line.
-It is a lexical correlation signal ONLY. It does not establish relevance
-in a legal/policy sense, policy applicability, controlling revision,
-conflict resolution, instruction authorization, or delegated authority.
-A same_line=0 result does not mean no governing policy exists.
+Read repository AGENTS.md and README.md plus docs/ROADMAP.md before changes.
+Follow applicable STN-LABZ General Orders, AI LAW, engineering documentation,
+module creation and qualification rules. One authorized increment at a time.
+The operator's decisions control within lawful and technically possible
+limits. Do not infer authorization from the ability to edit or run code.
 
-The scanner preserves source fingerprints internally. Earlier lookup
-reports preserve original filename, root, declared revision, source line,
-SHA-256 file bytes, and metadata issue markers. Do not claim that the
-runtime command independently determines authoritative policy revision.
+GITHUB-ONLY WORKFLOW: When a GitHub repository is supplied for development,
+use GitHub directly; ChatGPT Work is disabled by explicit operator direction.
+Do not propose or redirect development to Work. Do not create branches or
+workflows. Change only authorized files and report exact commits/results.
 
-Last code commit reported for the 1.1.4 evidence-correlation step:
-  e816df0de34ca2dad40121343adf944be246b553
-This is not a guarantee it remains the HEAD of the repository later.
-
-======================================================================
-6. OBSERVED OPERATOR CLIENT TESTS — COMPLIANCE 1.1.4
-======================================================================
-The operator supplied these actual client results:
-
-Input:
-  /policy-evidence restart digit
-Observed:
-  Policy evidence: operation=restart target=digit index=AVAILABLE
-  matches=2/129 op_source=20260822.2:203
-  target_source=20260729.1:19 same_line=0 joint_source=NONE:0
-  decision=NOT_EVALUATED execution=SUPPRESSED
-
-Input:
-  /policy-evidence nonexistent unknown
-Observed:
-  Policy evidence: operation=nonexistent target=unknown index=AVAILABLE
-  matches=0/58 op_source=NONE:0 target_source=20260729.5:1
-  same_line=0 joint_source=NONE:0
-  decision=NOT_EVALUATED execution=SUPPRESSED
-
-Note: 'unknown' has 58 independent lexical matches in the corpus.
-The second query is not a combined 0-match result. Both queries had zero
-SAME-LINE co-occurrences. Independent term counts must not be conflated
-with operation-specific applicability or permissions.
-
-Input:
-  /control restart digit
-Observed:
-  Control: decision=ESCALATE policy=CORE.UNKNOWN
-  reason=governing_state_unknown operation=restart target=digit
-  assigned_mission=VERIFIED known=0/0/0/0
-  executor=BLOCKED execution=SUPPRESSED
-
-Interpretation:
-- Client command routing and index availability were demonstrated.
-- The same-line evidence fields were present and zero in both scenarios.
-- Mission identity verification does not prove operation authorization.
-- Governing facts remained unknown; restart was NOT authorized.
-- Core/ABI were not modified in the policy evidence development steps.
-
-The operator submitted live client results and the assistant marked the
-runtime scenarios PASS. Formal operator acceptance was not separately
-stated as such. The operator subsequently explicitly ordered a HOLD.
-
-The earlier instruction to run:
-  make -C modules/compliance clean all test
-was given, but no complete output of that C build/test command appears in
-the shared conversation context. Do NOT record its results as independently
-verified merely because the runtime command was observed working.
+Evidence gates remain separate:
+  1. Source edit and commit/version
+  2. Native compilation and automated tests
+  3. Module qualification
+  4. Authorized installation/activation
+  5. End-to-end tests in operator-selected client
+  6. Explicit operator acceptance
+  7. Authorization of the next named step
+Passing one gate does not prove another. A roadmap is not authorization.
 
 ======================================================================
-7. OPEN TECHNICAL LIMITATION AND DIRECTION
+4. RECOVERED SL EXECUTIVE AGENT DISCUSSION — DESIGN INTENT
 ======================================================================
-Rictus can find policy words and demonstrate same-line co-occurrence, but
-cannot yet resolve which controlled requirements actually govern a
-particular proposed action. The existing operation-specific governance
-record continues to determine known/unknown governing facts for /control.
+Recovered source: Operator-supplied excerpt of the ChatGPT conversation
+named "SL Executive Agent Discussion" (pasted into this 2026-11-10
+continuity session). The entire conversation was NOT accessible; record
+only the supplied excerpt as recovered evidence.
 
-The operator criticized repeated cycles of keyword counts, narrow
-correlation features, and tests that did not solve applicability. Do not
-restart that repetitive pattern or present small retrieval refinements as
-major mission advancement. Any future direction must come from the human
-operator and be checked against the synchronized Digit Web roadmap and
-the actual controlled policy/mission documents.
+The operator emphasized:
+- Second Life is Sparkles' eventual operating environment; IRC is a
+  useful temporary test interface, not the mission itself.
+- Persistent memory must survive reconnects, process restarts, and
+  potentially many months between conversations.
+- Sparkles should know people by reliable identities, not nicknames alone.
+- Relationship intelligence matters: people, roles, affiliations,
+  histories, and interactions, with speaker attribution and provenance.
+- Conversational awareness distinguishes a direct address requiring a
+  reply from authorized ambient conversation requiring no reply.
+- Relevant surrounding conversation can contribute context; private
+  conversation must not become automatically public knowledge.
+- Contextual reasoning should use prior observations meaningfully,
+  not merely parrot a stored sentence or hardcoded greeting.
+- The same intelligence must work through authorized transports without
+  binding cognition to IRC implementation details.
 
-This paragraph is a description of a limitation, NOT authorization to
-implement semantic applicability, automated permissions, a new evaluator,
-new policy rules, changes to Core, or an operational executor.
-
-======================================================================
-8. CURRENT HUMAN DIRECTIVE — HOLD
-======================================================================
-The operator said 'hold'. The assistant confirmed:
-  'All Rictus development is paused. No further changes, commits, or
-   development actions until you direct otherwise.'
-The operator later stated the roadmap is synchronized with Digit Web.
-This did not lift the hold. The operator also expressed dissatisfaction
-with loss of long-chat continuity and requested a context.txt handoff.
-
-CURRENT DEVELOPMENT AUTHORIZATION: NONE.
-CURRENT STOPPING POINT: Compliance 1.1.4 live client evidence reported;
-  /control remains ESCALATE/CORE.UNKNOWN, executor BLOCKED/SUPPRESSED.
-NEXT AUTHORIZED STEP: NONE — await human direction.
-
-This file is a continuity deliverable only. Writing or reading it does
-not lift the hold or authorize modifications to GitHub, local runtime,
-roadmaps, or controlled policy.
+These are operator-described goals. A prior assistant proposed collecting
+ambient messages only in approved channels; that recommendation by itself
+was NOT approval for unrestricted collection. Later source changes are
+recorded separately below.
 
 ======================================================================
-9. INSTRUCTIONS FOR THE NEXT SESSION
+5. LAURIE / POEMEI LIVE IRC EXCERPT — OBSERVATIONS AND LIMITS
 ======================================================================
-1. Read this context.txt and AGENTS.md before suggesting development.
-2. Check repository README.md, docs/ROADMAP.md, and current GitHub HEAD
-   against this snapshot when the operator requests relevant work.
-3. Preserve the HOLD until the operator explicitly changes it.
-4. Distinguish factual observations from unverified claims, plans,
-   speculative suggestions, and formal operator acceptance.
-5. Never infer ALLOW, governing applicability, or delegated authority
-   from lexical search results, co-occurrence, or an approved document
-   status alone.
-6. Avoid unnecessary repetition and relitigating established decisions.
-7. Do not edit synchronized roadmaps, controlled documentation, Core,
-   shared ABI, or deploy/activate executors without specific direction.
-8. Do not silently alter this snapshot to make future activity appear
-   approved; update the context record when there is a real, authorized
-   milestone and record source evidence.
+In a user-supplied IRC transcript, Laurie_Vo introduced herself to
+SparklesR as "Laurie", and as Poe's best friend and student.
+Sparkles replied "I'll remember that." Laurie disconnected and
+rejoined; subsequently, Sparkles privately greeted Laurie by name.
+The transcript does not independently prove six-month recall, confirm
+IRC account identity continuity, or validate all database writes.
 
-END OF CONTEXT — 2026-11-03 (America/Los_Angeles)
+Reported conversation-quality failures:
+- Repeated "I've replied to you privately" notices, including during DM.
+- An inappropriate "I'm not Laurie. I'm Sparkles, the executive assistant"
+  response during ordinary social interaction.
+- Replies that repeated or echoed conversational material.
+- False peer-relay / unhelpful responses in some contexts.
+- Missing contextual intake of PoeMei's ambient conversation.
+The operator specifically observed that Laurie's material entered
+context while things PoeMei said did not.
+
+Earlier analysis attributed the missing PoeMei context to routing only
+messages explicitly addressed to Sparkles, plus a minimum-length
+memory-intake threshold; these are historical diagnostic claims from the
+recovered discussion, NOT newly reproduced runtime findings.
+Distinguish live evidence, prior diagnosis, source corrections, and
+subsequent qualification.
+
+An introduction such as Laurie's is an attributed speaker assertion,
+not automatically independent verification of a relationship. Verified
+accounts, private delivery, role provenance, and social discretion remain
+important. Do not record unrelated sensitive personal chat from the
+provided transcript in this handoff.
+
+======================================================================
+6. GITHUB ROADMAP — SOURCE AND OBSERVED STATE
+======================================================================
+The repository docs/ROADMAP.md, read 2026-11-10, is the detailed
+engineering/evidence record. Re-read its current revision rather than
+treating this snapshot as a permanent live-status source.
+
+Operator-observed foundation (2026-11-10):
+- Sparkles interactive Core startup and identity routing.
+- Identity v1.1.3 was observed ACTIVE.
+- Local Ollama inference returned an interactive response.
+- IRC successfully routed an Identity request and a greeting with
+  Digit/digicat. This does not qualify robust IRC connectivity.
+- Ollama model startup initially failed on a missing environment variable;
+  a later source correction removed that requirement.
+- IRC cold-start and reconnect reliability remained unqualified.
+
+Trained executive model:
+- Executive v0.3.1 LoRA training and GGUF merge were operator-reported.
+- The merged model was imported separately in Ollama as
+  sparkles-executive:v0.3.1; it was NOT confirmed active in SparklesR.
+- Manual scheduling tests covered meeting intervals and conflict cases.
+- Some mandatory-break tests produced incorrect YES approval despite a
+  correct explanation of the conflict. Later correct answers did not
+  eliminate that inconsistency. Full qualification was outstanding.
+
+Stage 2 MariaDB / schedule source progression recorded by the roadmap:
+- MariaDB v1.0.0: local connection/schema status.
+- MariaDB v1.1.0: bounded read-only appointment service.
+- IRC v1.1.3 + MariaDB v1.2.0: authenticated account-tag route and
+  private /schedule command with local account allowlist.
+- MariaDB v1.3.0: explicit authorized appointment-add with transactional
+  overlap rejection.
+- Ollama v1.0.14 + MariaDB v1.4.0: human-confirmed conversational
+  scheduling proposal and typed create service.
+- Ollama v1.0.15: source response to observed failed schedule extraction.
+- MariaDB v1.5.0 + Ollama v1.0.16: bounded, account-scoped persistent
+  conversational observations through conversation_context, with
+  historical statements treated as unverified and memory-informed
+  replies delivered privately.
+- Ollama v1.0.17 + IRC v1.1.4: source corrections to duplicate DM notices,
+  verbatim echoes, unrelated calendar extraction, and ambient context
+  ingestion from already-configured IRC channels with validated accounts.
+  Core, ABI, and MariaDB v1.5.0 remained unchanged for this correction.
+
+IMPORTANT: The roadmap records these later increments as GitHub SOURCE
+work, not blanket proof of native builds, live operation, durable recall,
+correct social behavior, or operator acceptance. The earlier Laurie
+observations motivated corrections but do not prove those corrections
+passed future end-to-end testing. The roadmap contains some event labels
+dated 2026-11-11 despite this 2026-11-10 session date; retain source
+dates as recorded without silently rewriting chronology.
+
+Still outstanding per roadmap: broader contextual understanding,
+relationship/identity linkage across platforms, relevance/summarization,
+social discretion, reliable scheduling decisions, full bench tests,
+operator acceptance, and Second Life in-world transport and qualification.
+No accepted SL deployment or general executive authority is established.
+
+======================================================================
+7. IMPORTANT SEPARATIONS FOR FUTURE SESSIONS
+======================================================================
+Do NOT conflate:
+- Second Life mission destination with current IRC development transport.
+- Source commit with compiled, activated, or operator-accepted behavior.
+- A model's verbal promise to remember with verified durable memory.
+- An IRC reconnect with a six-month absence or full identity verification.
+- A person's statement about a relationship with verified facts.
+- Ambient observation with permission to publish or act on private data.
+- Manual LLM scheduling accuracy with authorized calendar mutations.
+- A prior assistant's analysis/recommendation with a human decision.
+- Sparkles with Rictus, Digit, or Ezra. Shared Core does not merge missions.
+- A continuity snapshot with authoritative policy, roadmap, or live HEAD.
+
+If a material state is not independently verified, label it UNKNOWN.
+Report the evidence and limitation; do not fabricate success.
+
+======================================================================
+8. CURRENT AUTHORIZATION AND NEXT-SESSION HANDOFF
+======================================================================
+This context update was specifically requested by the operator to prevent
+lost-conversation repetition. It authorizes updating THIS context.txt only,
+not modifying source, roadmap, Core, ABI, other repositories, runtime,
+installed models, MariaDB contents, or Second Life systems.
+
+CURRENT DEVELOPMENT AUTHORIZATION: NONE beyond this continuity-file edit.
+NEXT AUTHORIZED IMPLEMENTATION STEP: NONE specified; await operator direction.
+No deployment, installation, activation, or qualification performed here.
+
+When development is next requested:
+1. Read context.txt, AGENTS.md, README.md and docs/ROADMAP.md.
+2. Inspect actual current repository files/revisions relevant to the task.
+3. Use the recovered SL discussion goals without demanding that the
+   operator explain the same historical decisions again.
+4. Honor the exact human-assigned scope and preserve module boundaries.
+5. Make GitHub changes directly, not through ChatGPT Work.
+6. Report changed files, commit identity, actual checks, unverified
+   behavior, and explicit acceptance status; then stop.
+
+END OF SPARKLES CONTEXT — 2026-11-10 (America/Los_Angeles)
