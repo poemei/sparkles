@@ -73,6 +73,14 @@ static int pending_save(const char *account,const char *sender,
     (void)pthread_mutex_unlock(&pending_lock);
     return slot>=0;
 }
+static void pending_clear(const char *account,const char *sender)
+{
+    int slot;
+    (void)pthread_mutex_lock(&pending_lock);
+    slot=pending_find(account,sender,time(NULL));
+    if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
+    (void)pthread_mutex_unlock(&pending_lock);
+}
 static int schedule_reply(stnlabz_module_command_reply_fn reply,void *ctx,
                           const char *text)
 {
@@ -195,8 +203,10 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     memcpy(plan.items[i].date,date,11U);
             if(!pending_save(account,sender,&plan,0))
                 return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
-            if(!send_schedule_summary(sender,&plan))
+            if(!send_schedule_summary(sender,&plan)) {
+                pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
+            }
             return schedule_reply(reply,ctx,
                 "I sent your appointment details privately for confirmation.");
         }
@@ -267,8 +277,10 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         if(needs_date)
             return schedule_reply(reply,ctx,
                 "I have your event details. Which date (YYYY-MM-DD)?");
-        if(!send_schedule_summary(sender,&plan))
+        if(!send_schedule_summary(sender,&plan)) {
+            pending_clear(account,sender);
             return schedule_reply(reply,ctx,"Private confirmation unavailable.");
+        }
         return schedule_reply(reply,ctx,
             "I sent your appointment details privately for confirmation.");
     }
