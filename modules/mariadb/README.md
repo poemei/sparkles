@@ -77,29 +77,29 @@ Install/qualify the updated IRC and MariaDB modules together; verify version `ir
 
 ## Authenticated appointment creation (v1.3.0)
 
-The same server-verified IRC account and private 0600 allowlist authorize an **explicit** new command. The user must supply one single-day event with a date, 24-hour start and end clock times, and a title (maximum 200 UTF-8 bytes). The end must be later than the start, on the same date. Use the same local time convention as the existing MariaDB \`DATETIME\` records; times do **not** carry a timezone.
+The same server-verified IRC account and private 0600 allowlist authorize an **explicit** new command. The user must supply one single-day event with a date, 24-hour start and end clock times, and a title (maximum 200 UTF-8 bytes). The end must be later than the start, on the same date. Use the same local time convention as the existing MariaDB `DATETIME` records; times do **not** carry a timezone.
 
-\`\`\`text
+```text
 SparklesR: /appointment-add 2026-11-11 14:00 16:00 The River - DJ Rachel
 SparklesR: /appointment-add 2026-11-11 18:00 20:00 Shenanigans - DJ Katy
 SparklesR: /schedule 2026-11-11 2026-11-12
-\`\`\`
+```
 
 **Only issue these commands if November 11 is the intended event date.** The conversational example did not specify a date; the module never infers one.
 
 Creation uses a transaction, a bound SQL query locking any overlapping scheduled records, a prepared INSERT, and a process-local mutex. A conflicting interval is rejected without inserting. Equal endpoints between adjacent events do **not** conflict. Concurrent access through this module is serialized; external independent database writers must enforce compatible conflict rules themselves. There is no new database schema or migration.
 
-Record details and the new record ID are sent by IRC private message; channel replies report only generic success, conflict, or failure. Commit uncertainty is reported as uncertain: use \`/schedule\` before retrying to prevent duplicates. Bad dates, empty titles, invalid characters, anonymous or non-allowlisted accounts are rejected without writing. The existing \`/schedule\` read path remains unchanged.
+Record details and the new record ID are sent by IRC private message; channel replies report only generic success, conflict, or failure. Commit uncertainty is reported as uncertain: use `/schedule` before retrying to prevent duplicates. Bad dates, empty titles, invalid characters, anonymous or non-allowlisted accounts are rejected without writing. The existing `/schedule` read path remains unchanged.
 
 There is **no** natural-language automatic creation, tentative event proposal, multi-day event, timezone conversion, DJ/venue contact matching, calendar sync, inferred permission, autonomous model action, or update/delete in v1.3.0.
 
 ### Operator test sequence
 
-1. Pull and build \`make -C modules/mariadb clean all test\`; install with the existing service account and verify \`mariadb v1.3.0\` is active.
-2. Send an explicit \`/appointment-add\` with a verified date and future event; expect a private saved confirmation and generic channel acknowledgement.
-3. Query \`/schedule\` for that date; expect the stored event.
-4. Try an overlapping appointment; expect \`Appointment not saved: conflicts...\`, and verify schedule still contains only the approved record.
-5. Try a non-allowlisted IRC account; expect \`Appointment access denied.\` with no insert.
+1. Pull and build `make -C modules/mariadb clean all test`; install with the existing service account and verify `mariadb v1.3.0` is active.
+2. Send an explicit `/appointment-add` with a verified date and future event; expect a private saved confirmation and generic channel acknowledgement.
+3. Query `/schedule` for that date; expect the stored event.
+4. Try an overlapping appointment; expect `Appointment not saved: conflicts...`, and verify schedule still contains only the approved record.
+5. Try a non-allowlisted IRC account; expect `Appointment access denied.` with no insert.
 6. Verify two adjacent appointments sharing a boundary are accepted if that behavior is desired.
 
 All database writes require human command input. Neither build nor activation is operator acceptance.
