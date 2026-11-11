@@ -24,6 +24,26 @@ static int service_registered;
 static int command_registered;
 static stnlabz_module_result_t generate(const void *,size_t,void *,size_t,size_t *,void *);
 static const int schedule_extraction_mode=1;
+static int timed_commitment(const char *text)
+{
+    const unsigned char *p=(const unsigned char *)text;
+    if(!p)return 0;
+    for(;*p;++p) {
+        const unsigned char *q;
+        if(*p<'0'||*p>'9')continue;
+        q=p;
+        while(*q>='0'&&*q<='9')++q;
+        if(*q==':' && q[1]>='0'&&q[1]<='9' &&
+           q[2]>='0'&&q[2]<='9')return 1;
+        while(*q==' ')++q;
+        if((q[0]=='a'||q[0]=='A'||q[0]=='p'||q[0]=='P') &&
+           (q[1]=='m'||q[1]=='M') &&
+           !(q[2]>='a'&&q[2]<='z') &&
+           !(q[2]>='A'&&q[2]<='Z'))return 1;
+    }
+    return 0;
+}
+
 static int calendar_request(const char *text)
 {
     static const char *const terms[]={
@@ -311,12 +331,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     /* Only invoke the calendar extractor when the utterance plausibly
      * describes a scheduled commitment. Ordinary social conversation must
      * not be reclassified as an appointment. */
-    if(!calendar_request(text) &&
-       !strstr(text,"pm") && !strstr(text,"am") &&
-       !strstr(text,"PM") && !strstr(text,"AM") &&
-       !strstr(text,"host") && !strstr(text,"Host") &&
-       !strstr(text,"meeting") && !strstr(text,"Meeting") &&
-       !strstr(text,"event") && !strstr(text,"Event"))
+    if(!calendar_request(text) && !timed_commitment(text))
         return 0;
     /* The model proposes only; MariaDB and human confirmation authorize. */
     if(strlen(text)>700U)return 0;
