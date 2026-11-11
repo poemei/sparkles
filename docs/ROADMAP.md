@@ -53,7 +53,9 @@ A roadmap is not permission to implement future stages. Source implementation, b
 - Separate model inferences from authoritative records and confirmed edits.
 - Validate record permissions and positive/negative conversational scenarios.
 
-**Status:** Not implemented or verified in this record.
+**Source increment (2026-11-11):** A standalone `modules/mariadb` v1.0.0 source module has been committed. It uses the existing ABI 1.5 lifecycle and exposes only `sparkles.mariadb.status`; the service verifies a local restricted account connection and all seven existing tables. Credentials are loaded from an operator-owned 0600 local file. Offline parser qualification tests are included. This increment does not implement record reads/writes, identity linking, permission adjudication, automatic logging, chat routing, or scheduling actions. Source exists on GitHub; native compilation/tests, installation, activation and operator acceptance remain unverified.
+
+**Status:** Initial connection/schema module source committed; Stage 2 contextual data operations and acceptance outstanding.
 
 ## Stage 3 — Executive assistance
 
