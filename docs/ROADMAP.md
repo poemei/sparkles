@@ -57,6 +57,8 @@ A roadmap is not permission to implement future stages. Source implementation, b
 
 **Status:** Initial connection/schema module source committed; Stage 2 contextual data operations and acceptance outstanding.
 
+**Read-only appointment lookup increment (source, 2026-11-11):** MariaDB module v1.1.0 adds `sparkles.mariadb.appointments.read`, a private ABI 1.5 service with explicit strict date bounds, prepared SQL, a maximum of eight scheduled records, and an overflow indicator. It is not an IRC/chat feature. Source was committed on GitHub, but native compilation/tests, live database queries, activation and acceptance are **not yet evidenced** for v1.1.0. Current IRC request routing does not carry a verified account identity, so exposing personal schedule data to an IRC user would require a separately authorized authenticated caller/permissions design. There are no record writes and no new Core routes.
+
 ## Stage 3 — Executive assistance
 
 - Scheduling and conflict resolution, natural language intent discovery, multi-party coordination and authorized proactive follow-through.
