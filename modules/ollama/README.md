@@ -75,6 +75,16 @@ Ollama v1.0.17 sends a single DM when retrieved private memory affects its answe
 
 These are source-level changes. Actual model response quality, conversational initiative, and long-term memory recall require operator-observed end-to-end qualification. Do not treat a green module activation as proof of social competence.
 
+## Short-term dialogue continuity (v1.1.0 source)
+
+An operator-observed private conversation using **sparkles-executive:v0.3.1 exclusively** showed generic greetings and literal responses to playful feedback. Prior Ollama chat requests included the current message plus optional MariaDB observations, but did not reliably include the immediately preceding two-sided conversational turns. In particular, short replies such as `yayy` were deliberately excluded from durable observation storage; the model therefore lacked the immediate exchange needed to interpret follow-up teasing.
+
+Ollama v1.1.0 now keeps **two completed human/Sparkles turns per verified account** in a bounded, in-process recent-dialogue buffer and supplies them as labeled context on subsequent ordinary conversational generation. Each side of a turn is capped at 160 bytes, with up to eight account slots and 15-minute idle expiry. A module restart clears it. The controller stores a turn only after successful reply delivery. Entries from one verified account are never used for another account. When prior private conversation informs an answer, the reply is delivered privately; no duplicate acknowledgment is generated.
+
+This is immediate conversational context, **not** a replacement for MariaDB's long-term memories or for independent account verification. The source leaves the operator-trained model, Core, shared ABI, scheduling approval gates, MariaDB data, and IRC transport unchanged. Offline qualification includes five module-side checks for continuity, isolation, two-turn rollover, and clearing. They are source tests only; **native compilation, qualification, deployment and live social-quality improvement have not been verified**. The outstanding operator test is the original affectionate DM exchange, followed by an account-isolation test, using the actual installed model.
+
+**Version numbering:** The pre-existing module source identified itself as v1.0.17, which exceeds STN-LABZ's permitted revision ceiling of 10. This increment uses the next compliant minor-series number v1.1.0 rather than extending the invalid revision sequence. This records a source-label correction, not an independently accepted release.
+
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
