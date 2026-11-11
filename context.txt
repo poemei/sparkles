@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot date: 2026-11-10 (America/Los_Angeles)
+Snapshot updated: 2026-11-11 (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -235,8 +235,8 @@ Report the evidence and limitation; do not fabricate success.
 ======================================================================
 8. CURRENT AUTHORIZATION AND NEXT-SESSION HANDOFF
 ======================================================================
-This context update was specifically requested by the operator to prevent
-lost-conversation repetition. It authorizes updating THIS context.txt only,
+The original context update was requested to prevent lost-conversation
+repetition. This current update also authorizes THIS context.txt only,
 not modifying source, roadmap, Core, ABI, other repositories, runtime,
 installed models, MariaDB contents, or Second Life systems.
 
@@ -254,4 +254,139 @@ When development is next requested:
 6. Report changed files, commit identity, actual checks, unverified
    behavior, and explicit acceptance status; then stop.
 
-END OF SPARKLES CONTEXT — 2026-11-10 (America/Los_Angeles)
+======================================================================
+9. 2026-11-11 — SOCIAL LANGUAGE TRAINING DIRECTION
+======================================================================
+Operator direction: EXTEND the existing Sparkles executive model, not
+replace it with another model. The new language skill is natural Second
+Life kitten/furry colloquial speech, playful teasing, social cues,
+multi-turn awareness, affection and tact, without canned replies or
+compromising executive scheduling and authorization behavior. Operator
+community experience and assessments should not be relitigated.
+
+Repository training files:
+- training/stn_executive_train_v0.3.1.jsonl: original executive dataset
+  pushed by operator, commit 57323ed03785693d7b4c8862db561e8187f6de22.
+  Parsed: 104 valid records; 36 multi-turn records. Original unchanged.
+- training/stn_social_language_v0.1.0.jsonl: first additional dataset,
+  created on main at operator direction, commit
+  e5de734bda9b4cd530918ec6bf0e08ed05bffded.
+  Parsed on GitHub readback: 67/67 valid JSONL records, all multi-turn.
+  Topics: cheeky kitten/furry speech, natural greetings, bedtime,
+  affectionate slang, user boundaries and tone, conversational repair,
+  privacy, verified identities, and shifts back to executive tasks.
+  It is a preliminary corpus; structure checks do not prove quality.
+- Original plus new: 171 separate records, NOT yet merged into one file.
+
+Operator supplied executive.lora.gguf, executive.lora.gguf.best,
+and Modelfile in conversation (not GitHub). Do NOT upload adapters to
+GitHub without explicit instruction. Modelfile pointed at:
+  /home/stnchain/gguf-training/output/executive-v0.3.1/executive-merged.gguf
+The current existence of that original export location was not checked.
+
+======================================================================
+10. RECOVERED ORIGINAL TRAINING AND MODEL FILE LINEAGE
+======================================================================
+Operator Bash history showed the successful original executive training
+used the prebuilt ./bin/llama-v2026.10.31/llama-finetune and the GGUF:
+  /usr/share/ollama/.ollama/models/blobs/sha256-85e4a5b7b8ef0e48af0e8658f5aaab9c2324c76c1641493f4d1e25fce54b18b9
+with stn_executive_train_v0.3.1.jsonl, output prefix
+output/executive-v0.3.1/executive.gguf, -ngl 0, -t 2, -c 256,
+-b 256, -ub 64, -fa on, --reasoning off, LoRA attention
+(q,k,v,output) weights, rank 4, alpha 8, AdamW, lr 2e-4,
+1 epoch, validation split 0.1. History contains an initial
+--stop-after 1 call and a later --checkpoint-every 10 --resume call.
+Original merge command used ./llama-src/build/bin/llama-export-lora
+with the original base GGUF and
+output/executive-v0.3.1/executive.lora.gguf.best to create
+output/executive-v0.3.1/executive-merged.gguf.
+
+The operator confirmed Ollama's sparkles-executive:v0.3.1 FROM line:
+  /usr/share/ollama/.ollama/models/blobs/sha256-5b671415cc6574d99e62fda4fe170afc09956d66ce4048a3bac6872e6639c8bb
+Operator's ls -lh confirmed both blobs still exist on their machine:
+original GGUF ~2.4G; merged executive GGUF ~3.6G. They are
+different files. A locally compiled llama-cli successfully performed
+CPU inference on the merged model, responding "Hello, sunshine!" to
+"Hello, Sparkles. Say hello." This establishes inference, not training.
+
+======================================================================
+11. v0.3.2 CONTINUATION TRAINING — REPRODUCIBLE FAILURE
+======================================================================
+Operator attempted LoRA fine-tuning of the 67-record social dataset
+directly on the merged executive GGUF to create a separate v0.3.2.
+Command used -f data/stn_social_language_v0.1.0.jsonl,
+-o output/executive-v0.3.2/executive.gguf, -ngl 0, -t 2,
+-c 256, -b 256, -ub 64, same LoRA target/rank 4/alpha 8,
+AdamW, lr 2e-4, 1 epoch, val split 0.1, --stop-after 1.
+The merged GGUF loaded with Qwen3 architecture, 398 tensors,
+mixed 145 f32, 144 f16, 90 q4_K, 19 q6_K, ~3.57 GiB.
+All 67 JSONL chats loaded with 0 skipped, 17,051 tokens
+(including 6,916 padding), 2,038 trained (12%). 144 LoRA
+pairs initialized. BEFORE completion of first training step:
+  ggml-backend.cpp:1248: GGML_ASSERT(*cur_backend_id != -1) failed
+Debug backtrace:
+  ggml_backend_sched_split_graph ->
+  ggml_backend_sched_alloc_graph ->
+  ggml_opt_alloc(backward=true) ->
+  llama_context::opt_epoch_iter(train=true)
+This is a backend-assignment failure in the training backward graph;
+exact problematic node and ultimate cause remain UNKNOWN. Do NOT
+present an unsupported op, quantization limitation or upstream bug
+as proven. The diagnostic log also mentioned embedding-input
+mask override just before assertion.
+
+Reproduction covered prebuilt and clean compiled llama-tq v2026.10.31,
+build 10086 commit fed4890a4; Zen4 and isolated generic x64 CPU
+backends; flash attention on/off; gradient checkpointing on/off.
+A clean Debug build loaded CPU and passed inference but failed the
+same fine-tuning assertion. No v0.3.2 adapter/merged model was
+successfully produced or accepted.
+
+The source distinction is important:
+- ./llama-src is ggml-org/llama.cpp at aa75ff323 (different project).
+- ./llama-tq-src is LL4nc33/llama-tq at v2026.10.31 fed4890a4.
+- llama-tq default remote branch is origin/turboquant, NOT main.
+- The only two commits newer than tag in that branch were
+  f572e7348 and 773b8dfb0, documentation-only.
+  Changed files: CHANGELOG.md, README.md,
+  docs/benchmarks/README.md, docs/tensor-split.md.
+  No upstream source-code fix was observed there.
+
+Build details:
+- Operator rebuilt official source via CMake without source edits.
+- build-sparkles-debug uses GGML_BACKEND_DL=ON and builds
+  llama-finetune. A dynamic libggml-cpu.so loads; an empty
+  --list-devices line did not prevent successful CPU inference.
+- build-sparkles-export uses GGML_BACKEND_DL=OFF and builds
+  llama-export-lora. The exporter target is deliberately excluded
+  by upstream tools/CMakeLists.txt if GGML_BACKEND_DL=ON.
+  The operator verified the exporter.
+- No training/build diagnostic modified the live Ollama model.
+
+FIRM OPERATOR CONSTRAINT: "only code I change is my own".
+Do not patch, instrument, or insert source code into third-party
+llama-tq or llama.cpp. Unmodified official source builds are allowed.
+Avoid blind rerun cycles and interactive llama-cli for model metadata
+inspection. An earlier interactive CLI command was difficult to
+terminate and frustrated the operator; it eventually stopped.
+
+Latest direction before bedtime was a read-only, NONINTERACTIVE
+comparison of original and merged GGUF tensor metadata to see
+whether format changed materially, plus comparison of successful
+original v0.3.1 training versus failing continuation training.
+This comparison is NOT completed and is not authorization to
+change models or launch more tests. Preserve v0.3.1, both blobs,
+original adapters and training datasets.
+
+======================================================================
+12. CURRENT AUTHORIZATION — CONTINUITY FILE ONLY
+======================================================================
+The operator currently authorized updating THIS context.txt only,
+not other source, datasets, models, adapters, trainer, roadmap,
+installation, deployment or activation. This document remains
+INFORMATIONAL context, not policy, roadmap or work authorization.
+Next assistant should not ask operator to repeat the extensive
+diagnostic history above.
+
+END OF SPARKLES CONTEXT — 2026-11-11 (America/Los_Angeles)
+
