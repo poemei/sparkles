@@ -67,6 +67,8 @@ A roadmap is not permission to implement future stages. Source implementation, b
 
 **Operator regression and source response (2026-11-11):** With Ollama v1.0.14 and MariaDB v1.4.0 both green and active, an ordinary IRC message naming River and Shenanigans hosting events and requesting a schedule check elicited `I can't check your schedule. I can only relay a message...`. The model extraction stage was not proven successful. Ollama v1.0.15 source separates strict event extraction system instructions from the ordinary peer-relay persona and stops silently falling back to generic chat on explicit schedule-check requests with failed extraction. Deployment and end-to-end acceptance for v1.0.15 remain outstanding.
 
+**Persistent IRC conversational context source increment (GitHub source):** MariaDB v1.5.0 registers a verified-account-scoped context exchange service backed by the operator's `conversation_context` table. It retrieves a bounded set of active observations and optionally records the current utterance as a private, unverified speaker statement. Ollama v1.0.16 invokes the service for conversational turns, injects prior context as untrusted historical statements, and uses IRC DM delivery for responses based on private memories. It does not require a slash command, does not treat nicknames as identity, and does not alter Core or the STN-Labz ABI. This source is unbuilt and unverified in live operation. Semantic relevance ranking, structured contact linkage, permissions by human contact, and future Second Life account linkage remain separate implementation work.
+
 ## Stage 3 — Executive assistance
 
 - Scheduling and conflict resolution, natural language intent discovery, multi-party coordination and authorized proactive follow-through.
