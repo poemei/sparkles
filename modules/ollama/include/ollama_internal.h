@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #define SPARKLES_OLLAMA_ENDPOINT "http://127.0.0.1:11434/api/generate"
-#define SPARKLES_OLLAMA_MODEL "qwen3:4b-instruct"
+#define SPARKLES_OLLAMA_MODEL "sparkles-executive:v0.3.1"
 #define SPARKLES_OLLAMA_HTTP_MAX (256U * 1024U)
 
 int sparkles_ollama_build_request(const char *model, const char *prompt,
