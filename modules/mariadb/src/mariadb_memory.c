@@ -1,0 +1,102 @@
+#include <mysql.h>
+#include <stdio.h>
+#include <string.h>
+#include "sparkles_memory.h"
+#include "mariadb_internal.h"
+
+/* All data is scoped to a server-verified account. Each observation is an
+ * unverified statement by the speaker, not a verified third-party fact.
+ * This module does not resolve or assert cross-transport identity. */
+int sparkles_mariadb_context_exchange(
+    MYSQL *db,
+    const sparkles_memory_exchange_request_t *in,
+    sparkles_memory_exchange_reply_t *out)
+{
+    static const char read_sql[] =
+        "SELECT LEFT(content,120) FROM conversation_context "
+        "WHERE account=? AND status='ACTIVE' "
+        "AND (expires_at IS NULL OR expires_at>NOW()) "
+        "AND visibility IN ('PRIVATE','SHARED') "
+        "ORDER BY updated_at DESC,id DESC LIMIT 3";
+    static const char write_sql[] =
+        "INSERT INTO conversation_context "
+        "(account,subject,category,content,context_type,source,"
+        "verification,visibility,status) "
+        "VALUES (?,?,'conversation',?,'OBSERVATION','IRC',"
+        "'UNVERIFIED','PRIVATE','ACTIVE')";
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND bind[3]={{0}}, col={{0}};
+    unsigned long lengths[3],found_len=0U;
+    char content[512];
+    char *account;
+    int rc,okay=1;
+    unsigned int i;
+    size_t used=0U;
+    if(!db||!in||!out||!sparkles_mariadb_memory_valid(in))
+        return 0;
+    memset(out,0,sizeof *out);
+    account=(char *)in->account;
+    lengths[0]=(unsigned long)strlen(in->account);
+    lengths[1]=lengths[0];
+    lengths[2]=(unsigned long)strlen(in->utterance);
+
+    stmt=mysql_stmt_init(db);
+    if(!stmt) return 0;
+    if(mysql_stmt_prepare(stmt,read_sql,(unsigned long)strlen(read_sql)))okay=0;
+    bind[0].buffer_type=MYSQL_TYPE_STRING;
+    bind[0].buffer=account;
+    bind[0].buffer_length=lengths[0];
+    bind[0].length=&lengths[0];
+    if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
+    if(okay&&mysql_stmt_execute(stmt))okay=0;
+    memset(content,0,sizeof content);
+    col.buffer_type=MYSQL_TYPE_STRING;
+    col.buffer=content;
+    col.buffer_length=sizeof content-1U;
+    col.length=&found_len;
+    if(okay&&mysql_stmt_bind_result(stmt,&col))okay=0;
+    if(okay&&mysql_stmt_store_result(stmt))okay=0;
+    for(i=0U;okay&&i<3U;++i) {
+        int written;
+        rc=mysql_stmt_fetch(stmt);
+        if(rc==MYSQL_NO_DATA)break;
+        if(rc!=0||found_len>=sizeof content) {okay=0;break;}
+        content[found_len]='\0';
+        /* Explicitly label memories as previous statements, not facts. */
+        written=snprintf(out->previous+used,
+                         sizeof out->previous-used,
+                         "%sEarlier message from this account: %s",
+                         used?"\n":"",content);
+        if(written<0||(size_t)written>=sizeof out->previous-used)break;
+        used+=(size_t)written;
+        ++out->recalled;
+    }
+    mysql_stmt_close(stmt);
+    if(!okay) {
+        memset(out,0,sizeof *out);
+        return 0;
+    }
+    stmt=mysql_stmt_init(db);
+    if(!stmt)return 0;
+    if(mysql_stmt_prepare(stmt,write_sql,(unsigned long)strlen(write_sql)))
+        okay=0;
+    memset(bind,0,sizeof bind);
+    bind[0].buffer_type=MYSQL_TYPE_STRING;
+    bind[0].buffer=account;
+    bind[0].buffer_length=lengths[0];
+    bind[0].length=&lengths[0];
+    bind[1].buffer_type=MYSQL_TYPE_STRING;
+    bind[1].buffer=account;
+    bind[1].buffer_length=lengths[1];
+    bind[1].length=&lengths[1];
+    bind[2].buffer_type=MYSQL_TYPE_STRING;
+    bind[2].buffer=(void *)in->utterance;
+    bind[2].buffer_length=lengths[2];
+    bind[2].length=&lengths[2];
+    if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
+    if(okay&&mysql_stmt_execute(stmt))okay=0;
+    if(okay&&mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
+    mysql_stmt_close(stmt);
+    out->saved=okay?1U:0U;
+    return okay;
+}
