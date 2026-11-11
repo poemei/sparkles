@@ -84,6 +84,45 @@ int sparkles_ollama_build_request(const char *model, const char *prompt,
     return 1;
 }
 
+/* Dedicated extraction prompt: conversation persona and peer-relay instructions
+ * must not override the strict calendar data representation. */
+int sparkles_ollama_build_schedule_request(
+    const char *model,const char *human,char *output,size_t output_size)
+{
+    size_t used=0U;
+    const char *prefix="{\"model\":\"";
+    const char *body=
+        "\",\"stream\":false,"
+        "\"system\":\"You extract structured calendar appointment data. "
+        "Return ONLY NONE or one or two EVENT records. "
+        "Use exactly EVENT|DATE|START|END|TITLE, one record per line; "
+        "no markdown, explanation, prefix, suffix, numbering or quotation marks. "
+        "For DATE use YYYY-MM-DD only when the message explicitly gives that "
+        "ISO calendar date. Otherwise use UNKNOWN. "
+        "START and END must be 24-hour HH:MM local clock times. "
+        "Convert 2pm to 14:00 and 4pm to 16:00; 6pm to 18:00. "
+        "Use a short title preserving venue and named DJ/participant. "
+        "When the human describes appointments, hosting, gigs, work shifts "
+        "or calendar commitments, extract each described event even when "
+        "the human asks to check availability. "
+        "Never invent event details or dates. If no definite event times "
+        "are supplied return NONE. "
+        "Example input: I am hosting at the River 2pm-4pm with Rachel "
+        "and at Shenanigans with Katy 6pm-8pm. "
+        "Example output: EVENT|UNKNOWN|14:00|16:00|River - DJ Rachel"
+        "\\nEVENT|UNKNOWN|18:00|20:00|Shenanigans - DJ Katy.\","
+        "\"prompt\":\"";
+    const char *suffix=
+        "\",\"options\":{\"temperature\":0,\"num_predict\":256}}";
+    if(!model||!*model||!human||!*human||!output||output_size<2U)return 0;
+    output[0]='\0';
+    return append_text(output,output_size,&used,prefix) &&
+           append_json_string(output,output_size,&used,model) &&
+           append_text(output,output_size,&used,body) &&
+           append_json_string(output,output_size,&used,human) &&
+           append_text(output,output_size,&used,suffix);
+}
+
 static int hex_value(char c)
 {
     if (c >= '0' && c <= '9') return c - '0';
@@ -211,6 +250,12 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
            strstr(request, "back\\\\slash"), &e, &p);
     expect(!sparkles_ollama_extract_response(
            "{\"response\":\"\"}", response, sizeof response), &e, &p);
+    expect(sparkles_ollama_build_schedule_request(
+           "test-model","hosting at the River from 2pm to 4pm",
+           request,sizeof request) &&
+           strstr(request,"structured calendar appointment data") &&
+           strstr(request,"EVENT|UNKNOWN|14:00|16:00") &&
+           strstr(request,"\"temperature\":0"),&e,&p);
 
     ne = 1;
     np = !sparkles_ollama_extract_response(NULL, response, sizeof response);
