@@ -67,6 +67,14 @@ Ordinary IRC messages from a server-verified `account-tag` are sent to the new M
 
 Persistent memory is **not** Ollama training, a verified knowledge graph, a private multi-transport identity linkage, or semantic long-range retrieval. It is a bounded recent-history foundation (up to three recent observations, clipped for prompt size). It does not record anonymous IRC accounts or automatically merge Second Life display names with IRC identities. Neither a module build nor a green hotload proves the six-month return scenario: test with a verified IRC speaker and an actual restart.
 
+## Social conversation and DM regression correction (v1.0.17)
+
+Observed operator dialogues with Laurie exposed duplicate "I've replied to you privately" acknowledgments, literal echoes, misreading questions about Laurie as peer-relay instructions, and unnecessary calendar extraction on ordinary social turns.
+
+Ollama v1.0.17 sends a single DM when retrieved private memory affects its answer and does not also return an IRC route acknowledgment. This works for both channel-origin and already-private conversations without changing shared ABI. Model response text identical to the user's message is rejected rather than echoed; no scripted replacement text is generated. Calendar extraction is skipped for ordinary messages without a recognizable scheduling signal, preserving the established explicit-confirmation scheduling workflow. The normal-generation system instruction now emphasizes social fluency, playful but respectful tone, speaker intent, brevity, feedback, and non-intrusive behavior.
+
+These are source-level changes. Actual model response quality, conversational initiative, and long-term memory recall require operator-observed end-to-end qualification. Do not treat a green module activation as proof of social competence.
+
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
