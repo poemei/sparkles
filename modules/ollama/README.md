@@ -4,7 +4,7 @@ The Ollama module implements the established STN-LABZ shared module ABI. Sparkle
 
 ## Selected model
 
-**Model:** `qwen3:4b-instruct`
+**Model:** `sparkles-executive:v0.3.1`
 
 **Endpoint:** `http://127.0.0.1:11434/api/generate`
 
@@ -20,7 +20,7 @@ git pull
 make -C modules/ollama clean
 make -C modules/ollama
 make -C modules/ollama test
-sudo make -C modules/ollama install INSTALL_USER=stnlabz INSTALL_GROUP=stnlabz
+sudo make -C modules/ollama install INSTALL_USER=stnchain INSTALL_GROUP=stnchain
 /opt/sparkles/bin/sparkles
 ```
 
@@ -31,11 +31,31 @@ Installed files:
 
 The Core hotloader discovers, qualifies, and activates the module, which registers `sparkles.llm.generate` and the `chat` command. A successfully running Ollama server is required for replies, but the actual model inference is a separate runtime test.
 
+## Conversational appointment capture (v1.0.14 source)
+
+The registered `chat` controller now asks the locally selected Ollama model to extract up to two calendar events stated in ordinary messages. A strict structured parser validates date/time/title output. The model does **not** write to MariaDB. Sparkles keeps a short-lived proposal tied to the IRC sender and server-verified account; it asks for an explicit ISO calendar date when the conversation has not supplied one, and sends event details privately before asking for `confirm` or `cancel`. Only an explicit confirmation invokes the named MariaDB create service, which checks the account allowlist and enforces scheduled-appointment conflicts.
+
+Example:
+
+```text
+PoeMei: SparklesR, I have to host at the River from 2 to 4 with Rachel DJing, then Shenanigans with Katy from 6 to 8.
+SparklesR: I have your event details. Which date (YYYY-MM-DD)?
+PoeMei: SparklesR, 2026-11-11
+SparklesR: I sent your appointment details privately for confirmation.
+PoeMei (private message): SparklesR, confirm
+```
+
+The example illustrates the expected exchange, **not a recorded successful model test**. The summary must be checked for accuracy before confirmation. No event is persisted merely because it was mentioned. Missing/incorrectly formatted output from the model falls back to ordinary conversation; deterministic offline tests cover the output parser, not the accuracy of the real model. A pending proposal is held only in process memory for 10 minutes, with eight simultaneous account/sender entries. Restarting the module discards pending proposals.
+
+The feature currently requires an explicit `YYYY-MM-DD` calendar date; relative references such as “tomorrow” are not resolved without an agreed calendar timezone. Partial saves are possible when more than one confirmed appointment is submitted and a later event conflicts or fails; verify the database schedule before retrying. Authentication and structured reads/writes continue to reside in the MariaDB module; the Core ABI layout is unchanged.
+
+The conversational extraction attempt adds an Ollama inference before ordinary chat for authenticated IRC messages; this can increase response latency and needs live performance qualification.
+
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
 
-## Inference limits (v1.0.13)
+## Inference limits (v1.0.14)
 
 The Ollama request uses `num_predict=512`, `CURLOPT_TIMEOUT_MS=120000L` (120 seconds), and the unchanged connection timeout `CURLOPT_CONNECTTIMEOUT_MS=1000L` (1 second). These are source constants, not environment variables.
 
