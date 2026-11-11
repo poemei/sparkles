@@ -18,10 +18,12 @@ Core is responsible for the generic runtime, routing, logging and module lifecyc
 
 ## Adaptation boundary
 
-The current source tree was derived from Rictus and **has not yet been fully adapted or qualified as Sparkles**. Ezra is the designated Core source. Sparkles' independent mission must not inherit spacecraft-specific modules or agent identity; imported modules remain outside this Core migration.
+The source tree includes an Ezra-derived Core and Sparkles-specific modules. The independent Sparkles runtime has been operator-observed through terminal and IRC, but full qualification and acceptance remain outstanding. Ezra is the designated Core source. Sparkles' independent mission must not inherit spacecraft-specific modules or agent identity; imported modules remain outside this Core migration.
 
 Preserve the shared STN-Labz ABI contract. Do not introduce canned conversational responses. Ezra's source repository remains independent.
 
 ## Engineering status
 
-**Ezra-derived Core source migration committed; runtime not verified.** There is no claim yet that the Sparkles code builds, installs, loads modules, or functions end-to-end. Consult [docs/ROADMAP.md](docs/ROADMAP.md) for the scoped adaptation stages.
+**Operator-observed (2026-11-10):** Core startup, Identity routing, local Ollama inference, and an IRC greeting exchange with Digit. Executive v0.3.1 LoRA training completed on a separate training machine; the best checkpoint was merged to a GGUF and imported on the local machine as a **separate** Ollama test model, `sparkles-executive:v0.3.1`.
+
+Standalone manual scheduling tests showed correct interval calculations but also **intermittently wrong YES/NO authorization decisions** for a mandatory meeting break, even when the explanation identified the conflict. This trained test model is **not confirmed active in SparklesR**, and no calendar actions, MariaDB context, Second Life transport, or executive scheduling authority are accepted. The source/installation/runtime/test distinctions and outstanding qualification are documented in [docs/ROADMAP.md](docs/ROADMAP.md).
