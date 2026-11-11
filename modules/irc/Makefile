@@ -15,8 +15,8 @@ TEST_TARGET := $(BUILD_DIR)/test_irc
 
 PREFIX ?= /opt/sparkles
 MODULEDIR ?= $(PREFIX)/modules/$(MODULE_NAME)
-MODULE_USER ?= stnlabz
-MODULE_GROUP ?= stnlabz
+MODULE_USER ?= stnchain
+MODULE_GROUP ?= stnchain
 
 CPPFLAGS += -I$(INCLUDE_DIR) -I$(ABI_INCLUDE_DIR)
 MODULE_CFLAGS := $(CFLAGS) -fPIC
