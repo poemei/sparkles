@@ -12,6 +12,7 @@ static pthread_mutex_t db_lock = PTHREAD_MUTEX_INITIALIZER;
 static const stnlabz_module_host_t *host_owner;
 static int registered;
 static int command_registered;
+static int add_command_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
 {
@@ -246,18 +247,165 @@ static stnlabz_module_result_t schedule_command(
         ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
 }
 
+typedef enum {
+    APPOINTMENT_DB_ERROR=0,
+    APPOINTMENT_DB_CONFLICT,
+    APPOINTMENT_DB_SAVED,
+    APPOINTMENT_DB_UNCERTAIN
+} appointment_write_result_t;
+
+/* Single-process serialization plus a transactional locking overlap check.
+ * External database clients must enforce the same scheduling discipline. */
+static appointment_write_result_t insert_appointment(
+    const sparkles_mariadb_new_appointment_t *appointment,
+    unsigned long long *created_id)
+{
+    static const char overlap_sql[] =
+        "SELECT id FROM appointments "
+        "WHERE status='scheduled' AND start_time < ? AND end_time > ? "
+        "LIMIT 1 FOR UPDATE";
+    static const char insert_sql[] =
+        "INSERT INTO appointments (title,start_time,end_time,status) "
+        "VALUES (?,?,?,'scheduled')";
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND params[3]={{0}};
+    unsigned long lengths[3];
+    appointment_write_result_t outcome=APPOINTMENT_DB_ERROR;
+    int transaction_started=0;
+    if (!appointment||!created_id) return APPOINTMENT_DB_ERROR;
+    *created_id=0ULL;
+    lengths[0]=(unsigned long)strlen(appointment->title);
+    lengths[1]=(unsigned long)strlen(appointment->start_time);
+    lengths[2]=(unsigned long)strlen(appointment->end_time);
+    (void)pthread_mutex_lock(&db_lock);
+    if (!db || mysql_ping(db) || mysql_query(db,"START TRANSACTION")) goto done;
+    transaction_started=1;
+
+    stmt=mysql_stmt_init(db);
+    if (!stmt || mysql_stmt_prepare(stmt,overlap_sql,
+                                   (unsigned long)strlen(overlap_sql))) goto done;
+    params[0].buffer_type=MYSQL_TYPE_STRING;
+    params[0].buffer=(void *)appointment->end_time;
+    params[0].buffer_length=lengths[2];
+    params[0].length=&lengths[2];
+    params[1].buffer_type=MYSQL_TYPE_STRING;
+    params[1].buffer=(void *)appointment->start_time;
+    params[1].buffer_length=lengths[1];
+    params[1].length=&lengths[1];
+    if (mysql_stmt_bind_param(stmt,params) ||
+        mysql_stmt_execute(stmt) ||
+        mysql_stmt_store_result(stmt)) goto done;
+    if (mysql_stmt_num_rows(stmt)>0ULL) {
+        outcome=APPOINTMENT_DB_CONFLICT;
+        goto done;
+    }
+    mysql_stmt_close(stmt);
+    stmt=NULL;
+
+    memset(params,0,sizeof params);
+    stmt=mysql_stmt_init(db);
+    if (!stmt || mysql_stmt_prepare(stmt,insert_sql,
+                                   (unsigned long)strlen(insert_sql))) goto done;
+    params[0].buffer_type=MYSQL_TYPE_STRING;
+    params[0].buffer=(void *)appointment->title;
+    params[0].buffer_length=lengths[0];
+    params[0].length=&lengths[0];
+    params[1].buffer_type=MYSQL_TYPE_STRING;
+    params[1].buffer=(void *)appointment->start_time;
+    params[1].buffer_length=lengths[1];
+    params[1].length=&lengths[1];
+    params[2].buffer_type=MYSQL_TYPE_STRING;
+    params[2].buffer=(void *)appointment->end_time;
+    params[2].buffer_length=lengths[2];
+    params[2].length=&lengths[2];
+    if (mysql_stmt_bind_param(stmt,params) ||
+        mysql_stmt_execute(stmt) ||
+        mysql_stmt_affected_rows(stmt)!=1ULL) goto done;
+    *created_id=(unsigned long long)mysql_insert_id(db);
+    if (!*created_id) goto done;
+    mysql_stmt_close(stmt);
+    stmt=NULL;
+    /* COMMIT failures cannot conclusively establish whether a write persisted. */
+    outcome=APPOINTMENT_DB_UNCERTAIN;
+    if (mysql_query(db,"COMMIT")==0) {
+        transaction_started=0;
+        outcome=APPOINTMENT_DB_SAVED;
+    }
+done:
+    if (stmt) mysql_stmt_close(stmt);
+    if (transaction_started && mysql_query(db,"ROLLBACK")!=0)
+        outcome=APPOINTMENT_DB_UNCERTAIN;
+    (void)pthread_mutex_unlock(&db_lock);
+    return outcome;
+}
+
+/* Authorized human-directed insert, never an Ollama inference side effect. */
+static stnlabz_module_result_t appointment_add_command(
+    const stnlabz_module_command_t *command,
+    stnlabz_module_command_reply_fn reply,
+    void *reply_context, void *context)
+{
+    sparkles_mariadb_new_appointment_t appointment;
+    unsigned long long id=0ULL;
+    appointment_write_result_t outcome;
+    char confirmation[320];
+    int n;
+    (void)context;
+    if (!command || !reply ||
+        !memchr(command->arguments,0,sizeof command->arguments) ||
+        !memchr(command->account,0,sizeof command->account) ||
+        !memchr(command->sender,0,sizeof command->sender))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    if (!sparkles_mariadb_account_allowed(
+            SPARKLES_MARIADB_IRC_ACCOUNTS,command->account))
+        return reply(reply_context,"Appointment access denied.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    if (!sparkles_mariadb_parse_new_appointment(command->arguments,&appointment))
+        return reply(reply_context,
+          "Usage: /appointment-add YYYY-MM-DD HH:MM HH:MM Title (same day)")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    outcome=insert_appointment(&appointment,&id);
+    if (outcome==APPOINTMENT_DB_CONFLICT)
+        return reply(reply_context,
+          "Appointment not saved: conflicts with an existing scheduled appointment.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    if (outcome==APPOINTMENT_DB_UNCERTAIN)
+        return reply(reply_context,
+          "Database write uncertain. Check /schedule before retrying.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    if (outcome!=APPOINTMENT_DB_SAVED)
+        return reply(reply_context,"Appointment not saved: database error.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    n=snprintf(confirmation,sizeof confirmation,
+        "Appointment #%llu saved: %s to %s: %s",
+        id,appointment.start_time,appointment.end_time,appointment.title);
+    if (n<0 || (size_t)n>=sizeof confirmation ||
+        !host_owner || !host_owner->send_private_message ||
+        !command->sender[0] ||
+        !host_owner->send_private_message(command->sender,confirmation))
+        return reply(reply_context,
+          "Appointment saved in database; private confirmation unavailable.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    return reply(reply_context,"Appointment saved; confirmation sent privately.")
+        ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+}
+
 static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
 {
     unsigned int e = 0U, p = 0U;
     int ne = 0, np = 0;
     int ok;
     unsigned int date_e=0U, date_p=0U;
+    unsigned int appointment_e=0U, appointment_p=0U;
     if (!q) return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(q, 0, sizeof *q);
     ok = sparkles_mariadb_selftests(&e, &p, &ne, &np);
     ok = sparkles_mariadb_date_selftests(&date_e,&date_p) && ok;
     e += date_e;
     p += date_p;
+    ok = sparkles_mariadb_appointment_selftests(&appointment_e,&appointment_p) && ok;
+    e += appointment_e;
+    p += appointment_p;
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
@@ -325,12 +473,28 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     command_registered=1;
+    if (!h->register_command("appointment-add",appointment_add_command,NULL)) {
+        (void)h->unregister_command("schedule",NULL);
+        command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        registered=0;
+        host_owner=NULL;
+        db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    add_command_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if (add_command_registered && host_owner &&
+        !host_owner->unregister_command("appointment-add",NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    add_command_registered=0;
     if (command_registered && host_owner &&
         !host_owner->unregister_command("schedule",NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -351,7 +515,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 2U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 3U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
