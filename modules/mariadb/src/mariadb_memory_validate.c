@@ -11,7 +11,7 @@ int sparkles_mariadb_memory_valid(
        !memchr(request->utterance,0,sizeof request->utterance))return 0;
     account_len=strlen(request->account);
     text_len=strlen(request->utterance);
-    if(!account_len||account_len>127U||!text_len||
+    if(request->record>1U||!account_len||account_len>127U||!text_len||
        text_len>SPARKLES_MEMORY_TEXT_MAX)return 0;
     for(i=0U;i<account_len;++i) {
         unsigned char c=(unsigned char)request->account[i];
