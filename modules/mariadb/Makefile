@@ -12,7 +12,7 @@ TARGET := $(BUILD)/mariadb.so
 TEST := $(BUILD)/test_mariadb
 CPPFLAGS += -Iinclude -I$(ROOT)/include $(shell pkg-config --cflags libmariadb)
 LDLIBS := $(shell pkg-config --libs libmariadb) -pthread
-OBJS := $(BUILD)/mariadb_module.o $(BUILD)/mariadb_config.o $(BUILD)/mariadb_dates.o $(BUILD)/mariadb_auth.o $(BUILD)/mariadb_appointment_input.o
+OBJS := $(BUILD)/mariadb_module.o $(BUILD)/mariadb_config.o $(BUILD)/mariadb_dates.o $(BUILD)/mariadb_auth.o $(BUILD)/mariadb_appointment_input.o $(BUILD)/mariadb_memory.o $(BUILD)/mariadb_memory_validate.o
 
 .PHONY: all test install clean
 all: $(TARGET)
@@ -24,7 +24,7 @@ $(BUILD)/%.o: src/%.c
 $(TARGET): $(OBJS)
 	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(TEST): tests/test_mariadb.c src/mariadb_config.c src/mariadb_dates.c src/mariadb_auth.c src/mariadb_appointment_input.c
+$(TEST): tests/test_mariadb.c src/mariadb_config.c src/mariadb_dates.c src/mariadb_auth.c src/mariadb_appointment_input.c src/mariadb_memory_validate.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
