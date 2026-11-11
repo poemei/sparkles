@@ -51,6 +51,14 @@ The feature currently requires an explicit `YYYY-MM-DD` calendar date; relative 
 
 The conversational extraction attempt adds an Ollama inference before ordinary chat for authenticated IRC messages; this can increase response latency and needs live performance qualification.
 
+## Conversational extraction regression correction (v1.0.15)
+
+An operator-observed November 2026 IRC request describing two Second Life hosting commitments at the River (2–4 PM, DJ Rachel) and Shenanigans (6–8 PM, DJ Katy) produced a generic relay-only refusal instead of schedule handling. Investigation of the source found that the calendar extraction reused the normal conversational system message, whose peer-relay behavior conflicted with strict structured data extraction. The schedule controller also silently returned to ordinary chat when model output failed parsing or reported no event.
+
+Version 1.0.15 gives event extraction its **own** lower-temperature calendar system instruction and retains the separate ordinary assistant instruction for normal replies. For messages explicitly requesting calendar/schedule availability, malformed/empty extraction produces a clear extraction failure rather than a generic refusal. No model response can directly write calendar records. Human date clarification, the authoritative MariaDB conflict check, and explicit confirmation before insertion remain in place.
+
+The exact model behavior on the VPS is unverified until the operator builds and hotloads this revision and reruns the original IRC sentence. A green module qualification alone does not prove that a model produces two usable EVENT records.
+
 ## Verification
 
 Source changes have been committed to GitHub. Native compilation, module activation, and model inference remain subject to operator verification.
