@@ -388,5 +388,74 @@ INFORMATIONAL context, not policy, roadmap or work authorization.
 Next assistant should not ask operator to repeat the extensive
 diagnostic history above.
 
-END OF SPARKLES CONTEXT — 2026-11-11 (America/Los_Angeles)
+======================================================================
+13. 2026-11-11 — OPERATOR-OBSERVED SCHEDULING ROUND TRIP
+======================================================================
+Operator supplied the following live IRC and DM test evidence. This is
+a runtime observation, not independent inspection of MariaDB contents.
 
+PoeMei told SparklesR in natural language that on 2026-11-11 she
+would host at the River with DJ Rachel from 14:00 to 16:00, and at
+Shenanigans with DJ Katy from 18:00 to 20:00. SparklesR asked for
+an explicit YYYY-MM-DD date; PoeMei supplied 2026-11-11. SparklesR
+sent a private confirmation proposal containing both correct
+appointments. PoeMei replied "confirm"; SparklesR explicitly replied:
+"Your confirmed appointments were saved in the calendar".
+
+In a separate subsequent command, PoeMei issued:
+  SparklesR: /schedule 2026-11-11 2026-11-12
+SparklesR announced private delivery, then DM'd two matching records:
+  2026-11-11 14:00:00 to 2026-11-11 16:00:00: River - DJ Rachel
+  2026-11-11 18:00:00 to 2026-11-11 20:00:00: Shenanigans - DJ Katy
+
+This is operator-observed end-to-end scheduling behavior: natural
+language extraction, date clarification, private human confirmation,
+save acknowledgment, and separate retrieval. It does NOT by itself
+establish all calendar edge cases, permissions, conflict handling,
+or broad model qualification.
+
+======================================================================
+14. 2026-11-11 — SOCIAL CONTEXT AND OPERATOR PRIORITIES
+======================================================================
+Operator described Sparkles' intended Second Life work in established
+club environments. PoeMei has hosted at The River and Shenanigans;
+Rachel and Katy are DJs. Baby Face / BabyV is a younger-sister figure
+whom PoeMei personally mentored as a host, including frequent Discord
+voice guidance and observation during shifts. She has covered hosting
+while PoeMei has been away from Second Life; they stay in contact
+outside SL. These are operator-reported relationships, not independently
+verified identity or account mappings.
+
+In the Laurie_Vo IRC test, Laurie introduced herself directly to
+Sparkles as Poe's best friend and student. Sparkles answered "I'll
+remember that", later privately greeted Laurie by name after reconnect,
+and also produced awkward identity clarification and repetitive private
+reply notices. The operator specifically reports that Laurie's
+statements entered contextual intake but PoeMei's own surrounding
+statements did not. Do not misrepresent that test as successful
+multi-speaker contextual capture or confirmed durable memory.
+
+Operator reports that Sparkles' custom general-purpose executive
+assistant model was trained and made operational in about 14 hours.
+A MariaDB-backed context system is still being developed and must
+support speaker attribution, continuity and relevant conversation
+rather than calendar records alone. At one point the operator found
+seven database tables without a dedicated straightforward context
+table; later repository roadmap text mentions conversation_context.
+Treat the exact LIVE schema and current deployment state as UNKNOWN
+until inspected, rather than assuming either observation is current.
+
+Operator also reported having to repair an AI-supplied MariaDB GRANT
+command that restricted intended access. Privilege scope and ownership
+are operator decisions; do not silently impose a restrictive grant
+policy. Inspect existing configuration and obtain direction before
+proposing any privilege changes.
+
+CRITICAL WORKFLOW: The operator explicitly forbids ChatGPT Work
+handoffs for this project. Use the connected GitHub tools in this
+conversation when authorized. Do not ask the operator to upload a
+GitHub file that can be fetched directly. The operator wants actual
+file edits, grounded evidence, and concise exact results, not
+speculative architecture advice. This update is ONLY to context.txt.
+
+END OF SPARKLES CONTEXT — 2026-11-11 (America/Los_Angeles)
