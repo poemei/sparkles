@@ -1,4 +1,4 @@
-# Sparkles MariaDB module — v1.3.0
+# Sparkles MariaDB module — v1.4.0
 
 This module uses the Core ABI 1.5 lifecycle, registers authenticated explicit `/schedule` and `/appointment-add` commands and two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. An explicit authorized `/appointment-add` request can INSERT one appointment after rejecting overlaps with existing scheduled appointments. It does not update or delete appointments, alter Core/chat routing, IRC or Ollama, or grant unrelated users access. No model inference is treated as authority over database records.
 
@@ -35,7 +35,7 @@ make -C modules/mariadb clean all test
 sudo make -C modules/mariadb install INSTALL_USER=stnchain INSTALL_GROUP=stnchain
 ```
 
-Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.3.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
+Use the **actual service account** in the install variables. The make test suite is offline: it validates credential parsing and rejects malformed inputs; it does not claim a database was connected. Only install after tests pass. Restart the Sparkles process when authorized and verify `mariadb v1.4.0: ACTIVE` plus startup log `[MARIADB] local database connected; seven tables verified`.
 
 ## Service contract
 
@@ -103,6 +103,14 @@ There is **no** natural-language automatic creation, tentative event proposal, m
 6. Verify two adjacent appointments sharing a boundary are accepted if that behavior is desired.
 
 All database writes require human command input. Neither build nor activation is operator acceptance.
+
+## Conversational controller create interface (v1.4.0)
+
+A new in-process named service `sparkles.mariadb.appointments.create` accepts a typed request with a server-verified IRC account, exact same-day start/end datetimes, and title. The database module **rechecks the 0600 account allowlist**, reconstructs and validates the appointment fields, runs the existing transactional overlap check and prepared INSERT, and returns a typed result: saved (with ID), conflict, denied, error, or uncertain commit. A model interpretation is never itself authorization to write.
+
+Ollama module v1.0.14 is the conversational consumer. It requests explicit confirmation of the privately summarized event(s) before calling this service. Neither module automatically trusts a model-extracted date, and missing calendar dates require clarification. No database schema changes are needed. The Core ABI currently trusts in-process modules, so account assertions supplied by third-party installed modules are not independently authenticated by Core. Restrict installed modules accordingly.
+
+This version has GitHub source only until native compilation, qualification, hotload, conversational tests, and operator acceptance are observed.
 
 ## Scope and acceptance
 
