@@ -69,6 +69,43 @@ int sparkles_irc_word_present(const char *text, const char *word)
 }
 
 
+int sparkles_irc_parse_account_tag(const char *line, char *account,
+                                  size_t account_size)
+{
+    const char *p, *end;
+    size_t n, i;
+    if (!line || !account || account_size < 2U) return 0;
+    account[0] = '\0';
+    if (*line != '@') return 0;
+    end = strchr(line, ' ');
+    if (!end) return 0;
+    p = line + 1;
+    while (p < end) {
+        const char *item_end = memchr(p, ';', (size_t)(end - p));
+        const char *value;
+        if (!item_end) item_end = end;
+        if ((size_t)(item_end - p) > 8U && !memcmp(p, "account=", 8U)) {
+            value = p + 8;
+            n = (size_t)(item_end - value);
+            if (!n || n >= account_size || (n == 1U && *value == '*'))
+                return 0;
+            for (i = 0; i < n; ++i) {
+                char c = value[i];
+                if (!((c >= 'A' && c <= 'Z') ||
+                      (c >= 'a' && c <= 'z') ||
+                      (c >= '0' && c <= '9') ||
+                      c == '_' || c == '-' || c == '.'))
+                    return 0;
+            }
+            memcpy(account,value,n);
+            account[n] = '\0';
+            return 1;
+        }
+        p = item_end < end ? item_end + 1 : end;
+    }
+    return 0;
+}
+
 int sparkles_irc_parse_privmsg(const char *line,
                              char *sender, size_t sender_size,
                              char *target, size_t target_size,
@@ -166,7 +203,7 @@ int sparkles_irc_run_selftests(unsigned int *executed, unsigned int *passed,
     char command[32];
     const char *params = NULL;
     char encoded[256];
-    char sender[64], target[128], message[256];
+    char sender[64], target[128], message[256], account[128];
     unsigned int e = 0U;
     unsigned int p = 0U;
     int neg_e = 0;
@@ -210,6 +247,14 @@ int sparkles_irc_run_selftests(unsigned int *executed, unsigned int *passed,
     expect(!sparkles_irc_parse_privmsg(
            ":PoeMei PRIVMSG #second",
            sender, sizeof sender, target, sizeof target, message, sizeof message), &e, &p);
+
+    expect(sparkles_irc_parse_account_tag("@time=1;account=PoeMei :PoeMei!u@h PRIVMSG #test :hi",account,sizeof account) && !strcmp(account,"PoeMei"),&e,&p);
+    expect(!sparkles_irc_parse_account_tag(":PoeMei!u@h PRIVMSG #test :hi",account,sizeof account),&e,&p);
+    expect(!sparkles_irc_parse_account_tag("@account=* :PoeMei!u@h PRIVMSG #test :hi",account,sizeof account),&e,&p);
+    expect(!sparkles_irc_parse_account_tag("@account=Poe\\:Mei :x PRIVMSG #test :hi",account,sizeof account),&e,&p);
+    expect(!sparkles_irc_parse_account_tag("@account= :x PRIVMSG #test :hi",account,sizeof account),&e,&p);
+    expect(!sparkles_irc_parse_account_tag("@time=1 :x PRIVMSG #test :hi",account,sizeof account),&e,&p);
+    expect(!sparkles_irc_parse_account_tag("@account=PoeMei :x PRIVMSG #test :hi",account,3U),&e,&p);
 
     neg_e = 1;
     neg_p = !sparkles_irc_build_plain(NULL, "p", encoded, sizeof encoded);
