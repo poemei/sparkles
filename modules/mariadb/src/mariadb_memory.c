@@ -76,6 +76,7 @@ int sparkles_mariadb_context_exchange(
         memset(out,0,sizeof *out);
         return 0;
     }
+    if(!in->record)return 1;
     stmt=mysql_stmt_init(db);
     if(!stmt)return 0;
     if(mysql_stmt_prepare(stmt,write_sql,(unsigned long)strlen(write_sql)))
