@@ -573,7 +573,7 @@ static stnlabz_module_result_t chat_controller(
  result=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
  if(result!=STNLABZ_MODULE_OK)return result;
  if(used!=sizeof out)return STNLABZ_MODULE_ERR_INVALID_STATE;
- if(!ensure_peer_prefix(in.prompt,out.text,sizeof out.text))
+ if(!ensure_peer_prefix(command->arguments,out.text,sizeof out.text))
   return STNLABZ_MODULE_ERR_INVALID_STATE;
  if(extract_peer_target(command->arguments,peer_target,sizeof peer_target))
   return send_peer_action(out.text);
