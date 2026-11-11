@@ -40,14 +40,17 @@ int main(void)
     unsigned int executed=0U,passed=0U;
     unsigned int date_executed=0U,date_passed=0U;
     unsigned int auth_executed=0U,auth_passed=0U;
+    unsigned int appointment_executed=0U,appointment_passed=0U;
     int negative_executed=0,negative_passed=0;
     int parser_ok=sparkles_mariadb_selftests(
         &executed,&passed,&negative_executed,&negative_passed);
     int dates_ok=sparkles_mariadb_date_selftests(&date_executed,&date_passed);
     int access_ok=auth_tests(&auth_executed,&auth_passed);
-    executed+=date_executed+auth_executed;
-    passed+=date_passed+auth_passed;
+    int appointment_ok=sparkles_mariadb_appointment_selftests(
+        &appointment_executed,&appointment_passed);
+    executed+=date_executed+auth_executed+appointment_executed;
+    passed+=date_passed+auth_passed+appointment_passed;
     printf("mariadb tests: executed=%u passed=%u failed=%u negative_executed=%d negative_passed=%d\n",
         executed,passed,executed-passed,negative_executed,negative_passed);
-    return parser_ok && dates_ok && access_ok ? 0 : 1;
+    return parser_ok && dates_ok && access_ok && appointment_ok ? 0 : 1;
 }
