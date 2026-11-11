@@ -20,6 +20,17 @@ int sparkles_mariadb_parse_line(const char *line, char *password,
 int sparkles_mariadb_load_config(const char *path, sparkles_mariadb_config_t *out);
 int sparkles_mariadb_valid_date(const char *date);
 int sparkles_mariadb_valid_range(const char *from, const char *until);
+/* Explicit same-day appointment command parser; no natural-language inference. */
+typedef struct {
+    char start_time[20];
+    char end_time[20];
+    char title[201];
+} sparkles_mariadb_new_appointment_t;
+int sparkles_mariadb_parse_new_appointment(
+    const char *arguments, sparkles_mariadb_new_appointment_t *out);
+int sparkles_mariadb_appointment_selftests(unsigned int *executed,
+                                          unsigned int *passed);
+
 int sparkles_mariadb_date_selftests(unsigned int *executed,
                                   unsigned int *passed);
 
