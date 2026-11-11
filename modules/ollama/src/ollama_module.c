@@ -173,7 +173,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     int n;
     stnlabz_module_result_t rc;
     const char *text=command->arguments;
-    if(!command->account[0] || !command->sender[0])return 0;
+    if(!command->sender[0])return 0;
     if(strlen(command->account)>=sizeof account ||
        strlen(command->sender)>=sizeof sender)return 0;
     memcpy(account,command->account,strlen(command->account)+1U);
@@ -260,6 +260,8 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     rc=generate(&req,sizeof req,&out,sizeof out,&used,NULL);
     if(rc!=STNLABZ_MODULE_OK||used!=sizeof out||
        !sparkles_schedule_parse(out.text,&plan)||!plan.count)return 0;
+    if(!account[0])return schedule_reply(reply,ctx,
+       "Calendar changes require a verified IRC account.");
     {
         unsigned int i;
         int needs_date=0;
