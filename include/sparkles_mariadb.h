@@ -4,6 +4,7 @@
 /* Private Core ABI 1.5 services. Caller authentication is not part of the ABI.
  * Do not expose appointment lookup to IRC/chat until verified caller identity
  * and authorization are implemented. */
+#define SPARKLES_MARIADB_CREATE_SERVICE "sparkles.mariadb.appointments.create"
 #define SPARKLES_MARIADB_STATUS_SERVICE "sparkles.mariadb.status"
 #define SPARKLES_MARIADB_APPOINTMENTS_SERVICE "sparkles.mariadb.appointments.read"
 #define SPARKLES_MARIADB_EXPECTED_TABLES 7U
@@ -32,5 +33,27 @@ typedef struct {
     unsigned int has_more;
     sparkles_mariadb_appointment_t records[SPARKLES_MARIADB_APPOINTMENTS_MAX];
 } sparkles_mariadb_appointments_reply_t;
+
+/* Trusted in-process caller only. Account must originate from verified transport.
+ * Database service enforces the same runtime allowlist as /appointment-add. */
+typedef struct {
+    char account[128];
+    char start_time[20];
+    char end_time[20];
+    char title[201];
+} sparkles_mariadb_create_request_t;
+
+typedef enum {
+    SPARKLES_MARIADB_CREATE_ERROR = 0,
+    SPARKLES_MARIADB_CREATE_SAVED = 1,
+    SPARKLES_MARIADB_CREATE_CONFLICT = 2,
+    SPARKLES_MARIADB_CREATE_UNCERTAIN = 3,
+    SPARKLES_MARIADB_CREATE_DENIED = 4
+} sparkles_mariadb_create_status_t;
+
+typedef struct {
+    unsigned int status;
+    unsigned long long id;
+} sparkles_mariadb_create_reply_t;
 
 #endif
