@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include "sparkles_contacts.h"
 #include <time.h>
 #include <pthread.h>
 #include "stnlabz_abi/module.h"
@@ -16,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 7U
+#define OLLAMA_VERSION_PATCH 8U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1314,6 +1316,45 @@ static int memory_exchange(const stnlabz_module_command_t *command,
     return rc==STNLABZ_MODULE_OK&&used==sizeof *memory;
 }
 
+/* SL-provided UUIDs are transport identities, not calendar grants.
+ * Contact lookup/update is a MariaDB transaction; name is unverified
+ * self-report. Never claim persistence before the service commits. */
+static int sl_introduction(const char *text,char name[64])
+{
+ static const char *const lead[]={"my name is ","call me ",NULL};
+ size_t i,j,n;
+ const char *p=NULL;
+ if(!text||!name)return 0;
+ name[0]=0;
+ while(*text==' ')++text;
+ for(i=0U;lead[i];++i) {
+  n=strlen(lead[i]);
+  if(!strncasecmp(text,lead[i],n)){p=text+n;break;}
+ }
+ if(!p)return 0;
+ while(*p==' ')++p;
+ for(j=0U;j<48U && p[j] && p[j]!=' ' && p[j]!='.' &&
+     p[j]!=',' && p[j]!='!' && p[j]!='?';++j) {
+  unsigned char c=(unsigned char)p[j];
+  if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||
+       c=='-'||c=='\''))return 0;
+  name[j]=(char)c;
+ }
+ if(!j || (p[j] && p[j]!=' ' && p[j]!='.' &&
+   p[j]!=',' && p[j]!='!' && p[j]!='?'))return 0;
+ name[j]=0;
+ return 1;
+}
+static int sl_know_question(const char *text)
+{
+ if(!text)return 0;
+ while(*text==' ')++text;
+ return !strncasecmp(text,"do you know me",14U) ||
+        !strncasecmp(text,"who am i",8U) ||
+        !strncasecmp(text,"remember my name",16U) ||
+        !strncasecmp(text,"what is my name",15U);
+}
+
 /* Ollama owns the default conversational controller; Core only dispatches. */
 static stnlabz_module_result_t chat_controller(
  const stnlabz_module_command_t *command,
@@ -1323,6 +1364,8 @@ static stnlabz_module_result_t chat_controller(
  sparkles_llm_request_t in;
  sparkles_llm_response_t out;
  sparkles_memory_exchange_reply_t memory={{0}};
+ sparkles_contact_reply_t profile={{0}};
+ int profile_available=0;
  int memory_available=0;
  char peer_target[128];
  char recent[800];
@@ -1335,6 +1378,52 @@ static stnlabz_module_result_t chat_controller(
     !memchr(command->account,0,sizeof command->account))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
+ if(!strncmp(command->account,"sl:",3U) && owner &&
+    owner->invoke_service && command->sender[0]) {
+  sparkles_contact_request_t identify={{0}};
+  size_t contact_used=0U;
+  stnlabz_module_result_t contact_status;
+  char message[256], volunteered[64]={0};
+  int introduced=sl_introduction(command->arguments,volunteered);
+  memcpy(identify.account,command->account,strlen(command->account)+1U);
+  memcpy(identify.avatar_name,command->sender,
+         strlen(command->sender)+1U);
+  if(introduced)
+   memcpy(identify.first_name,volunteered,strlen(volunteered)+1U);
+  contact_status=owner->invoke_service(SPARKLES_CONTACTS_SERVICE,
+      &identify,sizeof identify,&profile,sizeof profile,&contact_used);
+  profile_available=contact_status==STNLABZ_MODULE_OK &&
+                    contact_used==sizeof profile;
+  if(introduced) {
+   if(profile_available && profile.saved && profile.found) {
+    int n=snprintf(message,sizeof message,
+        "Your first name, %s, is now saved in my contact records.",
+        profile.first_name[0]?profile.first_name:volunteered);
+    if(n<0||(size_t)n>=sizeof message)
+     return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return reply(reply_context,message) ?
+     STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+   }
+   return reply(reply_context,
+     "I couldn't save your name to my contacts. I won't claim I remembered it.") ?
+     STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+  }
+  if(sl_know_question(command->arguments)) {
+   if(profile_available && profile.found && profile.first_name[0]) {
+    int n=snprintf(message,sizeof message,
+         "I have your Second Life avatar linked to a contact record. "
+         "You told me your first name is %s.",profile.first_name);
+    if(n<0||(size_t)n>=sizeof message)
+     return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return reply(reply_context,message) ?
+     STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+   }
+   return reply(reply_context,
+       "I can recognize your Second Life avatar, but I don't have "
+       "your first name saved as a contact yet. What should I call you?") ?
+       STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+  }
+ }
  memory_available=memory_exchange(command,&memory);
  recent_available=dialogue_recent(command->account,recent,sizeof recent);
  if(owner&&owner->invoke_service){
@@ -1384,6 +1473,20 @@ static stnlabz_module_result_t chat_controller(
     recent_available?recent:"",command->arguments);
    if(n<0||(size_t)n>=sizeof in.prompt)
     memcpy(in.prompt,command->arguments,len+1U);
+  }
+ }
+ if(profile_available && profile.found && profile.first_name[0]) {
+  char prompt_before[sizeof in.prompt], annotation[192];
+  int n=snprintf(annotation,sizeof annotation,
+    "Self-reported name stored for this verified SL UUID: %s. "
+    "This is not proof of calendar permissions.\n",
+    profile.first_name);
+  if(n>0 && (size_t)n<sizeof annotation) {
+   memcpy(prompt_before,in.prompt,sizeof prompt_before);
+   n=snprintf(in.prompt,sizeof in.prompt,"%s%s",
+              annotation,prompt_before);
+   if(n<0||(size_t)n>=sizeof in.prompt)
+    memcpy(in.prompt,prompt_before,sizeof in.prompt);
   }
  }
  result=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
