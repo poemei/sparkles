@@ -1,117 +1,84 @@
-# Sparkles Second Life module — native C staging source (v0.1.1)
+# Sparkles Second Life transport — native C v0.2.0
 
-**Architecture requirement:** Sparkles is native C (C11). The operator did
-NOT approve C++, C#, a managed runtime, Corrade, or a separate SL service.
-No such runtime or client is part of this module.
+This module is in-process native C11, loaded by the existing STN-Labz
+Core module ABI. It does NOT use Corrade, C#, C++, .NET, or another
+runtime. Corrade and public Second Life protocol documents informed the
+protocol design; Corrade code is not included.
 
-## What is present
+## Current protocol implementation
 
-`src/sl_module.c` is a native C, STN-Labz ABI-compatible module. Its
-existing implementation is a **local Unix-domain IPC ingress scaffold**,
-not a Second Life grid client. It invokes the existing Core router for
-framed private messages, and has bounded input, Unix peer UID checks,
-and a private socket. It does **not** log the avatar in, negotiate the
-SL protocol, authenticate a grid session, receive real SL IMs, manage
-group sessions, or deliver anything to the Second Life grid itself.
+On module start, a native C worker calls the SL XML-RPC login code,
+then uses the login response's simulator IPv4 address, UDP port, agent
+UUID, session UUID, and circuit code to establish a connected simulator
+socket. It sends UseCircuitCode and CompleteAgentMovement, replies to
+simulator pings, acknowledges reliable messages, retries reliable
+handshake packets, and checks that AgentMovementComplete contains the
+login-issued agent and session UUIDs before logging observed presence.
+It sends an idle AgentUpdate and a RegionHandshakeReply when requested.
+It checks for simulator silence and attempts fresh login on disconnect.
 
-**Crucial trust limitation:** the current IPC frame contains a claimed
-sender UUID, not a UUID verified by the grid. Same-UID IPC authorization
-does not prove grid identity. This interface therefore MUST NOT be
-used as an authoritative SL identity source or granted calendar
-privileges. It is a local testing scaffold only, not a deployable SL
-transport. The previous C# avatar project and LibreMetaverse dependency
-were removed because the human operator requires a native C module.
+**Actual grid login, avatar presence, and duration of presence remain
+UNVERIFIED until installed and tested in Second Life.** In particular,
+the current code does not handle capabilities EventQueueGet, IMs,
+group/conference chat, local chat, inventory, teleport, reliable
+region-reply retransmission, or mature session recovery. The narrow
+presence handshake is NOT a fully operational resident/avatar client.
 
-## What the requested native C SL transport still requires
+Module activation only means that the worker thread started.
+The log line `[SL] simulator confirmed AgentMovementComplete; avatar
+presence observed` is the stronger protocol observation, but even
+that requires operator confirmation in-world.
 
-A native C implementation of the Second Life login/session protocol and
-message transport must be implemented and qualified before the module
-can represent MsSparkles as an in-world avatar. That work includes:
+## Credentials
 
-- SL authentication, persistent simulator/session connection and
-  reconnect recovery without placing account credentials in source;
-- IM reception and UUID verification from authenticated SL traffic;
-- outbound IM transport with delivery outcomes;
-- group/conference sessions and local chat with correct provenance,
-  privacy and routing boundaries;
-- robust network/main-loop separation from blocking Core inference;
-- strict rate limits, permission boundaries and operator acceptance.
+The single account configuration path is:
 
-Do not claim these capabilities based on the existence of an IPC socket,
-Core response, or module ACTIVE status. Do not copy or embed a C++/C#
-client, add a second runtime, or modify Core/shared ABI as a workaround.
-The required native C grid-protocol implementation remains incomplete.
+`/opt/sparkles/auth/sl/sl.conf`
 
-## Account configuration — operator-specified path
-
-Native C credential loading is implemented in `src/sl_config.c`.
-The **single** account configuration file is:
-
-```text
-/opt/sparkles/auth/sl/sl.conf
-```
-
-Expected `key=value` fields (sample placeholders only — do not commit
-a populated file):
+It is a private 0600 owner-only regular file, owned by the Sparkles
+process UID (normally stnchain). No shell evaluation occurs. Use only:
 
 ```ini
 first=MsSparkles
 last=Resident
-password=REPLACE_LOCALLY
-mac=REPLACE_WITH_OPERATOR_SELECTED_CLIENT_ID
-id0=REPLACE_WITH_OPERATOR_SELECTED_MACHINE_ID
+password=YOUR_PRIVATE_SECOND_LIFE_PASSWORD
 start=home
 ```
 
-This is parsed as data, **not sourced or evaluated by a shell**.
-The file must be owned by the module process UID, be a regular file,
-and must not grant any group/other permissions (use `0600`).
-Symlinks and unknown/duplicate/missing keys are rejected. Do not
-paste a real password into chat or a GitHub repository. The module does
-not create this credential file or alter account details.
+Use the **account's actual login name values**. Do not commit or
+paste credentials into chat. The native C parser rejects unknown,
+missing, duplicate, or oversized keys, symlinks, and group/other
+readable credentials. Password data is wiped after the login attempt.
 
-`sparkles_sl_login_from_file()` reads this path, invokes the native
-C XML-RPC login implementation, and clears the in-memory credential
-structure. The login response is only a simulator circuit proposal.
-**This function is not yet wired into the module lifecycle or a live SL
-session implementation**, so installing the module still does not log
-MsSparkles into Second Life. Login endpoint compatibility and SL
-authentication challenges remain unverified.
+The legacy XML-RPC parameters `mac` and `id0` are **not operator
+configuration fields**. The implementation sends neutral values
+internally (all-zero MAC and UUID); whether the grid currently accepts
+these values and the XML-RPC endpoint is UNVERIFIED. No actual device
+identifiers are collected from the server.
 
-Native build of the login code additionally needs libcurl and libxml2
-development headers and libraries (`pkg-config` for libxml2).
-No C#, C++, .NET or Corrade executable is included.
+## Build and offline regression
 
-## Developer build (staging scaffold only)
+Install distribution C development dependencies for libcurl, libxml2,
+OpenSSL, and pkg-config. Then:
 
 ```sh
-cd modules/sl
-make
+make -C modules/sl clean all test
 ```
 
-This builds `build/sl.so` with the repository ABI headers and Linux
-libcrypto/pthread/libcurl/libxml2. It is a source/build smoke check **only**, not a Second
-Life connection check. No .NET tooling is required.
+Build/test does not log into Second Life. A successful
+`build/sl.so` does not prove simulator traffic or avatar presence.
+Install only under operator control, with credentials present and
+known-good source, then inspect SL lifecycle messages in system logs.
 
-The module currently requires `SPARKLES_SL_SOCKET` pointing into an
-already-existing, runtime-UID-owned directory with mode 0700. It creates
-a socket with mode 0600. **Do not configure or activate this incomplete
-ingress module in a production Sparkles runtime.** Avatar configuration is loaded only from the operator-owned private file
-above; the existing module lifecycle does not yet initiate login.
+The previous staging-only IPC listener is removed in v0.2.0.
+Its unverified claimed-avatar UUID was not a safe production identity.
+The current module does not grant IRC calendar authorization to SL IDs,
+or register/override IRC send services.
 
-## Qualification and evidence
+## Outstanding integration
 
-- Native C source and module manifest: committed.
-- C compile, tests and qualification: not performed by this source edit.
-- Native C XML-RPC credential exchange code: **SOURCE IMPLEMENTED,
-  UNTESTED AND NOT INVOKED BY THE MODULE**. Simulator connection and
-  actual SL grid communication: **NOT IMPLEMENTED**.
-- MsSparkles avatar login, IM, group/local chat: **NOT TESTED**.
-- Installation, activation, deployment and operator acceptance: absent.
-
-This document supersedes the earlier unapproved C# implementation
-instructions. The current artifact is a **C-only foundation**, not
-a completed Second Life module.
-
-**AWAITING OPERATOR END-TO-END TESTING AND ACCEPTANCE** after a complete
-operator-authorized native C implementation exists.
+Next: implement authenticated incoming/outgoing private IM, group and
+conference chat, local chat, capabilities EventQueueGet, SL session
+recovery, friends, teleport, inventory, and executive orchestration via
+the existing Core/router boundary. No missing functionality is
+represented as complete or accepted.
