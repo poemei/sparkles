@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>
+#include <stdint.h>
+#include "sparkles_route.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,17 +14,137 @@
  * presence require distinct, simulator-observed protocol milestones.
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
-#define SL_MINOR 2U
-#define SL_PATCH 2U
+#define SL_MINOR 3U
+#define SL_PATCH 0U
 
-static pthread_t worker;
-static atomic_int stopping = ATOMIC_VAR_INIT(0);
-static int worker_started;
+#define SL_INBOUND_CAP 8U
+#define SL_OUTBOUND_CAP 8U
 
+static pthread_t worker, dispatcher;
+static atomic_int stopping=ATOMIC_VAR_INIT(0);
+static pthread_mutex_t qlock=PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t ready=PTHREAD_COND_INITIALIZER;
+static sparkles_sl_private_im_t inbound[SL_INBOUND_CAP];
+static sparkles_sl_im_reply_t outbound[SL_OUTBOUND_CAP];
+static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
+static uint64_t epoch;
+static int worker_started, dispatcher_started;
+static const stnlabz_module_host_t *module_host;
+
+static int enqueue_private(const sparkles_sl_private_im_t *im, void *unused)
+{
+    int accepted=0;
+    (void)unused;
+    if (!im) return 0;
+    pthread_mutex_lock(&qlock);
+    if (!atomic_load(&stopping) && in_count<SL_INBOUND_CAP) {
+        inbound[in_tail]=*im;
+        in_tail=(in_tail+1U)%SL_INBOUND_CAP;
+        ++in_count;
+        pthread_cond_signal(&ready);
+        accepted=1;
+    }
+    pthread_mutex_unlock(&qlock);
+    if (!accepted) fprintf(stderr,"[SL] inbound IM queue full; message not dispatched\n");
+    return accepted;
+}
+static int dequeue_reply(sparkles_sl_im_reply_t *reply, void *unused)
+{
+    int available=0;
+    (void)unused;
+    if (!reply) return 0;
+    pthread_mutex_lock(&qlock);
+    if (!atomic_load(&stopping) && out_count) {
+        *reply=outbound[out_head];
+        memset(&outbound[out_head],0,sizeof outbound[out_head]);
+        out_head=(out_head+1U)%SL_OUTBOUND_CAP;
+        --out_count;
+        available=1;
+    }
+    pthread_mutex_unlock(&qlock);
+    return available;
+}
+/* A reconnect invalidates pending exchanges; do not route stale IM
+ * responses into a later SL session. Core calls already in flight
+ * are discarded using the session epoch. */
+static void reset_queues(void *unused)
+{
+    (void)unused;
+    pthread_mutex_lock(&qlock);
+    ++epoch;
+    memset(inbound,0,sizeof inbound);
+    memset(outbound,0,sizeof outbound);
+    in_head=in_tail=in_count=0U;
+    out_head=out_tail=out_count=0U;
+    pthread_mutex_unlock(&qlock);
+}
+static void *dispatch_worker(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        sparkles_sl_private_im_t im;
+        sparkles_sl_im_reply_t reply={0};
+        sparkles_route_request_t request={0};
+        sparkles_route_reply_t response={0};
+        size_t used=0U;
+        uint64_t generation;
+        stnlabz_module_result_t result;
+        pthread_mutex_lock(&qlock);
+        while (!atomic_load(&stopping) && !in_count)
+            pthread_cond_wait(&ready,&qlock);
+        if (atomic_load(&stopping)) {
+            pthread_mutex_unlock(&qlock);
+            return NULL;
+        }
+        im=inbound[in_head];
+        memset(&inbound[in_head],0,sizeof inbound[in_head]);
+        in_head=(in_head+1U)%SL_INBOUND_CAP;
+        --in_count;
+        generation=epoch;
+        pthread_mutex_unlock(&qlock);
+        if (!module_host || !module_host->invoke_service) continue;
+        {
+            char id[37];
+            sparkles_sl_uuid_format(im.sender,id);
+            if (snprintf(request.account,sizeof request.account,"sl:%s",id)
+                >= (int)sizeof request.account) continue;
+        }
+        memcpy(request.sender,im.name,sizeof request.sender);
+        if (!request.sender[0]) {
+            memcpy(request.sender,request.account,
+                   strlen(request.account)+1U);
+        }
+        memcpy(request.text,im.text,sizeof request.text);
+        result=module_host->invoke_service(
+            SPARKLES_ROUTER_DISPATCH_SERVICE,
+            &request,sizeof request,&response,sizeof response,&used);
+        if (result!=STNLABZ_MODULE_OK || used!=sizeof response ||
+            !response.replied ||
+            !memchr(response.text,0,sizeof response.text) ||
+            !response.text[0]) {
+            fprintf(stderr,"[SL] private IM Core dispatch returned no reply\n");
+            continue;
+        }
+        memcpy(reply.recipient,im.sender,16U);
+        memcpy(reply.conversation,im.conversation,16U);
+        memcpy(reply.text,response.text,sizeof reply.text);
+        pthread_mutex_lock(&qlock);
+        if (!atomic_load(&stopping) && generation==epoch &&
+            out_count<SL_OUTBOUND_CAP) {
+            outbound[out_tail]=reply;
+            out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+            ++out_count;
+        } else {
+            fprintf(stderr,"[SL] private IM response discarded (disconnect or full queue)\n");
+        }
+        pthread_mutex_unlock(&qlock);
+    }
+}
 static void *grid_worker(void *unused)
 {
     (void)unused;
-    sparkles_sl_grid_run(&stopping);
+    sparkles_sl_grid_run(&stopping,enqueue_private,
+                         dequeue_reply,reset_queues,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
@@ -102,22 +224,45 @@ static stnlabz_module_result_t sl_qualify(
 }
 static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
 {
-    if (!host || worker_started)
-        return STNLABZ_MODULE_ERR_START_FAILED;
+    if (!host || !host->invoke_service || worker_started ||
+        dispatcher_started) return STNLABZ_MODULE_ERR_START_FAILED;
+    module_host=host;
     atomic_store(&stopping,0);
-    if (pthread_create(&worker,NULL,grid_worker,NULL)!=0)
+    reset_queues(NULL);
+    if (pthread_create(&dispatcher,NULL,dispatch_worker,NULL)!=0) {
+        module_host=NULL;
         return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    dispatcher_started=1;
+    if (pthread_create(&worker,NULL,grid_worker,NULL)!=0) {
+        atomic_store(&stopping,1);
+        pthread_mutex_lock(&qlock);
+        pthread_cond_broadcast(&ready);
+        pthread_mutex_unlock(&qlock);
+        (void)pthread_join(dispatcher,NULL);
+        dispatcher_started=0;
+        module_host=NULL;
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
     worker_started=1;
-    fprintf(stderr,"[SL] native C grid worker started; avatar presence not yet established\n");
+    fprintf(stderr,"[SL] native C grid/IM workers started; avatar presence not yet established\n");
     return STNLABZ_MODULE_OK;
 }
 static stnlabz_module_result_t sl_stop(void)
 {
-    if (!worker_started) return STNLABZ_MODULE_ERR_INVALID_STATE;
+    int ok=1;
+    if (!worker_started || !dispatcher_started)
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
     atomic_store(&stopping,1);
-    if (pthread_join(worker,NULL)!=0)
-        return STNLABZ_MODULE_ERR_STOP_FAILED;
-    worker_started=0;
+    pthread_mutex_lock(&qlock);
+    pthread_cond_broadcast(&ready);
+    pthread_mutex_unlock(&qlock);
+    if (pthread_join(worker,NULL)!=0) ok=0;
+    if (pthread_join(dispatcher,NULL)!=0) ok=0;
+    if (!ok) return STNLABZ_MODULE_ERR_STOP_FAILED;
+    worker_started=dispatcher_started=0;
+    reset_queues(NULL);
+    module_host=NULL;
     return STNLABZ_MODULE_OK;
 }
 static const stnlabz_module_descriptor_t descriptor={
