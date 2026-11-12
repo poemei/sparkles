@@ -162,23 +162,37 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
         if(length<0 || (size_t)length>=sizeof message)
             return reply(ctx,"Schedule record too large.");
     }
-    if(!result.count) {
-        if(!owner->send_private_message(command->sender,
-            "No scheduled appointments stored for the requested date."))
-            return reply(ctx,"Private schedule delivery failed.");
-    } else for(i=0;i<result.count;++i) {
-        const sparkles_mariadb_appointment_t *e=&result.records[i];
-        int length=snprintf(message,sizeof message,"%s to %s: %s",
-            e->start_time,e->end_time,e->title);
-        if(length<0 || (size_t)length>=sizeof message ||
-           !owner->send_private_message(command->sender,message))
-            return reply(ctx,"Private schedule delivery failed.");
+    /* Reply through the originating Core transport. Second Life dispatch
+     * supports one bounded response per private IM, never IRC delivery. */
+    if(!result.count)
+        return reply(ctx,"No scheduled appointments stored for the requested date.");
+    {
+        size_t written=0U;
+        unsigned int shown=0U;
+        message[0]='\\0';
+        for(i=0U;i<result.count;++i) {
+            const sparkles_mariadb_appointment_t *e=&result.records[i];
+            int length=snprintf(message+written,sizeof message-written,
+                "%s%s to %s: %s",shown?"; ":"",
+                e->start_time,e->end_time,e->title);
+            if(length<0)return reply(ctx,"Schedule record invalid.");
+            if((size_t)length>=sizeof message-written) {
+                message[written]='\\0';
+                break;
+            }
+            written+=(size_t)length;
+            ++shown;
+        }
+        if(!shown)
+            return reply(ctx,"Schedule records exceed message delivery limit.");
+        if(shown<result.count || result.has_more) {
+            const char *note=" (More appointments exist; narrow the date range.)";
+            size_t note_len=strlen(note);
+            if(written+note_len<sizeof message)
+                memcpy(message+written,note,note_len+1U);
+        }
+        return reply(ctx,message);
     }
-    if(result.has_more &&
-       !owner->send_private_message(command->sender,
-            "More appointments exist; narrow the date range."))
-        return reply(ctx,"Private schedule delivery incomplete.");
-    return 1; /* Private reply was already delivered. */
 }
 
 
@@ -247,16 +261,16 @@ static int schedule_reply(stnlabz_module_command_reply_fn reply,void *ctx,
 {
     return reply(ctx,text)?1:0;
 }
-/* Calendar details and follow-up questions are private by default. */
-static int schedule_private_prompt(const char *sender,
-                                  const sparkles_schedule_plan_t *plan)
+/* Calendar details follow the originating private Core transport. */
+static int schedule_private_prompt(stnlabz_module_command_reply_fn reply,
+                                  void *ctx,const sparkles_schedule_plan_t *plan)
 {
     char message[512];
     const sparkles_schedule_item_t *e=&plan->items[0];
     const char *date=!strcmp(e->date,"UNKNOWN")?"date not confirmed":e->date;
     const char *end=!strcmp(e->end,"UNKNOWN")?"end time not provided":e->end;
     int n;
-    if(!owner||!owner->send_private_message)return 0;
+    if(!reply)return 0;
     n=snprintf(message,sizeof message,
        "I have: %s on %s, starting %s (end: %s). %s",
        e->title,date,e->begin,end,
@@ -264,16 +278,16 @@ static int schedule_private_prompt(const char *sender,
        ?"What date is it? Reply YYYY-MM-DD or MM/DD/YYYY."
        :"What time does it end? Reply HH:MM in 24-hour time.");
     return n>=0 && (size_t)n<sizeof message &&
-           owner->send_private_message(sender,message);
+           reply(ctx,message);
 }
-static int schedule_private_reply(const char *sender,const char *text)
+static int schedule_private_reply(stnlabz_module_command_reply_fn reply,
+                                  void *ctx,const char *text)
 {
-    return owner&&owner->send_private_message &&
-           owner->send_private_message(sender,text);
+    return reply && reply(ctx,text);
 }
 
-static int send_schedule_summary(const char *sender,
-                                 const sparkles_schedule_plan_t *plan)
+static int send_schedule_summary(stnlabz_module_command_reply_fn reply,
+                                 void *ctx,const sparkles_schedule_plan_t *plan)
 {
     char message[512];
     size_t used=0U;
@@ -293,7 +307,7 @@ static int send_schedule_summary(const char *sender,
     n=snprintf(message+used,sizeof message-used,
                ". Reply 'confirm' to save, or 'cancel'.");
     if(n<0 || (size_t)n>=sizeof message-used)return 0;
-    return owner->send_private_message(sender,message);
+    return reply(ctx,message);
 }
 /* Authoritative pre-confirmation conflict check; never model arithmetic. */
 static int check_schedule_plan(const sparkles_schedule_plan_t *plan,
@@ -527,7 +541,8 @@ static int mutation_fetch(pending_mutation_t *state)
            !state->found.has_more;
 }
 static int mutation_offer_selection(pending_mutation_t *state,
-                                    const char *initial)
+                                    const char *initial,
+                                    stnlabz_module_command_reply_fn reply,void *ctx)
 {
     char message[512];
     char hint[6]={0};
@@ -553,7 +568,7 @@ static int mutation_offer_selection(pending_mutation_t *state,
             "Nothing changed. Please enter the exact appointment date "
             "(YYYY-MM-DD or MM/DD/YYYY) to check again.",state->day);
         return n>0&&(size_t)n<sizeof message &&
-               schedule_private_reply(state->sender,message);
+               schedule_private_reply(reply,ctx,message);
     }
     if(hint[0]&&!matched) {
         /* A strict time hint may not match the stored clock notation.
@@ -575,7 +590,7 @@ static int mutation_offer_selection(pending_mutation_t *state,
         }
         state->stage=2U;
         if(!mutation_store(state))return 0;
-        return schedule_private_reply(state->sender,message);
+        return schedule_private_reply(reply,ctx,message);
     }
     if(matched==1U || (!hint[0] && state->found.count==1U)) {
         const sparkles_mariadb_appointment_t *e=&state->found.records[choice];
@@ -597,7 +612,7 @@ static int mutation_offer_selection(pending_mutation_t *state,
                 e->id,e->title,e->start_time,e->end_time);
         }
         return n>0&&(size_t)n<sizeof message &&
-               schedule_private_reply(state->sender,message);
+               schedule_private_reply(reply,ctx,message);
     }
     n=snprintf(message,sizeof message,
        "I found %u appointments on %s. Reply with a number to select one: ",
@@ -613,7 +628,7 @@ static int mutation_offer_selection(pending_mutation_t *state,
     }
     state->stage=2U;
     if(!mutation_store(state))return 0;
-    return schedule_private_reply(state->sender,message);
+    return schedule_private_reply(reply,ctx,message);
 }
 static int mutation_conversation(const stnlabz_module_command_t *command,
     stnlabz_module_command_reply_fn reply,void *ctx)
@@ -623,11 +638,10 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
     const char *text=command->arguments;
     char message[512];
     int n;
-    (void)reply;(void)ctx;
     if(!command->account[0]||!command->sender[0]) {
         if(calendar_mutation_intent(text))
             return schedule_reply(reply,ctx,
-                "Calendar changes require a verified IRC account.");
+                "Calendar changes require a verified account.");
         return 0;
     }
     (void)pthread_mutex_lock(&mutations_lock);
@@ -661,23 +675,23 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
             state.stage=1U;
             if(!mutation_store(&state))
                 return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
-            if(!schedule_private_reply(state.sender,
+            if(!schedule_private_reply(reply,ctx,
                 "Which appointment date? Reply YYYY-MM-DD or MM/DD/YYYY."))
                 return schedule_reply(reply,ctx,"Private scheduling unavailable.");
             return 1;
         }
         if(!mutation_fetch(&state)) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "I could not verify the schedule. Nothing changed.");
             return 1;
         }
-        if(!mutation_offer_selection(&state,text))
+        if(!mutation_offer_selection(&state,text,reply,ctx))
             return schedule_reply(reply,ctx,"Private scheduling unavailable.");
         return 1;
     }
     if(!strcmp(text,"cancel")||!strcmp(text,"no")) {
         mutation_clear(state.account,state.sender);
-        (void)schedule_private_reply(state.sender,
+        (void)schedule_private_reply(reply,ctx,
             "Request canceled. No appointment changed.");
         return 1;
     }
@@ -685,17 +699,17 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         /* Accept only an explicit date after a failed relative-day lookup.
          * Do not loop on the potentially incorrect server-local tomorrow. */
         if(!sparkles_schedule_find_date(text,state.day)) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "Please give a calendar date (YYYY-MM-DD or MM/DD/YYYY).");
             return 1;
         }
         if(!mutation_fetch(&state)) {
             mutation_clear(state.account,state.sender);
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "I could not verify that day's schedule. Nothing changed.");
             return 1;
         }
-        if(!mutation_offer_selection(&state,""))
+        if(!mutation_offer_selection(&state,"",reply,ctx))
             return schedule_reply(reply,ctx,"Private scheduling unavailable.");
         return 1;
     }
@@ -705,7 +719,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         const sparkles_mariadb_appointment_t *e;
         if(sscanf(text,"%u %c",&selection,&extra)!=1 ||
            selection==0U || selection>state.found.count) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "Reply with the appointment number shown, or 'cancel'.");
             return 1;
         }
@@ -726,7 +740,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
                 "Reply YYYY-MM-DD HH:MM HH:MM [new title] or 'cancel'.",
                 e->id,e->title,e->start_time,e->end_time);
         if(n>0&&(size_t)n<sizeof message)
-            (void)schedule_private_reply(state.sender,message);
+            (void)schedule_private_reply(reply,ctx,message);
         return 1;
     }
     if(state.stage==3U) {
@@ -737,7 +751,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         if(sscanf(text,"%10s %5s %5s %n",date,start,end,&offset)!=3 ||
            !sparkles_schedule_date(date,date) ||
            !sparkles_schedule_end_time(end,start,state.request.next_end)) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "Please reply YYYY-MM-DD HH:MM HH:MM (end later than start).");
             return 1;
         }
@@ -755,7 +769,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         if(!title_length || title_length>=sizeof state.request.next_title ||
            strchr(new_title,'|') || strchr(new_title,'\r') ||
            strchr(new_title,'\n')) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "The new title is invalid or too long. Please provide a shorter title.");
             return 1;
         }
@@ -770,7 +784,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
             state.request.previous_end,state.request.next_start,
             state.request.next_end);
         if(n>0&&(size_t)n<sizeof message)
-            (void)schedule_private_reply(state.sender,message);
+            (void)schedule_private_reply(reply,ctx,message);
         return 1;
     }
     if(state.stage==4U) {
@@ -779,14 +793,14 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         size_t used=0U;
         const char *result;
         if(strcmp(text,"confirm") && strcmp(text,"yes")) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "Reply 'confirm' to apply this change, or 'cancel' to abort.");
             return 1;
         }
         /* One-use intent is cleared before attempting a database write. */
         mutation_clear(state.account,state.sender);
         if(!owner||!owner->invoke_service) {
-            (void)schedule_private_reply(state.sender,
+            (void)schedule_private_reply(reply,ctx,
                 "Calendar service unavailable. No confirmed change.");
             return 1;
         }
@@ -816,7 +830,7 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
                 result="Database change failed. Nothing confirmed.";
                 break;
         }
-        (void)schedule_private_reply(state.sender,result);
+        (void)schedule_private_reply(reply,ctx,result);
         return 1;
     }
     mutation_clear(state.account,state.sender);
@@ -864,7 +878,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         if(waiting) {
             unsigned int i;
             if(!sparkles_schedule_find_date(text,date)) {
-                if(!schedule_private_reply(sender,
+                if(!schedule_private_reply(reply,ctx,
                     "Please confirm the calendar date as YYYY-MM-DD or MM/DD/YYYY."))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                 return 1; /* Already replied in DM. */
@@ -876,7 +890,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             if(!pending_save(account,sender,&plan,0,waiting_end))
                 return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
             if(waiting_end) {
-                if(!schedule_private_prompt(sender,&plan)) {
+                if(!schedule_private_prompt(reply,ctx,&plan)) {
                     pending_clear(account,sender);
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                 }
@@ -886,14 +900,14 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 int check=check_schedule_plan(&plan,account);
                 if(check!=1) {
                     pending_clear(account,sender);
-                    if(!schedule_private_reply(sender,
+                    if(!schedule_private_reply(reply,ctx,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                                   "Calendar conflict check unavailable; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                     return 1; /* Already replied in DM. */
                 }
             }
-            if(!send_schedule_summary(sender,&plan)) {
+            if(!send_schedule_summary(reply,ctx,&plan)) {
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
             }
@@ -905,7 +919,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 if(!strcmp(plan.items[i].end,"UNKNOWN")) {
                     if(!sparkles_schedule_end_time(text,plan.items[i].begin,
                                                    plan.items[i].end)) {
-                        if(!schedule_private_reply(sender,
+                        if(!schedule_private_reply(reply,ctx,
                             "What time does it end? Reply HH:MM in 24-hour time, later than the start."))
                             return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                         return 1; /* Already replied in DM. */
@@ -916,7 +930,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 int check=check_schedule_plan(&plan,account);
                 if(check!=1) {
                     pending_clear(account,sender);
-                    if(!schedule_private_reply(sender,
+                    if(!schedule_private_reply(reply,ctx,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                                   "Calendar conflict check unavailable; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
@@ -925,7 +939,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             }
             if(!pending_save(account,sender,&plan,0,0))
                 return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
-            if(!send_schedule_summary(sender,&plan)) {
+            if(!send_schedule_summary(reply,ctx,&plan)) {
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
             }
@@ -955,7 +969,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     result==-3?
                       "Database confirmation uncertain. Check your schedule before retrying.":
                       "Calendar save failed or incomplete. Check your schedule before retrying.";
-                if(!schedule_private_reply(sender,message))
+                if(!schedule_private_reply(reply,ctx,message))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                 return 1; /* Already replied in DM. */
             }
@@ -1001,7 +1015,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 "I couldn't identify appointment times. Please clarify the event details.")
             : 0;
     if(!account[0])return schedule_reply(reply,ctx,
-       "Calendar changes require a verified IRC account.");
+       "Calendar changes require a verified account.");
     {
         unsigned int i;
         int needs_date=0,needs_end=0;
@@ -1017,7 +1031,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             if(!strcmp(plan.items[i].end,"UNKNOWN"))needs_end=1;
         }
         if(plan.count>1U && (needs_date || needs_end)) {
-            if(!schedule_private_reply(sender,
+            if(!schedule_private_reply(reply,ctx,
                 "I need complete dates and start/end times for both events. Please send each appointment separately in this IM."))
                 return schedule_reply(reply,ctx,"Private scheduling unavailable.");
             return 1; /* Already replied in DM. */
@@ -1025,7 +1039,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         if(!needs_date&&!needs_end) {
             int check=check_schedule_plan(&plan,account);
             if(check!=1) {
-                if(!schedule_private_reply(sender,
+                if(!schedule_private_reply(reply,ctx,
                     check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                               "Calendar conflict check unavailable; nothing saved."))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
@@ -1035,13 +1049,13 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         if(!pending_save(account,sender,&plan,needs_date,needs_end))
             return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
         if(needs_date || needs_end) {
-            if(!schedule_private_prompt(sender,&plan)) {
+            if(!schedule_private_prompt(reply,ctx,&plan)) {
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private scheduling unavailable.");
             }
             return 1; /* Already replied in DM. */
         }
-        if(!send_schedule_summary(sender,&plan)) {
+        if(!send_schedule_summary(reply,ctx,&plan)) {
             pending_clear(account,sender);
             return schedule_reply(reply,ctx,"Private confirmation unavailable.");
         }
