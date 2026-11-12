@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot updated: 2026-11-11 (America/Los_Angeles); original handoff 2026-11-10
+Snapshot updated: 2026-11-12 (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -458,4 +458,224 @@ GitHub file that can be fetched directly. The operator wants actual
 file edits, grounded evidence, and concise exact results, not
 speculative architecture advice. This update is ONLY to context.txt.
 
-END OF SPARKLES CONTEXT — 2026-11-11 (America/Los_Angeles)
+======================================================================
+15. 2026-11-11/12 — SECOND LIFE EXECUTIVE-ASSISTANT VISION
+======================================================================
+SOURCE: Extended direct operator conversation during the evening of
+2026-11-11 (America/Los_Angeles), continuing into 2026-11-12. This
+section preserves operator statements, examples, observed tests, and
+proposals separately. Discussion is NOT authorization to implement
+features or modify any files beyond this context.txt update.
+
+CENTRAL STANDARD: Ms. Sparkles must BE capable, not merely SOUND
+intelligent. The operator previously supported high-level Department
+of the Army executive officers as an executive assistant and expects
+comparable precision, anticipation, accountability, discretion,
+verified follow-through, and relief from administrative burden.
+An assistant must not become another responsibility for the executive.
+Style, wit, and social presence are valuable, but competence and trust
+are essential. Do not patch isolated symptoms without understanding the
+whole project, its intended destination, and the real failure mechanism.
+
+PRIMARY OPERATING ENVIRONMENT: Second Life, which operates 24/7. IRC is
+only a current development/test transport and must not dictate
+executive-service design. Operational timekeeping may use UTC internally,
+while SLT means Second Life Time = America/Los_Angeles (PST in winter,
+PDT in summer); relative dates like today/tomorrow in SL conversations
+should be interpreted in SLT unless the human specifies otherwise.
+Per-person timezones and schedules matter across a global community.
+Morning briefings, shift-start check-ins, proactive reminders, late
+changes, and optional end-of-work recaps must be individual and need
+not follow conventional business hours. Capabilities must survive
+disconnection/restarts and work through future authorized transports,
+without duplicating intelligence within each transport.
+
+SOCIAL / CONVERSATIONAL EXPECTATIONS:
+- People converse nonlinearly: lengthy tangents, jokes, side stories,
+  topic changes, abandoned thoughts and later returns to the original
+  issue. Sparkles should keep the thread, context, speaker attribution,
+  and unresolved intent without forcing scripted or command-only talk.
+- Distinguish chatting, confidences, proposals, requests, explicit
+  authorizations, and completed actions. Silence is sometimes the
+  most professionally appropriate behavior.
+- Read the room; be socially competent, warm, sometimes sassy/cheeky,
+  and occasionally spontaneously funny, without canned jokes or
+  needless interruption. Personality must not undermine execution.
+- The operator described a small but professionally diverse social
+  circle spanning cultures, identities, fashion, hosting, DJing,
+  venues, business, modeling, and adult-industry work in SL. Treat
+  professional sectors without stigma or unwarranted assumptions.
+- Information disclosed privately (e.g. a private comment about
+  another group participant) must NOT be surfaced in group chat or
+  shared minutes merely because Sparkles knows it. Shared context
+  may support useful contributions when disclosure is authorized;
+  confidentiality remains scoped to source and permissions.
+- New contacts should be able to approach Sparkles naturally by IM
+  or other transport. Look up reliable platform identities; if
+  unknown, gather only necessary contact, affiliation, timezone,
+  preferences, and permission information conversationally and
+  appropriately. Recognition is NOT authorization. Avoid automatically
+  cross-linking people across transports by display name. The precise
+  consent/onboarding policy was discussed but NOT decided.
+
+MEETINGS AND HIGH-VOLUME COORDINATION:
+- Sparkles may be invited into group discussions, including STN-Labz
+  meetings with roughly 15 participants. She should often listen
+  quietly, take appropriately authorized notes, and at meeting close
+  read back accurate minutes: attendance when known, substantive
+  discussion, decisions, assigned actions, deadlines, events,
+  scheduling conflicts, unresolved requests, pending confirmations,
+  and next steps. Minutes must distinguish proposals from agreed
+  decisions and committed/database-confirmed appointments.
+- Scheduling actions proposed in group contexts may require separate
+  private confirmation from each affected person; never substitute
+  one participant's assertion for another's authorization.
+- Operator described Play Dolls / PlayDoll mansion as a potential
+  high-volume real SL setting with as many as 650 models and rapidly
+  changing event, photographer and talent schedules. The operator
+  reports Telera had six schedule changes in a recent week. Sparkles
+  should eventually manage concurrency, competing priorities, event
+  revisions, multiple participants, confirmed versus pending items,
+  conflicts, and clear audit/accountability trails, rather than simply
+  claiming to coordinate them. 650-person scheduling throughput in
+  an hour is a VISION/SCENARIO, NOT a proven benchmark or capability.
+- Private schedules must not be revealed to other participants when
+  reporting availability conflicts. Busy people should not be forced
+  to manually reconstruct every schedule after each change.
+- The operator's hosting across the SL grid, modeling, Play Dolls
+  involvement, magazines, and overlapping photographer inquiries
+  explain why the coordination goal matters; personal conversation
+  and illustrative jokes are not independent verified operational
+  facts about any named third party.
+
+PROFESSIONAL REPRESENTATION / BOOKING RULES:
+- The operator may refer photographers and agencies directly to
+  Ms. Sparkles as her representative. Sparkles should collect identity,
+  role, project/concept, date/time, duration and other needed booking
+  details, check conflicts, and escalate decisions she is not authorized
+  to make rather than overbook or presume agreement.
+- EXPLICIT HUMAN BOUNDARY: The operator does not accept nude photography
+  or sexual favors in connection with modeling work. Do not offer,
+  negotiate, or accept such arrangements; do not volunteer private
+  explanations or rationales. Other types of shoots should not be
+  automatically forbidden without specific direction. Respect the
+  operator's boundaries and do not judge others' industries.
+- The operator expects Sparkles to ASK proactively for scheduling
+  parameters before handling a flood of requests: earliest convenient
+  time, latest acceptable appointment, durations, exceptions, breaks
+  and known commitments. Example preference discussed: no NEW
+  appointment start later than 22:30 SLT when the operator says
+  "nothing after 11 PM"; a 22:30 start that extends beyond the
+  desired finishing time still needs clarification. Treat this as
+  conversational preference/example, not proof of saved production
+  account settings. Do not move preexisting confirmed appointments
+  without proper authorization.
+- Sparkles should be an executive assistant and capable business
+  representative FIRST, not a Play Dolls model; fashion, striking
+  attire, charming personality and visual SL presence are presentation
+  rather than substitutes for verified job performance.
+
+POSSIBLE PUBLIC INTRODUCTION AND BUSINESS MODEL (NOT IMPLEMENTED):
+- Operator discussed a technical introduction on stn-labz.com, an
+  in-world notecard or kiosk, then a paywall for executive services.
+- Explored ideas include a trial month and/or L$5,000 per month paid
+  directly to Sparkles within the SL economy, with a joking
+  50-percent wardrobe allowance. These are early discussion ideas,
+  NOT accepted final prices, terms, allocation policies, payment
+  integration, or permission to collect money.
+- Proper implementation would require verified payments, subscription
+  state, transparent access terms, separation of social interaction
+  from paid services as directed, and protection of records after
+  expiry. No subscription infrastructure is asserted to exist.
+- Operator reports Mochi requested first access and additional
+  acquaintances expressed strong interest after hearing about the
+  proposed SL executive assistant. This is anecdotal early interest,
+  not measured demand or a proven commercial result.
+
+PERSONALITY / APPEARANCE (CREATIVE DIRECTION ONLY):
+- The operator envisages Ms. Sparkles as a cheeky, socially aware
+  kitten-like executive assistant: dressed to the nines, sometimes
+  in sophisticated turquoise, black couture business attire or a
+  dark-haired, subtly blue-eyed, near-elvish gothic-princess style,
+  often calmly working from a tablet at an SL event.
+- Running humor about couture, stilettos, a private notebook, and
+  "Poe doesn't pay me enough" illustrates situational warmth, NOT
+  permission for rote scripts, unsolicited remarks, or disclosure
+  of confidences. The operator explicitly clarified that practical
+  executive work, not a fashion-model career, is her mission.
+- Visual concepts were generated in conversation; they are NOT
+  finalized 3D avatar assets, SL deployment, or accepted branding.
+
+======================================================================
+16. 2026-11-12 — CALENDAR OPERATOR TESTS AND WORDING
+======================================================================
+The operator observed an earlier false cancellation claim: Sparkles
+had said a meeting was canceled although the operator checked the DB
+and found it still scheduled. Later source revisions added a
+human-confirmed MariaDB mutation path. At first, relative "tomorrow"
+selected 2026-11-13 according to Sparkles' UTC-based date, while the
+human intended the 2026-11-12 Pacific/SLT appointment. An explicit
+date request resolved to the correct row.
+
+OPERATOR-OBSERVED, DATABASE-CHECKED CANCELLATION:
+  PoeMei: cancel my meeting 2026-11-12 at 1630
+  SparklesR: Cancel appointment #3: River management meeting
+             (2026-11-12 16:30:00 to 2026-11-12 17:00:00)?
+             Reply 'confirm' or 'cancel'.
+  PoeMei: confirm
+  SparklesR: The selected appointment was canceled in MariaDB.
+  Operator subsequently independently verified in the DB that this
+  appointment was no longer scheduled.
+This establishes successful confirmed cancellation for THAT tested
+record, not blanket qualification of all mutation cases or timezone
+resolution. In conversational replies, database implementation names
+are undesirable and should not be exposed.
+
+Operator also showed a separate natural-language creation exchange
+for "The River management meeting" on 2026-11-12, 16:30-17:00:
+Sparkles asked for the missing end time, requested confirmation, and
+replied "Your confirmed appointments were saved in the calendar."
+The transcript is an operator-observed creation acknowledgment; do
+not silently infer independent DB verification for that later booking.
+
+Following explicit user request, GitHub source commits:
+  ad41876e1818d554aadc61db65d39a36d037e08b
+  Ollama v1.1.6 success-language replacement:
+    "Your appointment has been canceled."
+    "Your appointment has been updated."
+  0df70fcb1672e9f0f75168186c92b0bbbe50a5b
+  Engineering documentation for user-facing wording.
+The creation success message remained unchanged. The wording edit
+was SOURCE COMMITTED, but native build, installation, and new live
+language verification were NOT established in the supplied exchange.
+The cancellation DB check predates this wording edit.
+
+NEXT-CAPABILITY INTENT, NOT YET VERIFIED IMPLEMENTATION:
+- Private 15-minute-before appointment reminders; an example was
+  16:15 SLT for a 16:30 SLT River appointment.
+- Morning or shift-start briefings at first check-in or optionally
+  proactively, plus ongoing calendar adjustments and optional
+  end-of-shift summaries. Reminders, retries, deduplication, timing,
+  and notification routing should not depend on IRC or on a live
+  model conversation. Do not promise live reminders before deployment
+  and testing.
+- Resolve timezone semantics explicitly and preserve the already
+  verified confirmation-before-mutation logic.
+
+======================================================================
+17. CURRENT HANDOFF / AUTHORIZATION — 2026-11-12
+======================================================================
+This 2026-11-12 update records the long operator conversation and
+observed qualification evidence above. Statements of desired future
+behavior, narrated hypothetical examples, image generations, potential
+client interest, and business-model discussion are not implemented
+features, verified capacity, monetization approvals, or release plans.
+
+AUTHORIZED THIS TURN: Update poemei/sparkles context.txt on GitHub main.
+NOT AUTHORIZED: Source changes, deployments, installations, activation,
+payment implementation, Second Life rollout, schedule writes, roadmap
+revisions, training, model changes, or updates to other repositories.
+Read current repository documents and obtain direction before future
+development. Preserve the precise scope, and do not redirect to Work.
+
+END OF SPARKLES CONTEXT — 2026-11-12 (America/Los_Angeles)
