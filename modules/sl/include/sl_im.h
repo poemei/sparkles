@@ -7,6 +7,7 @@
 /* One-to-one ImprovedInstantMessage only, Low message 254, Dialog 0.
  * Group, conference, object, inventory and control dialogs are excluded. */
 #define SPARKLES_SL_IM_MESSAGE_ID 254U
+#define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
 
 typedef struct {
@@ -14,6 +15,7 @@ typedef struct {
     unsigned char conversation[16];
     char name[128];
     char text[SPARKLES_SL_IM_TEXT_MAX];
+    unsigned int ambient; /* 0=private IM, 1=audible nearby avatar chat */
 } sparkles_sl_private_im_t;
 
 typedef enum {
@@ -31,6 +33,12 @@ const char *sparkles_sl_im_validation_name(sparkles_sl_im_validation_t result);
 
 /* Parse untrusted simulator-originated body; returns 1 for a valid personal IM.
  * A caller must only use it on packets from the authenticated simulator circuit. */
+/* ChatFromSimulator Low 139. Accept only audible nearby avatar speech,
+ * not system messages, objects, typing events, or the assistant itself. */
+int sparkles_sl_chat_decode(const unsigned char *payload,size_t length,
+                           const unsigned char own_agent[16],
+                           sparkles_sl_private_im_t *chat);
+
 int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im);
