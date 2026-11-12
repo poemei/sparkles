@@ -1,6 +1,24 @@
-# Sparkles MariaDB module — v1.7.0
+# Sparkles MariaDB module — v1.7.2
 
 This module uses the Core ABI 1.5 lifecycle, registers authenticated explicit `/schedule` and `/appointment-add` commands and two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. An explicit authorized `/appointment-add` request can INSERT one appointment after rejecting overlaps with existing scheduled appointments. It does not update or delete appointments, alter Core/chat routing, IRC or Ollama, or grant unrelated users access. No model inference is treated as authority over database records.
+
+## v1.7.2 — Contact identity schema readback
+
+The operator-provided SQL export confirms that the Second Life UUID is stored
+as `contact_identities.platform_identifier` and that `platform` accepts
+`second_life`. v1.7.2 recognizes this **actual** field. The unique index
+`uq_platform_identity` protects repeated avatar identifiers.
+
+An existing `contacts` record is not automatically linked merely because a
+speaker supplied a matching first or agent name. If both display and first
+names coincide with a preexisting contact, the service refuses to create a
+duplicate and logs that verified identity linking is required, without
+printing personal information. A trusted person-centric cross-transport
+linking flow is still needed to associate the already-existing contact with
+a new avatar UUID. Neither this schema correction nor a self-reported first
+name grants existing calendar permissions.
+
+Source committed only; compilation and live DB persistence remain unverified.
 
 ## v1.7.0 — Second Life contact discovery (source only)
 
