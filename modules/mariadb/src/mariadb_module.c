@@ -17,6 +17,7 @@ static int add_command_registered;
 static int create_service_registered;
 static int check_service_registered;
 static int memory_service_registered;
+static int mutate_service_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
 {
@@ -467,6 +468,177 @@ static stnlabz_module_result_t create_service(
     return STNLABZ_MODULE_OK;
 }
 
+
+/* Transactional optimistic mutation. The source snapshot comes from a
+ * verified-account read and is checked again while the row is locked. */
+static stnlabz_module_result_t mutate_service(
+    const void *request,size_t request_size,
+    void *response,size_t response_size,size_t *used,void *ctx)
+{
+    static const char match_sql[] =
+        "SELECT id FROM appointments WHERE id=? AND status='scheduled' "
+        "AND title=? AND start_time=? AND end_time=? FOR UPDATE";
+    static const char overlap_sql[] =
+        "SELECT id FROM appointments WHERE id<>? AND status='scheduled' "
+        "AND start_time < ? AND end_time > ? LIMIT 1 FOR UPDATE";
+    static const char cancel_sql[] =
+        "UPDATE appointments SET status='cancelled' WHERE id=? "
+        "AND status='scheduled' AND title=? AND start_time=? AND end_time=?";
+    static const char update_sql[] =
+        "UPDATE appointments SET title=?,start_time=?,end_time=? WHERE id=? "
+        "AND status='scheduled' AND title=? AND start_time=? AND end_time=?";
+    const sparkles_mariadb_mutate_request_t *in=request;
+    sparkles_mariadb_mutate_reply_t *out=response;
+    sparkles_mariadb_new_appointment_t validated;
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND bind[7]={{0}};
+    unsigned long lengths[7]={0};
+    unsigned long long id;
+    int transaction=0,ok=1,matched=0;
+    char new_input[256];
+    int n;
+    (void)ctx;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||response_size<sizeof *out||
+       !memchr(in->account,0,sizeof in->account)||
+       !memchr(in->previous_title,0,sizeof in->previous_title)||
+       !memchr(in->previous_start,0,sizeof in->previous_start)||
+       !memchr(in->previous_end,0,sizeof in->previous_end)||
+       !memchr(in->next_title,0,sizeof in->next_title)||
+       !memchr(in->next_start,0,sizeof in->next_start)||
+       !memchr(in->next_end,0,sizeof in->next_end)||
+       !in->id ||
+       (in->operation!=SPARKLES_MARIADB_MUTATE_CANCEL &&
+        in->operation!=SPARKLES_MARIADB_MUTATE_UPDATE))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    if(!sparkles_mariadb_account_allowed(SPARKLES_MARIADB_IRC_ACCOUNTS,
+                                         in->account)) {
+        out->status=SPARKLES_MARIADB_MUTATE_DENIED;
+        if(used)*used=sizeof *out;
+        return STNLABZ_MODULE_OK;
+    }
+    if(!in->previous_title[0]||
+       strlen(in->previous_start)!=19U||
+       strlen(in->previous_end)!=19U||
+       !safe_irc_title(in->previous_title))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    if(in->operation==SPARKLES_MARIADB_MUTATE_UPDATE) {
+        if(strlen(in->next_start)!=19U||strlen(in->next_end)!=19U||
+           memcmp(in->next_start,in->next_end,11U)!=0||
+           memcmp(in->next_start+16,":00",3U)!=0||
+           memcmp(in->next_end+16,":00",3U)!=0)
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+        n=snprintf(new_input,sizeof new_input,"%.10s %.5s %.5s %s",
+                   in->next_start,in->next_start+11,
+                   in->next_end+11,in->next_title);
+        if(n<0||(size_t)n>=sizeof new_input||
+           !sparkles_mariadb_parse_new_appointment(new_input,&validated)||
+           strcmp(validated.start_time,in->next_start)||
+           strcmp(validated.end_time,in->next_end))
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    }
+    id=in->id;
+    out->status=SPARKLES_MARIADB_MUTATE_ERROR;
+    (void)pthread_mutex_lock(&db_lock);
+    if(!db||mysql_ping(db)||mysql_query(db,"START TRANSACTION"))goto done_mutate;
+    transaction=1;
+    stmt=mysql_stmt_init(db);
+    if(!stmt||mysql_stmt_prepare(stmt,match_sql,(unsigned long)strlen(match_sql)))
+        goto done_mutate;
+    bind[0].buffer_type=MYSQL_TYPE_LONGLONG;
+    bind[0].buffer=&id;bind[0].is_unsigned=1;
+    bind[1].buffer_type=MYSQL_TYPE_STRING;
+    bind[1].buffer=(void *)in->previous_title;
+    lengths[1]=(unsigned long)strlen(in->previous_title);
+    bind[1].buffer_length=lengths[1];bind[1].length=&lengths[1];
+    bind[2].buffer_type=MYSQL_TYPE_STRING;
+    bind[2].buffer=(void *)in->previous_start;
+    lengths[2]=(unsigned long)strlen(in->previous_start);
+    bind[2].buffer_length=lengths[2];bind[2].length=&lengths[2];
+    bind[3].buffer_type=MYSQL_TYPE_STRING;
+    bind[3].buffer=(void *)in->previous_end;
+    lengths[3]=(unsigned long)strlen(in->previous_end);
+    bind[3].buffer_length=lengths[3];bind[3].length=&lengths[3];
+    if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
+       mysql_stmt_store_result(stmt))goto done_mutate;
+    matched=mysql_stmt_num_rows(stmt)==1ULL;
+    mysql_stmt_close(stmt);stmt=NULL;
+    if(!matched) {
+        out->status=SPARKLES_MARIADB_MUTATE_STALE;
+        goto done_mutate;
+    }
+    if(in->operation==SPARKLES_MARIADB_MUTATE_UPDATE) {
+        memset(bind,0,sizeof bind);
+        stmt=mysql_stmt_init(db);
+        if(!stmt||mysql_stmt_prepare(stmt,overlap_sql,
+                                    (unsigned long)strlen(overlap_sql)))
+            goto done_mutate;
+        bind[0].buffer_type=MYSQL_TYPE_LONGLONG;
+        bind[0].buffer=&id;bind[0].is_unsigned=1;
+        bind[1].buffer_type=MYSQL_TYPE_STRING;
+        bind[1].buffer=(void *)in->next_end;
+        lengths[1]=19U;bind[1].buffer_length=19U;bind[1].length=&lengths[1];
+        bind[2].buffer_type=MYSQL_TYPE_STRING;
+        bind[2].buffer=(void *)in->next_start;
+        lengths[2]=19U;bind[2].buffer_length=19U;bind[2].length=&lengths[2];
+        if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
+           mysql_stmt_store_result(stmt))goto done_mutate;
+        if(mysql_stmt_num_rows(stmt)>0ULL) {
+            out->status=SPARKLES_MARIADB_MUTATE_CONFLICT;
+            goto done_mutate;
+        }
+        mysql_stmt_close(stmt);stmt=NULL;
+    }
+    memset(bind,0,sizeof bind);
+    stmt=mysql_stmt_init(db);
+    if(!stmt||mysql_stmt_prepare(stmt,
+         in->operation==SPARKLES_MARIADB_MUTATE_CANCEL?cancel_sql:update_sql,
+         (unsigned long)strlen(in->operation==SPARKLES_MARIADB_MUTATE_CANCEL?
+                                cancel_sql:update_sql)))goto done_mutate;
+    {
+        unsigned int offset=0U,j;
+        const char *values[6];
+        if(in->operation==SPARKLES_MARIADB_MUTATE_UPDATE) {
+            values[0]=in->next_title;values[1]=in->next_start;
+            values[2]=in->next_end;
+            for(j=0U;j<3U;++j) {
+                bind[j].buffer_type=MYSQL_TYPE_STRING;
+                bind[j].buffer=(void *)values[j];
+                lengths[j]=(unsigned long)strlen(values[j]);
+                bind[j].buffer_length=lengths[j];bind[j].length=&lengths[j];
+            }
+            offset=3U;
+        }
+        bind[offset].buffer_type=MYSQL_TYPE_LONGLONG;
+        bind[offset].buffer=&id;bind[offset].is_unsigned=1;
+        values[0]=in->previous_title;values[1]=in->previous_start;
+        values[2]=in->previous_end;
+        for(j=0U;j<3U;++j) {
+            unsigned int k=offset+j+1U;
+            bind[k].buffer_type=MYSQL_TYPE_STRING;
+            bind[k].buffer=(void *)values[j];
+            lengths[k]=(unsigned long)strlen(values[j]);
+            bind[k].buffer_length=lengths[k];bind[k].length=&lengths[k];
+        }
+    }
+    if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
+       mysql_stmt_affected_rows(stmt)!=1ULL)goto done_mutate;
+    mysql_stmt_close(stmt);stmt=NULL;
+    out->status=SPARKLES_MARIADB_MUTATE_UNCERTAIN;
+    if(mysql_query(db,"COMMIT")==0) {
+        transaction=0;
+        out->status=SPARKLES_MARIADB_MUTATE_APPLIED;
+    }
+done_mutate:
+    if(stmt)mysql_stmt_close(stmt);
+    if(transaction && mysql_query(db,"ROLLBACK")!=0)
+        out->status=SPARKLES_MARIADB_MUTATE_UNCERTAIN;
+    (void)pthread_mutex_unlock(&db_lock);
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+
 /* Authorized human-directed insert, never an Ollama inference side effect. */
 static stnlabz_module_result_t appointment_add_command(
     const stnlabz_module_command_t *command,
@@ -639,9 +811,22 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     check_service_registered=1;
+    if(!h->register_service(SPARKLES_MARIADB_MUTATE_SERVICE,mutate_service,NULL)) {
+        (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
+        check_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        db=NULL;mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    mutate_service_registered=1;
     host_owner = h;
     registered = 1;
     if (!h->register_command("schedule",schedule_command,NULL)) {
+        (void)h->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL);
+        mutate_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
         check_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
@@ -658,6 +843,8 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
     if (!h->register_command("appointment-add",appointment_add_command,NULL)) {
         (void)h->unregister_command("schedule",NULL);
         command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL);
+        mutate_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
         check_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
@@ -677,6 +864,8 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         add_command_registered=0;
         (void)h->unregister_command("schedule",NULL);
         command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL);
+        mutate_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
         check_service_registered=0;
         (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
@@ -714,6 +903,10 @@ static stnlabz_module_result_t stop(void)
     if (registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE, NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
+    if (mutate_service_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    mutate_service_registered=0;
     if (check_service_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -732,7 +925,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 5U, 1U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 6U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
