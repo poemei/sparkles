@@ -11,6 +11,7 @@ typedef struct {
 } sparkles_schedule_item_t;
 typedef struct {
     unsigned int count;
+    char guest_name[64]; /* Explicitly named guest for one appointment. */
     sparkles_schedule_item_t items[SPARKLES_SCHEDULE_ITEMS_MAX];
 } sparkles_schedule_plan_t;
 
