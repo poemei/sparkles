@@ -1598,6 +1598,25 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
            !strcmp(date,"2026-11-12"))++p;else ok=0;
     ++e;if(calendar_mutation_intent("cancel my meeting for tomorrow"))++p;else ok=0;
  }
+ {
+  static const struct {const char *input;int expected;} checks[]={
+   {"do you know me?",1},
+   {"Sparkles, do you know me?",1},
+   {"Sparkles: who am i?",1},
+   {"Sparkles what is my name?",1},
+   {"Sparkles, what's my schedule today?",0},
+   {"hello there",0}
+  };
+  size_t i;
+  for(i=0U;i<sizeof checks/sizeof checks[0];++i) {
+   ++e;
+   if(sl_know_question(checks[i].input)==checks[i].expected)++p;
+   else ok=0;
+  }
+  ++e;
+  if(!strcmp(sl_strip_address("Sparkles, my name is Poe."),
+             "my name is Poe."))++p;else ok=0;
+ }
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
  return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_QUALIFICATION;
