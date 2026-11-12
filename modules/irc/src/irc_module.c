@@ -22,7 +22,7 @@
 
 #define IRC_VERSION_MAJOR 1U
 #define IRC_VERSION_MINOR 1U
-#define IRC_VERSION_PATCH 5U
+#define IRC_VERSION_PATCH 6U
 #define IRC_OUTBOUND_MAX 32U
 #define IRC_INBOUND_MAX 16U
 #define IRC_STARTUP_WAIT_SECONDS 30U
@@ -404,6 +404,18 @@ static void handle_conversation_message(const char *line)
     input_length = strlen(input);
     if (!input_length || input_length >= sizeof request.text ||
         strlen(sender) >= sizeof request.sender) return;
+
+    /* Channel conversations must never run scheduling operations.
+     * Only an explicit DM from the user enters the Core calendar workflow.
+     * The public response has no appointment details or account metadata. */
+    if (!private_message && sparkles_irc_schedule_intent(input)) {
+        static const char redirect[] =
+            "Please DM me to handle scheduling privately. "
+            "I won't discuss or change appointments in this channel.";
+        if (!queue_outbound(0,target,redirect))
+            status("scheduling DM redirect could not be queued");
+        return;
+    }
     memset(&request, 0, sizeof request);
     memset(&response, 0, sizeof response);
     memcpy(request.sender, sender, strlen(sender) + 1U);
