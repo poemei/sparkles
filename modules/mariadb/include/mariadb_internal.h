@@ -11,6 +11,12 @@ int sparkles_mariadb_identity_parts(const char *account,
                                    const char **platform,
                                    const char **identifier);
 int sparkles_mariadb_contact_calendar_allowed(MYSQL *db,const char *account);
+int sparkles_mariadb_contact_id(MYSQL *db,const char *account,
+                               unsigned long long *contact_id);
+int sparkles_mariadb_participants_supported(MYSQL *db);
+int sparkles_mariadb_participant_add(MYSQL *db,
+                                    unsigned long long appointment_id,
+                                    unsigned long long contact_id);
 
 #define SPARKLES_MARIADB_CONFIG "/opt/sparkles/auth/mariadb/mariadb.env"
 #define SPARKLES_MARIADB_HOST "localhost"
