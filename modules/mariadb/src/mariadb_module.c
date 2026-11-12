@@ -253,8 +253,7 @@ static stnlabz_module_result_t schedule_command(
         !host_owner->send_private_message(command->sender,
              "More appointments exist; narrow the date range."))
         return STNLABZ_MODULE_ERR_INVALID_STATE;
-    return reply(reply_context,"Schedule lookup sent privately.")
-        ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    return STNLABZ_MODULE_OK; /* Private schedule already delivered. */
 }
 
 typedef enum {
@@ -686,8 +685,7 @@ static stnlabz_module_result_t appointment_add_command(
         return reply(reply_context,
           "Appointment saved in database; private confirmation unavailable.")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    return reply(reply_context,"Appointment saved; confirmation sent privately.")
-        ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    return STNLABZ_MODULE_OK; /* Private confirmation already delivered. */
 }
 
 /* Account-separated durable observations. A nickname is never an identity.
