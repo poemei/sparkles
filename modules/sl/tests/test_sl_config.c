@@ -24,7 +24,7 @@ int main(void)
     const char *good =
         "# SL test credentials are intentionally fictitious\n"
         "first=MsSparkles\nlast=Resident\npassword=test-only-not-real\n"
-        "mac=test-mac\nid0=test-id0\nstart=home\n";
+        "start=home\n";
     assert(fd >= 0);
     assert(close(fd) == 0);
     assert(chmod(path, 0600) == 0);
@@ -39,11 +39,11 @@ int main(void)
     assert(chmod(path, 0600) == 0);
     write_content(path,
         "first=MsSparkles\nlast=Resident\npassword=test\n"
-        "mac=local\nid0=local\nstart=home\npassword=second\n");
+        "start=home\npassword=second\n");
     assert(!sparkles_sl_config_load(path, &cfg));
     write_content(path,
         "first=MsSparkles\nlast=Resident\npassword=test\n"
-        "mac=local\nid0=local\nstart=home\nunknown=value\n");
+        "start=home\nunknown=value\n");
     assert(!sparkles_sl_config_load(path, &cfg));
     write_content(path, good);
     assert(snprintf(alternate, sizeof alternate, "%s.link", path) > 0);
