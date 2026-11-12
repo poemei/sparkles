@@ -54,7 +54,7 @@ int sparkles_mariadb_contact_calendar_allowed(MYSQL *db,const char *account)
         "WHERE i.platform=? AND i.platform_identifier=? LIMIT 2";
     const char *platform=NULL,*identity=NULL;
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND binds[2]={{0}},value={{0}};
+    MYSQL_BIND binds[2]={{0}},value={0};
     unsigned long lengths[2];
     unsigned long long contact_id=0ULL;
     int allowed=0,rc;
@@ -98,7 +98,7 @@ int sparkles_mariadb_contact_id(MYSQL *db,const char *account,
         "WHERE i.platform=? AND i.platform_identifier=? LIMIT 2";
     const char *platform=NULL,*identity=NULL;
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND in[2]={{0}},out={{0}};
+    MYSQL_BIND in[2]={{0}},out={0};
     unsigned long lengths[2];
     unsigned long long id=0ULL;
     int found=0;
