@@ -156,6 +156,42 @@ static int resend(int fd, reliable_t *slot, uint64_t now)
     ++slot->attempts;
     return 1;
 }
+static void put_f32le(unsigned char *out, float value)
+{
+    uint32_t bits;
+    memcpy(&bits,&value,sizeof bits);
+    put_u32le(out,bits);
+}
+static int send_agent_update(int fd,
+                             const sparkles_sl_session_t *session,
+                             const unsigned char position[12],
+                             uint32_t *next)
+{
+    unsigned char msg[121]={0};
+    put_u32be(msg+1U,(*next)++);
+    msg[6]=4U; /* AgentUpdate High 4, uncompressed valid payload. */
+    memcpy(msg+7U,session->agent,16U);
+    memcpy(msg+23U,session->session,16U);
+    /* Body/head rotations are identity quaternions, encoded (0,0,0).
+     * A neutral observer orientation and zero control flags mean idle. */
+    memcpy(msg+64U,position,12U);
+    put_f32le(msg+76U,1.0f);  /* CameraAtAxis X */
+    put_f32le(msg+92U,1.0f);  /* CameraLeftAxis Y */
+    put_f32le(msg+108U,1.0f); /* CameraUpAxis Z */
+    put_f32le(msg+112U,64.0f);/* CameraFar */
+    return send_packet(fd,msg,sizeof msg);
+}
+static int send_region_reply(int fd, const sparkles_sl_session_t *session,
+                             uint32_t *next)
+{
+    unsigned char msg[46]={0};
+    put_u32be(msg+1U,(*next)++);
+    msg[6]=0xffU; msg[7]=0xffU; msg[9]=149U;
+    memcpy(msg+10U,session->agent,16U);
+    memcpy(msg+26U,session->session,16U);
+    /* RegionInfo.Flags is zero; no unsupported viewer features advertised. */
+    return send_packet(fd,msg,sizeof msg);
+}
 /* A logged-in simulator is trusted only through the connected socket and
  * an AgentMovementComplete bearing both login-issued UUIDs. */
 static int grid_session(const sparkles_sl_login_reply_t *login,
@@ -166,7 +202,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     reliable_t circuit={0}, movement={0};
     uint32_t next=1U, recently_seen[128]={0};
     unsigned char ping=0U;
-    uint64_t began, last_recv, last_ping;
+    unsigned char avatar_position[12]={0};
+    uint64_t began, last_recv, last_ping, last_update;
     int fd, started_movement=0, present=0;
     sim.sin_family=AF_INET;
     sim.sin_port=htons(login->sim_port);
@@ -179,7 +216,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
         return 0;
     }
     report("simulator circuit requested; awaiting simulator traffic");
-    began=last_recv=last_ping=tick_ms();
+    began=last_recv=last_ping=last_update=tick_ms();
     while (!atomic_load(stop)) {
         struct pollfd p={fd,POLLIN,0};
         int ready=poll(&p,1,200);
@@ -211,11 +248,18 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 started_movement=1;
                 report("simulator responded; CompleteAgentMovement sent");
             }
+            if (view.message_frequency==2U && view.message_id==148U &&
+                !send_region_reply(fd,&login->circuit,&next)) break;
             if (view.message_frequency==2U && view.message_id==250U &&
                 view.payload_size>=32U &&
                 !memcmp(view.payload,login->circuit.agent,16U) &&
                 !memcmp(view.payload+16U,login->circuit.session,16U)) {
+                if (view.payload_size>=44U)
+                    memcpy(avatar_position,view.payload+32U,12U);
                 if (!present) {
+                    if (!send_agent_update(fd,&login->circuit,avatar_position,&next))
+                        break;
+                    last_update=now;
                     circuit.pending=0;
                     movement.pending=0;
                     present=1;
@@ -235,6 +279,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
         if (now-last_recv >= SL_IDLE_TIMEOUT_MS) {
             report("simulator silent; reconnecting");
             break;
+        }
+        if (present && now-last_update >= 3000U) {
+            if (!send_agent_update(fd,&login->circuit,avatar_position,&next)) break;
+            last_update=now;
         }
         if (present && now-last_ping >= 10000U) {
             if (!send_ping(fd,ping++,&next)) break;
