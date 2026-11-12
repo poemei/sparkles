@@ -1,3 +1,9 @@
+#include <mysql.h>
+#include <stdio.h>
+#include <string.h>
+#include "sparkles_memory.h"
+#include "mariadb_internal.h"
+
 /* Record first: a failed history lookup must never suppress the
  * speaker's new observation. Every insert uses bound values. */
 static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
@@ -41,21 +47,15 @@ static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
     bind[5].buffer_type=MYSQL_TYPE_STRING;
     bind[5].buffer=(void *)visibility;
     bind[5].buffer_length=lengths[5];bind[5].length=&lengths[5];
-    if(okay && mysql_stmt_bind_param(stmt,bind))okay=0;
+    if(okay && mysql_stmt_bind_param(stmt,&bind))okay=0;
     if(okay && mysql_stmt_execute(stmt))okay=0;
     if(okay && mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
     if(!okay)
-        fprintf(stderr,"[MARIADB] context write failed: stmt_errno=%u (content withheld)\\n",
+        fprintf(stderr,"[MARIADB] context write failed: stmt_errno=%u (content withheld)\n",
                 mysql_stmt_errno(stmt));
     mysql_stmt_close(stmt);
     return okay;
 }
-
-#include <mysql.h>
-#include <stdio.h>
-#include <string.h>
-#include "sparkles_memory.h"
-#include "mariadb_internal.h"
 
 /* All data is scoped to a server-verified account. Each observation is an
  * unverified statement by the speaker, not a verified third-party fact.
@@ -73,7 +73,7 @@ int sparkles_mariadb_context_exchange(
         "AND visibility IN ('PRIVATE','SHARED') "
         "ORDER BY updated_at DESC,id DESC LIMIT 3";
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind={{0}}, col={{0}};
+    MYSQL_BIND bind={0}, col={0};
     unsigned long account_length=0U,found_len=0U;
     char content[512];
     char *account;
@@ -85,13 +85,13 @@ int sparkles_mariadb_context_exchange(
     memset(out,0,sizeof *out);
     account=(char *)in->account;
     account_length=(unsigned long)strlen(in->account);
-    if(in->record) {
+    stmt=mysql_stmt_init(db);
+    if(!stmt) {
+        if(!in->record)return 0;
         if(!context_write(db,in))return 0;
         out->saved=1U;
+        return 1;
     }
-
-    stmt=mysql_stmt_init(db);
-    if(!stmt) return 0;
     if(mysql_stmt_prepare(stmt,read_sql,(unsigned long)strlen(read_sql)))okay=0;
     bind.buffer_type=MYSQL_TYPE_STRING;
     bind.buffer=account;
@@ -128,7 +128,13 @@ int sparkles_mariadb_context_exchange(
     if(!okay) {
         out->recalled=0U;
         out->previous[0]=0;
-        return in->record?1:0; /* A successful write stays acknowledged. */
     }
-    return 1;
+    /* A retrieval error must not suppress the new observation. Record only
+     * after reading to avoid presenting the current utterance as history. */
+    if(in->record) {
+        if(!context_write(db,in))return 0;
+        out->saved=1U;
+        return 1;
+    }
+    return okay;
 }
