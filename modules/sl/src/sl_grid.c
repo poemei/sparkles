@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #include "sl_grid.h"
 #include "sl_login.h"
@@ -235,7 +236,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if ((view.flags & SPARKLES_SL_FLAG_RELIABLE) &&
                 !send_ack(fd,view.sequence,&next)) break;
             for (i=0U;i<128U;++i) {
-                if (recently_seen[i]==view.sequence) {duplicate=1;break;}
+                if (view.sequence!=0U && recently_seen[i]==view.sequence) {duplicate=1;break;}
             }
             if (duplicate) continue;
             recently_seen[view.sequence % 128U]=view.sequence;
