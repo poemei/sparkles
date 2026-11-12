@@ -55,7 +55,9 @@ int sparkles_mariadb_identity_parts(const char *account,
 {
     size_t i,n;
     if(!account||!platform||!identifier)return 0;
-    n=strnlen(account,128U);
+    { const char *end=memchr(account,0,128U);
+      if(!end)return 0;
+      n=(size_t)(end-account); }
     if(!n||n>=128U)return 0;
     if(!strncmp(account,"sl:",3U)) {
         const char *uuid=account+3U;
