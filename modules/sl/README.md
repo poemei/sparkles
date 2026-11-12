@@ -1,117 +1,109 @@
-# Sparkles Second Life transport — native C v0.2.2
+# Sparkles Second Life transport — native C v0.3.0
 
-This module is in-process native C11, loaded by the existing STN-Labz
-Core module ABI. It does NOT use Corrade, C#, C++, .NET, or another
-runtime. Corrade and public Second Life protocol documents informed the
-protocol design; Corrade code is not included.
+This native C11 STN-Labz module runs inside Sparkles Core, preserving the
+shared ABI. No C++, C#, .NET, Corrade executable, external bot service,
+or changes to IRC/MariaDB/Ollama/Core are introduced.
 
-## Current protocol implementation
+## Implemented source: grid and direct IM
 
-On module start, a native C worker calls the SL XML-RPC login code,
-then uses the login response's simulator IPv4 address, UDP port, agent
-UUID, session UUID, and circuit code to establish a connected simulator
-socket. It sends UseCircuitCode and CompleteAgentMovement, replies to
-simulator pings, acknowledges reliable messages, retries reliable
-handshake packets, and checks that AgentMovementComplete contains the
-login-issued agent and session UUIDs before logging observed presence.
-It sends an idle AgentUpdate and a RegionHandshakeReply when requested.
-It checks for simulator silence and attempts fresh login on disconnect.
+The earlier v0.2.2 grid worker is retained: secure private credential
+loading, legacy XML-RPC login, simulator UDP circuit handshake, reliable
+packet acknowledgment/retransmission, region handshake/pings,
+AgentMovementComplete presence marker, idle AgentUpdate and reconnect.
 
-**Actual grid login, avatar presence, and duration of presence remain
-UNVERIFIED until installed and tested in Second Life.** In particular,
-the current code does not handle capabilities EventQueueGet, IMs,
-group/conference chat, local chat, inventory, teleport, reliable
-region-reply retransmission, or mature session recovery. The narrow
-presence handshake is NOT a fully operational resident/avatar client.
+Version v0.3.0 adds one-to-one **ImprovedInstantMessage** transport
+(message template Low 254, Dialog 0):
 
-Module activation only means that the worker thread started.
-The log line `[SL] simulator confirmed AgentMovementComplete; avatar
-presence observed` is the stronger protocol observation, but even
-that requires operator confirmation in-world.
+- The SL grid network thread decodes and validates bounded inbound IM
+  payloads on its connected simulator socket. Only personal dialogs
+  with FromGroup=false, a nonzero third-party sender UUID and
+  ToAgentID equal to the login-issued avatar UUID are considered.
+  Object, group, conference, inventory and control dialogs are ignored.
+- Messages pass to a bounded, dedicated Core-dispatch worker through
+  the existing `sparkles.router.dispatch` ABI 1.5 service. The request
+  account is `sl:<sender UUID>`; it cannot be substituted with an IRC
+  nick or caller-supplied account string.
+- Valid nonempty Core replies are queued to the SL network thread,
+  which sends a reliable outbound ImprovedInstantMessage to **the
+  same UUID** and original conversation ID, with MsSparkles'
+  authenticated account name supplied by the login configuration.
+- Outbound messages have bounded packet size, an eight-message
+  outstanding window, retry handling and simulator ACK tracking.
+  Logs distinguish accepted ingress, Core no-reply, outbound send,
+  and exhaustion of simulator acknowledgments.
+- Queues are cleared and in-flight Core responses invalidated at each
+  grid reconnect, preventing a prior session's pending reply from
+  being delivered on a later circuit. Core inference never blocks
+  simulator UDP receive/ping/ACK processing.
 
-## Credentials
+**Limitations:** A simulator ACK is not proof that the recipient viewer
+displayed a reply. The v0.3.0 packet path is untested against a live
+viewer and might require further protocol interoperability fixes.
+Second Life may deliver some IM traffic through `EventQueueGet` or
+other capabilities; no CAPS EventQueueGet implementation exists yet.
+Group/conference/local chat, friends, teleport, inventory and
+full executive SL capabilities are not implemented. Do not claim a
+complete SL chat client from module ACTIVE status.
 
-The single account configuration path is:
+## Account configuration
+
+The sole operator-owned credential file is:
 
 `/opt/sparkles/auth/sl/sl.conf`
 
-It is a private 0600 owner-only regular file, owned by the Sparkles
-process UID (normally stnchain). No shell evaluation occurs. Use only:
+Expected exactly four `key=value` entries (operator supplies real values):
 
 ```ini
 first=MsSparkles
 last=Resident
-password=YOUR_PRIVATE_SECOND_LIFE_PASSWORD
+password=YOUR_PRIVATE_PASSWORD
 start=home
 ```
 
-Use the **account's actual login name values**. Do not commit or
-paste credentials into chat. The native C parser rejects unknown,
-missing, duplicate, or oversized keys, symlinks, and group/other
-readable credentials. Password data is wiped after the login attempt.
+The file must be a regular 0600 file owned by the running module's
+UID. No secrets should be entered into chat or committed to GitHub.
+Additional keys (including obsolete `mac` and `id0`) are rejected.
+The login code supplies legacy hardware-identifier fields internally
+as neutral values; compatibility with SL's current login endpoint is
+not assured. Existing login failure diagnostics deliberately redact
+secrets and raw server responses.
 
-The legacy XML-RPC parameters `mac` and `id0` are **not operator
-configuration fields**. The implementation sends neutral values
-internally (all-zero MAC and UUID); whether the grid currently accepts
-these values and the XML-RPC endpoint is UNVERIFIED. No actual device
-identifiers are collected from the server.
-
-## ABI qualification (v0.2.1)
-
-Core requires at least `STNLABZ_MODULE_MIN_TESTS` (10) qualification
-checks, even when all earlier checks pass. SL v0.2.0 executed only 3
-and was denied hotload by Core as qualification result 8. Version
-0.2.1 adds 18 concrete offline checks covering UUID validation and
-round trip, correct circuit packet layout and byte order, movement
-packet layout, decoding and malformed/bounded packet rejection.
-The module returns qualification success only when at least 10
-checks execute and all pass; it does not loosen Core requirements.
-
-**The 2026-11-12 operator hotload failure was observed; the v0.2.1
-fix is source committed only until compiled and hotload-tested.**
-
-## Login failure evidence (v0.2.2)
-
-Operator logs dated 2026-11-12 18:18–18:19 UTC show repeated
-`grid login failed` messages, so authentication has not established
-a simulator circuit. The prior implementation collapsed all failures
-into one uninformative log line.
-
-Version 0.2.2 logs a separate safe diagnostic for unreadable/invalid
-`sl.conf`, local XML-RPC serialization errors, HTTP client/transport
-errors (curl code), non-200 HTTP status, empty HTTP response, and
-rejected/unrecognized XML-RPC result. Credentials and raw server
-responses are never printed. The XML-RPC parser now accepts a standard
-boolean `1` as well as string `true` for the login result.
-
-These edits **do not establish that the current Second Life grid
-accepts our login request**. Do not infer bad account credentials
-from the historical generic message. Validate the new stage-specific
-log output after operator-authorized installation.
-
-## Build and offline regression
-
-Install distribution C development dependencies for libcurl, libxml2,
-OpenSSL, and pkg-config. Then:
+## Build and qualification
 
 ```sh
+git pull --ff-only
 make -C modules/sl clean all test
 ```
 
-Build/test does not log into Second Life. A successful
-`build/sl.so` does not prove simulator traffic or avatar presence.
-Install only under operator control, with credentials present and
-known-good source, then inspect SL lifecycle messages in system logs.
+The `test` target runs secure configuration, SL wire, and private IM
+codec regressions. Hotload qualification retains the Core ABI minimum
+of 10 tests and now includes private IM outbound construction checks.
+These are **offline** checks; they do not prove live IM delivery.
 
-The previous staging-only IPC listener is removed in v0.2.0.
-Its unverified claimed-avatar UUID was not a safe production identity.
-The current module does not grant IRC calendar authorization to SL IDs,
-or register/override IRC send services.
+Operator-controlled installation:
 
-## Outstanding integration
+```sh
+sudo make -C modules/sl install
+```
 
-Next: implement authenticated incoming/outgoing private IM, group and
-conference chat, local chat, capabilities EventQueueGet, SL session
-recovery, friends, teleport, inventory, and executive orchestration via
-the existing Core/router boundary. No missing functionality is
-represented as complete or accepted.
+Use the existing Core module hotload mechanism to activate the new
+binary; do not reboot the server. After operator activation, inspect:
+
+```sh
+journalctl -u sparkles -b --no-pager | grep '\\[SL\\]'
+```
+
+Useful milestone messages include `private IM accepted into Core dispatch
+queue`, `private IM reply sent; awaiting simulator acknowledgment`,
+and `private IM reply unacknowledged; retry limit reached`.
+
+**Evidence:** v0.2.2 grid presence was visually observed by the
+operator. v0.3.0 private IM source is committed to GitHub only; its
+build, tests, installation, live simulator IM reception, Core routing,
+outbound delivery and operator acceptance remain **unverified**.
+
+## Next increments (not covered by v0.3.0)
+
+SL CAPS/EventQueueGet, group and conference messaging, local chat,
+friend/presence integration, teleport and inventory are separate
+features. Core retains all executive decisions and service authority.
