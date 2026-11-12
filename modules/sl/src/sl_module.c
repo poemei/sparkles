@@ -213,6 +213,17 @@ static stnlabz_module_result_t sl_qualify(
     CHECK(!sparkles_sl_packet_view(packet,6U,decoded,
                                   sizeof decoded,&view));
 
+    ok=sparkles_sl_im_encode(&session,agent,session_id,3U,
+                            "MsSparkles Resident","hello",
+                            packet,sizeof packet,&used);
+    CHECK(ok && used>120U && packet[9U]==254U);
+    CHECK(ok && sparkles_sl_packet_view(packet,used,decoded,
+          sizeof decoded,&view) && view.message_frequency==2U &&
+          view.message_id==254U && view.sequence==3U);
+    CHECK(!sparkles_sl_im_encode(&session,agent,session_id,4U,
+                                "MsSparkles Resident","",
+                                packet,sizeof packet,&used));
+
 #undef CHECK
     result->tests_executed=count;
     result->tests_passed=passed;
