@@ -509,24 +509,32 @@ static stnlabz_module_result_t mutate_service(
     void *response,size_t response_size,size_t *used,void *ctx)
 {
     static const char match_sql[] =
-        "SELECT id FROM appointments WHERE id=? AND status='scheduled' "
-        "AND title=? AND start_time=? AND end_time=? FOR UPDATE";
+        "SELECT a.id FROM appointments a WHERE a.id=? AND a.status='scheduled' "
+        "AND a.title=? AND a.start_time=? AND a.end_time=? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) FOR UPDATE";
     static const char overlap_sql[] =
-        "SELECT id FROM appointments WHERE id<>? AND status='scheduled' "
-        "AND start_time < ? AND end_time > ? LIMIT 1 FOR UPDATE";
+        "SELECT a.id FROM appointments a WHERE a.id<>? AND a.status='scheduled' "
+        "AND a.start_time < ? AND a.end_time > ? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) LIMIT 1 FOR UPDATE";
     static const char cancel_sql[] =
         "UPDATE appointments SET status='cancelled' WHERE id=? "
-        "AND status='scheduled' AND title=? AND start_time=? AND end_time=?";
+        "AND status='scheduled' AND title=? AND start_time=? AND end_time=? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=appointments.id AND ap.contact_id=?)";
     static const char update_sql[] =
         "UPDATE appointments SET title=?,start_time=?,end_time=? WHERE id=? "
-        "AND status='scheduled' AND title=? AND start_time=? AND end_time=?";
+        "AND status='scheduled' AND title=? AND start_time=? AND end_time=? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=appointments.id AND ap.contact_id=?)";
     const sparkles_mariadb_mutate_request_t *in=request;
     sparkles_mariadb_mutate_reply_t *out=response;
     sparkles_mariadb_new_appointment_t validated;
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind[7]={{0}};
-    unsigned long lengths[7]={0};
-    unsigned long long id;
+    MYSQL_BIND bind[8]={{0}};
+    unsigned long lengths[8]={0};
+    unsigned long long id,contact_id=0ULL;
     int transaction=0,matched=0;
     char new_input[256];
     int n;
@@ -575,6 +583,9 @@ static stnlabz_module_result_t mutate_service(
     (void)pthread_mutex_lock(&db_lock);
     if(!db||mysql_ping(db)||mysql_query(db,"START TRANSACTION"))goto done_mutate;
     transaction=1;
+    if(!sparkles_mariadb_participants_supported(db)||
+       !sparkles_mariadb_contact_id(db,in->account,&contact_id))
+       goto done_mutate;
     stmt=mysql_stmt_init(db);
     if(!stmt||mysql_stmt_prepare(stmt,match_sql,(unsigned long)strlen(match_sql)))
         goto done_mutate;
@@ -592,6 +603,8 @@ static stnlabz_module_result_t mutate_service(
     bind[3].buffer=(void *)in->previous_end;
     lengths[3]=(unsigned long)strlen(in->previous_end);
     bind[3].buffer_length=lengths[3];bind[3].length=&lengths[3];
+    bind[4].buffer_type=MYSQL_TYPE_LONGLONG;
+    bind[4].buffer=&contact_id;bind[4].is_unsigned=1;
     if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
        mysql_stmt_store_result(stmt))goto done_mutate;
     matched=mysql_stmt_num_rows(stmt)==1ULL;
@@ -614,6 +627,8 @@ static stnlabz_module_result_t mutate_service(
         bind[2].buffer_type=MYSQL_TYPE_STRING;
         bind[2].buffer=(void *)in->next_start;
         lengths[2]=19U;bind[2].buffer_length=19U;bind[2].length=&lengths[2];
+        bind[3].buffer_type=MYSQL_TYPE_LONGLONG;
+        bind[3].buffer=&contact_id;bind[3].is_unsigned=1;
         if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
            mysql_stmt_store_result(stmt))goto done_mutate;
         if(mysql_stmt_num_rows(stmt)>0ULL) {
@@ -653,6 +668,8 @@ static stnlabz_module_result_t mutate_service(
             lengths[k]=(unsigned long)strlen(values[j]);
             bind[k].buffer_length=lengths[k];bind[k].length=&lengths[k];
         }
+        bind[offset+4U].buffer_type=MYSQL_TYPE_LONGLONG;
+        bind[offset+4U].buffer=&contact_id;bind[offset+4U].is_unsigned=1;
     }
     if(mysql_stmt_bind_param(stmt,bind)||mysql_stmt_execute(stmt)||
        mysql_stmt_affected_rows(stmt)!=1ULL)goto done_mutate;
