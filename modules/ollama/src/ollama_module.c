@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 3U
+#define OLLAMA_VERSION_PATCH 4U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -176,7 +176,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
        !owner->send_private_message(command->sender,
             "More appointments exist; narrow the date range."))
         return reply(ctx,"Private schedule delivery incomplete.");
-    return reply(ctx,"Schedule lookup sent privately from MariaDB.");
+    return 1; /* Private reply was already delivered. */
 }
 
 
@@ -806,7 +806,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 if(!schedule_private_reply(sender,
                     "Please confirm the calendar date as YYYY-MM-DD or MM/DD/YYYY."))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                return 1; /* Already replied in DM. */
             }
             for(i=0U;i<plan.count;++i)
                 if(!strcmp(plan.items[i].date,"UNKNOWN"))
@@ -819,7 +819,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     pending_clear(account,sender);
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                 }
-                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                return 1; /* Already replied in DM. */
             }
             {
                 int check=check_schedule_plan(&plan,account);
@@ -829,14 +829,14 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                                   "Calendar conflict check unavailable; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                    return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                    return 1; /* Already replied in DM. */
                 }
             }
             if(!send_schedule_summary(sender,&plan)) {
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
             }
-            return schedule_reply(reply,ctx,"Please confirm privately.");
+            return 1; /* Already replied in DM. */
         }
         if(waiting_end) {
             unsigned int i;
@@ -847,7 +847,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                         if(!schedule_private_reply(sender,
                             "What time does it end? Reply HH:MM in 24-hour time, later than the start."))
                             return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                        return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                        return 1; /* Already replied in DM. */
                     }
                 }
             }
@@ -859,7 +859,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                                   "Calendar conflict check unavailable; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                    return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                    return 1; /* Already replied in DM. */
                 }
             }
             if(!pending_save(account,sender,&plan,0,0))
@@ -868,7 +868,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
             }
-            return schedule_reply(reply,ctx,"Please confirm privately.");
+            return 1; /* Already replied in DM. */
         }
         if(!strcmp(text,"confirm")||!strcmp(text,"yes")) {
             int result;
@@ -896,7 +896,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                       "Calendar save failed or incomplete. Check your schedule before retrying.";
                 if(!schedule_private_reply(sender,message))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                return schedule_reply(reply,ctx,"Scheduling result sent privately.");
+                return 1; /* Already replied in DM. */
             }
         }
         /* A new message can supersede the old proposal, but never confirm it. */
@@ -904,12 +904,6 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         slot=pending_find(account,sender,time(NULL));
         if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
         (void)pthread_mutex_unlock(&pending_lock);
-    }
-    if(calendar_mutation_intent(text)) {
-        if(!schedule_private_reply(sender,
-           "No appointment was changed or canceled. Calendar cancellation and modification are not implemented. Please use an authorized operator to make that change."))
-            return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-        return schedule_reply(reply,ctx,"No calendar change was made; details sent privately.");
     }
     /* Only invoke the calendar extractor when the utterance plausibly
      * describes a scheduled commitment. Ordinary social conversation must
@@ -964,7 +958,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             if(!schedule_private_reply(sender,
                 "I need complete dates and start/end times for both events. Please send each appointment separately in this IM."))
                 return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-            return schedule_reply(reply,ctx,"Please continue in our private IM.");
+            return 1; /* Already replied in DM. */
         }
         if(!needs_date&&!needs_end) {
             int check=check_schedule_plan(&plan,account);
@@ -973,7 +967,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     check==-1?"The proposed time conflicts with your calendar; nothing saved.":
                               "Calendar conflict check unavailable; nothing saved."))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
-                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                return 1; /* Already replied in DM. */
             }
         }
         if(!pending_save(account,sender,&plan,needs_date,needs_end))
@@ -983,13 +977,13 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private scheduling unavailable.");
             }
-            return schedule_reply(reply,ctx,"Please continue in our private IM.");
+            return 1; /* Already replied in DM. */
         }
         if(!send_schedule_summary(sender,&plan)) {
             pending_clear(account,sender);
             return schedule_reply(reply,ctx,"Private confirmation unavailable.");
         }
-        return schedule_reply(reply,ctx,"Please confirm privately.");
+        return 1; /* Already replied in DM. */
     }
 }
 
@@ -1296,6 +1290,7 @@ static stnlabz_module_result_t chat_controller(
    return STNLABZ_MODULE_ERR_INVALID_STATE;
  }
 
+ if(mutation_conversation(command,reply,reply_context))return STNLABZ_MODULE_OK;
  if(schedule_lookup_today(command,reply,reply_context))return STNLABZ_MODULE_OK;
  if(schedule_conversation(command,reply,reply_context))return STNLABZ_MODULE_OK;
  len=strlen(command->arguments);
