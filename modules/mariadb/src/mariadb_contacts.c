@@ -78,11 +78,11 @@ int sparkles_contact_name_parse(const char *message,char name[64])
 static int load_columns(MYSQL *db,contact_schema_t *s)
 {
     static const char *const c_id[]={"id","contact_id",NULL};
-    static const char *const c_first[]={"first_name","firstname",NULL};
+    static const char *const c_first[]={"first_name","firstname","firstName","First Name",NULL};
     static const char *const c_display[]={"display_name","name",NULL};
     static const char *const i_fk[]={"contact_id",NULL};
-    static const char *const i_provider[]={"platform","provider","source","identity_type",NULL};
-    static const char *const i_value[]={"identity_value","platform_user_id",
+    static const char *const i_provider[]={"platform","provider","source","identity_type","identity_platform","identity_source",NULL};
+    static const char *const i_value[]={"identity_value","platform_user_id","external_uuid",
         "external_id","platform_id","identifier","agent_uuid","avatar_uuid","uuid",NULL};
     static const char *const i_display[]={"display_name","agent_name","username",NULL};
     MYSQL_RES *res;
@@ -112,6 +112,8 @@ static int load_columns(MYSQL *db,contact_schema_t *s)
                         memcpy(s->provider_value,"second_life",12U);
                     else if(strstr(type,"'SL'"))
                         memcpy(s->provider_value,"SL",3U);
+                    else if(strstr(type,"'SECOND_LIFE'"))
+                        memcpy(s->provider_value,"SECOND_LIFE",12U);
                     else if(strstr(type,"'Second Life'"))
                         memcpy(s->provider_value,"Second Life",12U);
                     else s->provider_value[0]='\0';
