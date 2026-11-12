@@ -255,13 +255,26 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             }
             if (duplicate) continue;
             recently_seen[view.sequence % 128U]=view.sequence;
-            if (present && ingress && view.message_frequency==2U &&
+            if (view.message_frequency==2U &&
                 view.message_id==SPARKLES_SL_IM_MESSAGE_ID) {
                 sparkles_sl_private_im_t im;
-                if (sparkles_sl_im_decode(view.payload,view.payload_size,
-                                          login->circuit.agent,&im)) {
-                    if (ingress(&im,context))
-                        report("private IM accepted into Core dispatch queue");
+                sparkles_sl_im_validation_t status;
+                report("ImprovedInstantMessage UDP packet received");
+                if (!present || !ingress) {
+                    report("IM packet ignored: avatar session not ready");
+                } else {
+                    status=sparkles_sl_im_validate(view.payload,
+                                   view.payload_size,login->circuit.agent,&im);
+                    if (status==SPARKLES_SL_IM_VALID) {
+                        if (ingress(&im,context))
+                            report("private IM accepted into Core dispatch queue");
+                    } else {
+                        fprintf(stderr,"[SL] IM packet rejected: reason=%s length=%zu dialog=%u\n",
+                                sparkles_sl_im_validation_name(status),
+                                view.payload_size,
+                                view.payload_size>82U?(unsigned)view.payload[82U]:0U);
+                        fflush(stderr);
+                    }
                 }
             }
             if (view.message_frequency==0U && view.message_id==1U &&
