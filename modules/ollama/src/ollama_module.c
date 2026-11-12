@@ -280,6 +280,19 @@ static int schedule_private_prompt(stnlabz_module_command_reply_fn reply,
     return n>=0 && (size_t)n<sizeof message &&
            reply(ctx,message);
 }
+/* Local qualification callback for transport-neutral scheduling replies. */
+typedef struct { char text[512]; unsigned int called; } schedule_reply_probe_t;
+static int schedule_reply_probe(void *ctx,const char *text)
+{
+    schedule_reply_probe_t *probe=(schedule_reply_probe_t *)ctx;
+    size_t n;
+    if(!probe||!text)return 0;
+    n=strlen(text);
+    if(n>=sizeof probe->text)return 0;
+    memcpy(probe->text,text,n+1U);
+    ++probe->called;
+    return 1;
+}
 static int schedule_private_reply(stnlabz_module_command_reply_fn reply,
                                   void *ctx,const char *text)
 {
@@ -1630,6 +1643,21 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   ++e;
   if(!strcmp(sl_strip_address("Sparkles, my name is Poe."),
              "my name is Poe."))++p;else ok=0;
+ }
+ /* Regression: calendar replies return via the incoming Core callback. */
+ {
+  schedule_reply_probe_t probe={{0}};
+  ++e;
+  if(schedule_private_reply(schedule_reply_probe,&probe,
+         "Please confirm the appointment.") &&
+     probe.called==1U &&
+     !strcmp(probe.text,"Please confirm the appointment."))++p;else ok=0;
+  ++e;
+  if(!schedule_private_reply(NULL,&probe,"No transport") &&
+     probe.called==1U)++p;else ok=0;
+  ++e;
+  if(!schedule_private_reply(schedule_reply_probe,NULL,
+                             "No callback context"))++p;else ok=0;
  }
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
