@@ -43,16 +43,33 @@ int main(void)
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[111U]='e';
     assert(sparkles_sl_im_decode(input,size,own,&im));
+    /* Current template: EstateID U32 then MetaData block count U8. */
+    input[118U]=7U;
+    input[122U]=0U;
+    assert(sparkles_sl_im_validate(input,123U,own,&im)==SPARKLES_SL_IM_VALID);
+    /* One metadata block containing a 3-byte binary field. */
+    input[122U]=1U;
+    input[123U]=3U; input[124U]=0U;
+    input[125U]=1U; input[126U]=2U; input[127U]=3U;
+    assert(sparkles_sl_im_validate(input,128U,own,&im)==SPARKLES_SL_IM_VALID);
+    assert(sparkles_sl_im_validate(input,127U,own,&im)==SPARKLES_SL_IM_TRAILING_DATA);
+    assert(sparkles_sl_im_validate(input,119U,own,&im)==SPARKLES_SL_IM_TRAILING_DATA);
+    input[32U]=1U;
+    assert(sparkles_sl_im_validate(input,128U,own,&im)==SPARKLES_SL_IM_UNSUPPORTED_DIALOG);
+    input[32U]=0U;
+    input[33U]^=1U;
+    assert(sparkles_sl_im_validate(input,128U,own,&im)==SPARKLES_SL_IM_WRONG_RECIPIENT);
+    input[33U]^=1U;
     memcpy(session.agent,own,16U);
     memcpy(session.session,conversation,16U);
     assert(sparkles_sl_im_encode(&session,sender,conversation,42U,
                                 "MsSparkles Resident","Hi",packet,sizeof packet,&used));
-    assert(used==141U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
+    assert(used==146U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
     assert(packet[6U]==0xffU && packet[7U]==0xffU &&
            packet[8U]==0U && packet[9U]==254U);
     assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
     assert(view.message_frequency==2U && view.message_id==254U);
-    assert(view.sequence==42U && view.payload_size==131U);
+    assert(view.sequence==42U && view.payload_size==136U);
     assert(!memcmp(view.payload,own,16U));
     assert(!memcmp(view.payload+33U,sender,16U));
     assert(!memcmp(view.payload+83U,conversation,16U));
