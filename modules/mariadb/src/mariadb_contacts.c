@@ -127,6 +127,13 @@ static int load_columns(MYSQL *db,contact_schema_t *s)
     mysql_free_result(res);
     s->supported=s->id[0]&&s->first[0]&&s->fk[0]&&
                  s->provider[0]&&s->value[0]&&s->provider_value[0];
+    if(!s->supported)
+        fprintf(stderr,
+          "[MARIADB] contact schema mapping unavailable: "
+          "contact_id=%u first_name=%u identity_fk=%u "
+          "platform=%u uuid_value=%u platform_enum=%u (no personal values)\n",
+          !!s->id[0],!!s->first[0],!!s->fk[0],
+          !!s->provider[0],!!s->value[0],!!s->provider_value[0]);
     return s->supported;
 }
 static void bind_string(MYSQL_BIND *b,char *value,unsigned long *len)
