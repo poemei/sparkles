@@ -3,6 +3,7 @@
 #include "sl_grid.h"
 #include "sl_login.h"
 #include "sl_wire.h"
+#include "sl_im.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <poll.h>
@@ -17,6 +18,7 @@
 #define SL_MAX_RESENDS 3U
 #define SL_HANDSHAKE_TIMEOUT_MS 16000U
 #define SL_IDLE_TIMEOUT_MS 90000U
+#define SL_OUTSTANDING_IM 8U
 
 typedef struct {
     unsigned char bytes[SPARKLES_SL_PACKET_MAX];
@@ -105,7 +107,8 @@ static void clear_ack(reliable_t *packet, uint32_t seq)
 }
 static void read_acknowledgments(const unsigned char *raw, size_t size,
                                  const sparkles_sl_packet_view_t *view,
-                                 reliable_t *circuit, reliable_t *movement)
+                                 reliable_t *circuit, reliable_t *movement,
+                                 reliable_t outgoing[SL_OUTSTANDING_IM])
 {
     size_t i, offset;
     unsigned int count;
@@ -115,7 +118,10 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
             offset=size-1U-(size_t)count*4U;
             for (i=0U;i<count;++i) {
                 uint32_t seq=read_u32le(raw+offset+i*4U);
+                size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
+                for (j=0U;j<SL_OUTSTANDING_IM;++j)
+                    clear_ack(&outgoing[j],seq);
             }
         }
     }
@@ -196,11 +202,15 @@ static int send_region_reply(int fd, const sparkles_sl_session_t *session,
 /* A logged-in simulator is trusted only through the connected socket and
  * an AgentMovementComplete bearing both login-issued UUIDs. */
 static int grid_session(const sparkles_sl_login_reply_t *login,
-                        atomic_int *stop)
+                        atomic_int *stop,
+                        sparkles_sl_im_ingress_fn ingress,
+                        sparkles_sl_im_dequeue_fn dequeue,
+                        void *context)
 {
     struct sockaddr_in sim = {0};
     unsigned char raw[SPARKLES_SL_PACKET_MAX], decoded[SPARKLES_SL_PACKET_MAX];
     reliable_t circuit={0}, movement={0};
+    reliable_t outbound[SL_OUTSTANDING_IM]={0};
     uint32_t next=1U, recently_seen[128]={0};
     unsigned char ping=0U;
     unsigned char avatar_position[12]={0};
@@ -232,7 +242,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if (n<=0 || !sparkles_sl_packet_view(raw,(size_t)n,decoded,
                                        sizeof decoded,&view)) continue;
             last_recv=now;
-            read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement);
+            read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement,outbound);
             if ((view.flags & SPARKLES_SL_FLAG_RELIABLE) &&
                 !send_ack(fd,view.sequence,&next)) break;
             for (i=0U;i<128U;++i) {
@@ -240,6 +250,15 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             }
             if (duplicate) continue;
             recently_seen[view.sequence % 128U]=view.sequence;
+            if (present && ingress && view.message_frequency==2U &&
+                view.message_id==SPARKLES_SL_IM_MESSAGE_ID) {
+                sparkles_sl_private_im_t im;
+                if (sparkles_sl_im_decode(view.payload,view.payload_size,
+                                          login->circuit.agent,&im)) {
+                    if (ingress(&im,context))
+                        report("private IM accepted into Core dispatch queue");
+                }
+            }
             if (view.message_frequency==0U && view.message_id==1U &&
                 view.payload_size>=5U &&
                 !send_ping_reply(fd,view.payload[0],&next)) break;
@@ -289,6 +308,52 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if (!send_ping(fd,ping++,&next)) break;
             last_ping=now;
         }
+        if (present && dequeue) {
+            sparkles_sl_im_reply_t response;
+            size_t j;
+            /* Never monopolize the socket loop: a fixed queue, fixed packet
+             * size and bounded retransmission keep grid traffic responsive. */
+            for (j=0U;j<SL_OUTSTANDING_IM;++j) {
+                size_t used=0U;
+                reliable_t *slot;
+                if (atomic_load(stop) || !dequeue(&response,context)) break;
+                slot=&outbound[j];
+                if (slot->pending) {
+                    size_t k;
+                    for (k=0U;k<SL_OUTSTANDING_IM;++k)
+                        if (!outbound[k].pending) {slot=&outbound[k];break;}
+                    if (k==SL_OUTSTANDING_IM) {
+                        report("private IM outstanding window full; response dropped");
+                        break;
+                    }
+                }
+                if (!sparkles_sl_im_encode(&login->circuit,response.recipient,
+                      response.conversation,next,response.text,
+                      slot->bytes,sizeof slot->bytes,&used)) {
+                    report("private IM outbound encoding rejected");
+                    continue;
+                }
+                if (!send_packet(fd,slot->bytes,used)) {
+                    report("private IM outbound socket send failed");
+                    break;
+                }
+                slot->length=used;
+                slot->sequence=next++;
+                slot->attempts=0U;
+                slot->sent_at=now;
+                slot->pending=1;
+                report("private IM reply sent; awaiting simulator acknowledgment");
+            }
+        }
+        {
+            size_t j;
+            for (j=0U;j<SL_OUTSTANDING_IM;++j) {
+                if (outbound[j].pending && !resend(fd,&outbound[j],now)) {
+                    outbound[j].pending=0;
+                    report("private IM reply unacknowledged; retry limit reached");
+                }
+            }
+        }
         if (!resend(fd,&circuit,now) || !resend(fd,&movement,now)) {
             report("simulator reliable handshake acknowledgment timed out");
             break;
@@ -298,15 +363,20 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     if (present) report("simulator circuit closed; avatar presence lost");
     return present;
 }
-void sparkles_sl_grid_run(atomic_int *stop)
+void sparkles_sl_grid_run(atomic_int *stop,
+                          sparkles_sl_im_ingress_fn ingress,
+                          sparkles_sl_im_dequeue_fn dequeue,
+                          sparkles_sl_im_reset_fn reset,
+                          void *context)
 {
     while (!atomic_load(stop)) {
         sparkles_sl_login_reply_t login={0};
+        if (reset) reset(context);
         if (!sparkles_sl_login_from_file(&login)) {
             report("grid login failed (credentials, protocol, or network); no avatar presence");
         } else {
             report("grid login response accepted; attempting simulator circuit");
-            (void)grid_session(&login,stop);
+            (void)grid_session(&login,stop,ingress,dequeue,context);
         }
         memset(&login,0,sizeof login);
         if (!atomic_load(stop)) pause_stop(stop,10000U);
