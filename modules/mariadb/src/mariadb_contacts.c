@@ -313,8 +313,14 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             goto done;
         }
         /* Name-only matches cannot authorize a link or duplicate a person. */
-        if(existing_contact_collision(db,&s,req->avatar_name,
-                                      req->first_name)!=0)goto done;
+        {
+            int collision=existing_contact_collision(db,&s,req->avatar_name,
+                                                      req->first_name);
+            if(collision>0)
+                fprintf(stderr,
+                    "[MARIADB] contact identity requires verified linking to an existing contact (no personal values)\n");
+            if(collision!=0)goto done;
+        }
         if(s.display[0]) {
             if(snprintf(sql,sizeof sql,
                  "INSERT INTO contacts (`%s`,`%s`) VALUES (?,?)",
