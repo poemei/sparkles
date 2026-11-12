@@ -103,6 +103,47 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
     *im=candidate;
     return SPARKLES_SL_IM_VALID;
 }
+/* ChatFromSimulator Low 139: variable1 name, UUID source/owner,
+ * source_type, chat_type, audible, vector3 position, variable2 text.
+ * Only avatar-origin normal/whisper/shout in audible range is context.
+ * A nearby chat observation is not a request to reply. */
+int sparkles_sl_chat_decode(const unsigned char *p,size_t n,
+                           const unsigned char own_agent[16],
+                           sparkles_sl_private_im_t *chat)
+{
+    size_t pos=0U,name_size,text_size,i;
+    sparkles_sl_private_im_t candidate;
+    if(!p||!own_agent||!chat||n<1U)return 0;
+    memset(&candidate,0,sizeof candidate);
+    name_size=p[pos++];
+    if(name_size<2U||name_size>sizeof candidate.name||
+       name_size>n-pos||p[pos+name_size-1U]!=0U||
+       memchr(p+pos,0U,name_size-1U))return 0;
+    for(i=0U;i<name_size-1U;++i)
+        if(p[pos+i]<0x20U||p[pos+i]==0x7fU)return 0;
+    memcpy(candidate.name,p+pos,name_size-1U);
+    pos+=name_size;
+    if(n-pos<16U+16U+3U+12U+2U)return 0;
+    if(!nonzero_uuid(p+pos)||!memcmp(p+pos,own_agent,16U))return 0;
+    memcpy(candidate.sender,p+pos,16U);
+    pos+=32U; /* SourceID and OwnerID; only SourceID identifies avatar. */
+    if(p[pos++]!=1U)return 0; /* Agent speech only; exclude objects/system. */
+    if(p[pos]>2U)return 0; /* Whisper, normal, shout; exclude debug/typing. */
+    ++pos;
+    if(p[pos++]!=1U)return 0; /* Fully audible only. */
+    pos+=12U; /* Position: not needed for contextual attribution. */
+    text_size=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
+    pos+=2U;
+    if(text_size<2U||text_size>sizeof candidate.text||
+       text_size!=n-pos||p[pos+text_size-1U]!=0U||
+       memchr(p+pos,0U,text_size-1U))return 0;
+    for(i=0U;i<text_size-1U;++i)
+        if(p[pos+i]<0x20U||p[pos+i]==0x7fU)return 0;
+    memcpy(candidate.text,p+pos,text_size-1U);
+    candidate.ambient=1U;
+    *chat=candidate;
+    return 1;
+}
 int sparkles_sl_im_decode(const unsigned char *p, size_t n,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im)
