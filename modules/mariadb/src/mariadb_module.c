@@ -21,6 +21,19 @@ static int memory_service_registered;
 static int contacts_service_registered;
 static int mutate_service_registered;
 
+/* Resolve authenticated transport identity to an existing contact. All
+ * calendar operations share this gate; lookup itself is serialized with
+ * the MariaDB connection lock, independently of later DB operations. */
+static int calendar_contact_allowed(const char *account)
+{
+    int allowed=0;
+    (void)pthread_mutex_lock(&db_lock);
+    if(db && !mysql_ping(db))
+        allowed=sparkles_mariadb_contact_calendar_allowed(db,account);
+    (void)pthread_mutex_unlock(&db_lock);
+    return allowed;
+}
+
 static unsigned int schema_table_count(MYSQL *connection)
 {
     static const char sql[] =
@@ -73,8 +86,8 @@ static stnlabz_module_result_t status_service(
     return STNLABZ_MODULE_OK;
 }
 
-/* Authenticated, read-only, bounded date-range query. Both explicit IRC
- * commands and trusted in-process consumers must provide verified accounts. */
+/* Authenticated, read-only, bounded date-range query. Both explicit
+ * commands and trusted in-process consumers provide verified identities. */
 static stnlabz_module_result_t appointments_service(
     const void *request, size_t request_size,
     void *response, size_t response_size, size_t *used, void *ctx)
@@ -105,8 +118,7 @@ static stnlabz_module_result_t appointments_service(
         !sparkles_mariadb_valid_range(in->from_date,in->until_date))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out, 0, sizeof *out);
-    if (!sparkles_mariadb_account_allowed(
-            SPARKLES_MARIADB_IRC_ACCOUNTS,in->account))
+    if (!calendar_contact_allowed(in->account))
         return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
     (void)snprintf(from,sizeof from,"%s 00:00:00",in->from_date);
     (void)snprintf(until,sizeof until,"%s 00:00:00",in->until_date);
@@ -209,8 +221,7 @@ static stnlabz_module_result_t schedule_command(
         !memchr(command->sender,0,sizeof command->sender))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     /* A nickname is only a delivery address, never the authority source. */
-    if (!sparkles_mariadb_account_allowed(
-            SPARKLES_MARIADB_IRC_ACCOUNTS,command->account))
+    if (!calendar_contact_allowed(command->account))
         return reply(reply_context,"Schedule access denied.")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
     /* Exact explicit dates: no implicit day, timezone or free-text parsing. */
@@ -376,8 +387,7 @@ static stnlabz_module_result_t check_service(
        !memchr(in->title,0,sizeof in->title))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
-    if(!sparkles_mariadb_account_allowed(SPARKLES_MARIADB_IRC_ACCOUNTS,
-                                         in->account)) {
+    if(!calendar_contact_allowed(in->account)) {
         out->status=SPARKLES_MARIADB_CHECK_DENIED;
         if(used)*used=sizeof *out;
         return STNLABZ_MODULE_OK;
@@ -441,8 +451,7 @@ static stnlabz_module_result_t create_service(
         !memchr(in->title,0,sizeof in->title))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
-    if (!sparkles_mariadb_account_allowed(
-            SPARKLES_MARIADB_IRC_ACCOUNTS,in->account)) {
+    if (!calendar_contact_allowed(in->account)) {
         out->status=SPARKLES_MARIADB_CREATE_DENIED;
         if (used) *used=sizeof *out;
         return STNLABZ_MODULE_OK;
@@ -513,8 +522,7 @@ static stnlabz_module_result_t mutate_service(
         in->operation!=SPARKLES_MARIADB_MUTATE_UPDATE))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
-    if(!sparkles_mariadb_account_allowed(SPARKLES_MARIADB_IRC_ACCOUNTS,
-                                         in->account)) {
+    if(!calendar_contact_allowed(in->account)) {
         out->status=SPARKLES_MARIADB_MUTATE_DENIED;
         if(used)*used=sizeof *out;
         return STNLABZ_MODULE_OK;
@@ -657,8 +665,7 @@ static stnlabz_module_result_t appointment_add_command(
         !memchr(command->account,0,sizeof command->account) ||
         !memchr(command->sender,0,sizeof command->sender))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-    if (!sparkles_mariadb_account_allowed(
-            SPARKLES_MARIADB_IRC_ACCOUNTS,command->account))
+    if (!calendar_contact_allowed(command->account))
         return reply(reply_context,"Appointment access denied.")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
     if (!sparkles_mariadb_parse_new_appointment(command->arguments,&appointment))
@@ -975,7 +982,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 7U, 2U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 8U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
