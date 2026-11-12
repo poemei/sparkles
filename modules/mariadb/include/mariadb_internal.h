@@ -6,8 +6,6 @@
 #include "sparkles_memory.h"
 #include "sparkles_contacts.h"
 
-#define SPARKLES_MARIADB_IRC_ACCOUNTS "/opt/sparkles/auth/mariadb/irc-accounts.conf"
-int sparkles_mariadb_account_allowed(const char *path, const char *account);
 /* Calendar permission: authenticated platform identity linked to contacts. */
 int sparkles_mariadb_identity_parts(const char *account,
                                    const char **platform,
