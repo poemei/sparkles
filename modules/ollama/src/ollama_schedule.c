@@ -60,7 +60,7 @@ int sparkles_schedule_parse(const char *output,sparkles_schedule_plan_t *plan)
         if(!end)end=p+strlen(p);
         lens[3]=(size_t)(end-p);
         if((lens[0]!=10U&&lens[0]!=7U)||
-           lens[1]!=5U||lens[2]!=5U||
+           lens[1]!=5U||(lens[2]!=5U&&lens[2]!=7U)||
            !lens[3]||lens[3]>200U)goto fail;
         /* Recover field starts from delimiters. */
         item=&plan->items[plan->count];
@@ -70,11 +70,13 @@ int sparkles_schedule_parse(const char *output,sparkles_schedule_plan_t *plan)
         memcpy(item->title,p,lens[3]);
         item->date[lens[0]]='\0';
         item->begin[5]='\0';
-        item->end[5]='\0';
+        item->end[lens[2]]='\0';
         item->title[lens[3]]='\0';
         if((strcmp(item->date,"UNKNOWN")&& !valid_date(item->date))||
-           !valid_time(item->begin)||!valid_time(item->end)||
-           strcmp(item->begin,item->end)>=0)goto fail;
+           !valid_time(item->begin)||
+           (strcmp(item->end,"UNKNOWN")&&
+            (!valid_time(item->end)||strcmp(item->begin,item->end)>=0)))
+            goto fail;
         for(i=0U;i<lens[3];++i) {
             unsigned char c=(unsigned char)item->title[i];
             if(c<0x20U||c==0x7fU||c=='|')goto fail;
@@ -100,6 +102,9 @@ int sparkles_schedule_selftests(unsigned int *executed,unsigned int *passed)
     T(sparkles_schedule_parse("EVENT|UNKNOWN|14:00|16:00|The River - Rachel\nEVENT|UNKNOWN|18:00|20:00|Shenanigans - Katy",&p)&&p.count==2U);
     T(!strcmp(p.items[1].title,"Shenanigans - Katy"));
     T(sparkles_schedule_parse("EVENT|2026-11-11|14:00|16:00|The River",&p)&&p.count==1U);
+    T(sparkles_schedule_parse("EVENT|UNKNOWN|16:30|UNKNOWN|River management",&p) &&
+      p.count==1U && !strcmp(p.items[0].end,"UNKNOWN"));
+    T(!sparkles_schedule_parse("EVENT|UNKNOWN|16:30|INVALID|River management",&p));
     T(!sparkles_schedule_parse("EVENT|2026-02-30|14:00|16:00|Invalid",&p));
     T(!sparkles_schedule_parse("EVENT|UNKNOWN|25:00|16:00|Invalid",&p));
     T(!sparkles_schedule_parse("EVENT|UNKNOWN|16:00|14:00|Invalid",&p));
