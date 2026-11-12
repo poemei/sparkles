@@ -70,8 +70,8 @@ static stnlabz_module_result_t status_service(
     return STNLABZ_MODULE_OK;
 }
 
-/* Read-only, bounded date-range query. Not yet routed to IRC/chat:
- * the current transport does not populate verified caller account identity. */
+/* Authenticated, read-only, bounded date-range query. Both explicit IRC
+ * commands and trusted in-process consumers must provide verified accounts. */
 static stnlabz_module_result_t appointments_service(
     const void *request, size_t request_size,
     void *response, size_t response_size, size_t *used, void *ctx)
@@ -96,11 +96,15 @@ static stnlabz_module_result_t appointments_service(
     (void)ctx;
     if (used) *used = 0U;
     if (!in || request_size != sizeof *in || !out || response_size < sizeof *out ||
+        !memchr(in->account,0,sizeof in->account) ||
         !memchr(in->from_date,0,sizeof in->from_date) ||
         !memchr(in->until_date,0,sizeof in->until_date) ||
         !sparkles_mariadb_valid_range(in->from_date,in->until_date))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out, 0, sizeof *out);
+    if (!sparkles_mariadb_account_allowed(
+            SPARKLES_MARIADB_IRC_ACCOUNTS,in->account))
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
     (void)snprintf(from,sizeof from,"%s 00:00:00",in->from_date);
     (void)snprintf(until,sizeof until,"%s 00:00:00",in->until_date);
     params[0].buffer_type = MYSQL_TYPE_STRING;
@@ -213,6 +217,7 @@ static stnlabz_module_result_t schedule_command(
         return reply(reply_context,
           "Usage: /schedule YYYY-MM-DD YYYY-MM-DD (end date exclusive)")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    memcpy(request.account,command->account,strlen(command->account)+1U);
     rc=appointments_service(&request,sizeof request,&result,sizeof result,&used,NULL);
     if (rc!=STNLABZ_MODULE_OK || used!=sizeof result)
         return reply(reply_context,"Schedule lookup unavailable.")
@@ -727,7 +732,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 5U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 5U, 1U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
