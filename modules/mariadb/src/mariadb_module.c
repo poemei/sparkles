@@ -283,8 +283,9 @@ typedef enum {
     APPOINTMENT_DB_UNCERTAIN
 } appointment_write_result_t;
 
-/* Single-process serialization plus a transactional locking overlap check.
- * External database clients must enforce the same scheduling discipline. */
+/* Single-process serialization plus a contact-scoped transactional overlap
+ * check. Appointments and their creator relationship are committed together.
+ * External database clients must preserve the same scheduling discipline. */
 static appointment_write_result_t insert_appointment(
     const sparkles_mariadb_new_appointment_t *appointment,
     const char *account,unsigned long long *created_id)
@@ -727,14 +728,10 @@ static stnlabz_module_result_t appointment_add_command(
     n=snprintf(confirmation,sizeof confirmation,
         "Appointment #%llu saved: %s to %s: %s",
         id,appointment.start_time,appointment.end_time,appointment.title);
-    if (n<0 || (size_t)n>=sizeof confirmation ||
-        !host_owner || !host_owner->send_private_message ||
-        !command->sender[0] ||
-        !host_owner->send_private_message(command->sender,confirmation))
-        return reply(reply_context,
-          "Appointment saved in database; private confirmation unavailable.")
-            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    return STNLABZ_MODULE_OK; /* Private confirmation already delivered. */
+    if (n<0 || (size_t)n>=sizeof confirmation)
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    return reply(reply_context,confirmation)
+        ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
 }
 
 /* Account-separated durable observations. A nickname is never an identity.
@@ -1022,7 +1019,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 8U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
