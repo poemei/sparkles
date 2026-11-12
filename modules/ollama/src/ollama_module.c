@@ -552,7 +552,7 @@ static int mutation_offer_selection(pending_mutation_t *state,
         if(state->stage==3U) {
             n=snprintf(message,sizeof message,
                 "Selected: %s (%s to %s). Reply with the new date and interval "
-                "as YYYY-MM-DD HH:MM HH:MM, or 'cancel' to abort.",
+                "as YYYY-MM-DD HH:MM HH:MM [new title], or 'cancel'.",
                 e->title,e->start_time,e->end_time);
         } else {
             n=snprintf(message,sizeof message,
@@ -671,15 +671,18 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
                 e->id,e->title,e->start_time,e->end_time):
             snprintf(message,sizeof message,
                 "Update #%llu: %.150s (%s to %s). "
-                "Reply YYYY-MM-DD HH:MM HH:MM for the new interval, or 'cancel'.",
+                "Reply YYYY-MM-DD HH:MM HH:MM [new title] or 'cancel'.",
                 e->id,e->title,e->start_time,e->end_time);
         if(n>0&&(size_t)n<sizeof message)
             (void)schedule_private_reply(state.sender,message);
         return 1;
     }
     if(state.stage==3U) {
-        char date[11],start[6],end[6],extra;
-        if(sscanf(text,"%10s %5s %5s %c",date,start,end,&extra)!=3 ||
+        char date[11],start[6],end[6];
+        int offset=0;
+        const char *new_title;
+        size_t title_length;
+        if(sscanf(text,"%10s %5s %5s %n",date,start,end,&offset)!=3 ||
            !sparkles_schedule_date(date,date) ||
            !sparkles_schedule_end_time(end,start,state.request.next_end)) {
             (void)schedule_private_reply(state.sender,
@@ -692,15 +695,19 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         n=snprintf(state.request.next_end,sizeof state.request.next_end,
                    "%s %s:00",date,end);
         if(n!=19) return schedule_reply(reply,ctx,"Invalid replacement time.");
-        /* Preserve the original title for a time/date-only move. */
-        if(strlen(state.request.previous_title)>=sizeof state.request.next_title) {
-            mutation_clear(state.account,state.sender);
+        /* A title may follow the new interval; otherwise preserve it. */
+        new_title=text+offset;
+        while(*new_title==' '||*new_title=='\t')++new_title;
+        if(!*new_title)new_title=state.request.previous_title;
+        title_length=strlen(new_title);
+        if(!title_length || title_length>=sizeof state.request.next_title ||
+           strchr(new_title,'|') || strchr(new_title,'\r') ||
+           strchr(new_title,'\n')) {
             (void)schedule_private_reply(state.sender,
-                "The original title is too long to update safely. Nothing changed.");
+                "The new title is invalid or too long. Please provide a shorter title.");
             return 1;
         }
-        memcpy(state.request.next_title,state.request.previous_title,
-               strlen(state.request.previous_title)+1U);
+        memcpy(state.request.next_title,new_title,title_length+1U);
         state.stage=4U;
         if(!mutation_store(&state))
             return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
