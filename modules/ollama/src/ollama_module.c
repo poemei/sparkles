@@ -47,7 +47,7 @@ static int timed_commitment(const char *text)
 static int calendar_request(const char *text)
 {
     static const char *const terms[]={
-        "schedule","calendar","appointment","availability","conflict"
+        "schedule","schdule","calendar","appointment","meeting","availability","conflict"
     };
     char lower[701];
     size_t i,j,n;
@@ -993,6 +993,9 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
    {"what is my schedule today?",1},
    {"what's my schedule today?",1},
    {"show my schedule today",1},
+   {"what is my schedule for tomorrow?",1},
+   {"what is my schedule for 2026-11-12",1},
+   {"what is my schdule for tommorrow?",1},
    {"what's on my calendar today?",1},
    {"schedule a meeting at 14:00",0},
    {"I have a show today at 20:00",0},
@@ -1001,6 +1004,21 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   size_t i;
   for(i=0;i<sizeof cases/sizeof cases[0];++i) {
    int passed=schedule_lookup_intent(cases[i].text)==cases[i].expected;
+   ++e;if(passed)++p;else ok=0;
+  }
+ }
+ {
+  static const struct {const char *text;int expected;} cases[]={
+   {"cancel 1630 tomorrow at the River",1},
+   {"reschedule my appointment",1},
+   {"update my meeting",1},
+   {"delete calendar event",1},
+   {"I have a meeting tomorrow at 1630 PST",0},
+   {"what is my schedule for tomorrow?",0}
+  };
+  size_t i;
+  for(i=0;i<sizeof cases/sizeof cases[0];++i) {
+   int passed=calendar_mutation_intent(cases[i].text)==cases[i].expected;
    ++e;if(passed)++p;else ok=0;
   }
  }
