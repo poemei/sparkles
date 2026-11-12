@@ -277,6 +277,19 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     }
                 }
             }
+            /* Nearby avatar chat is observational only: never route to
+             * conversational reply generation. Packet deduplication and
+             * the authenticated simulator circuit apply as for IMs. */
+            if (view.message_frequency==2U &&
+                view.message_id==SPARKLES_SL_CHAT_MESSAGE_ID && present &&
+                ingress) {
+                sparkles_sl_private_im_t chat;
+                if(sparkles_sl_chat_decode(view.payload,view.payload_size,
+                                           login->circuit.agent,&chat)) {
+                    if(!ingress(&chat,context))
+                        report("nearby chat observation queue unavailable");
+                }
+            }
             if (view.message_frequency==0U && view.message_id==1U &&
                 view.payload_size>=5U &&
                 !send_ping_reply(fd,view.payload[0],&next)) break;
