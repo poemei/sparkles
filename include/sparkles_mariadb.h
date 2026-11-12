@@ -5,6 +5,7 @@
  * account; MariaDB checks the account allowlist before returning records. */
 #define SPARKLES_MARIADB_CHECK_SERVICE "sparkles.mariadb.appointments.check"
 #define SPARKLES_MARIADB_CREATE_SERVICE "sparkles.mariadb.appointments.create"
+#define SPARKLES_MARIADB_MUTATE_SERVICE "sparkles.mariadb.appointments.mutate"
 #define SPARKLES_MARIADB_STATUS_SERVICE "sparkles.mariadb.status"
 #define SPARKLES_MARIADB_APPOINTMENTS_SERVICE "sparkles.mariadb.appointments.read"
 #define SPARKLES_MARIADB_EXPECTED_TABLES 7U
@@ -68,5 +69,35 @@ typedef struct {
     unsigned int status;
     unsigned long long id;
 } sparkles_mariadb_create_reply_t;
+
+/* Authenticated, optimistic compare-and-change: exact existing record must
+ * still be scheduled and match title/start/end from the authorized read.
+ * No model-generated SQL, no mutation without explicit human confirmation. */
+typedef enum {
+    SPARKLES_MARIADB_MUTATE_CANCEL=1,
+    SPARKLES_MARIADB_MUTATE_UPDATE=2
+} sparkles_mariadb_mutate_operation_t;
+typedef struct {
+    char account[128];
+    unsigned long long id;
+    unsigned int operation;
+    char previous_title[801];
+    char previous_start[20];
+    char previous_end[20];
+    char next_title[201];
+    char next_start[20];
+    char next_end[20];
+} sparkles_mariadb_mutate_request_t;
+typedef enum {
+    SPARKLES_MARIADB_MUTATE_ERROR=0,
+    SPARKLES_MARIADB_MUTATE_APPLIED=1,
+    SPARKLES_MARIADB_MUTATE_STALE=2,
+    SPARKLES_MARIADB_MUTATE_CONFLICT=3,
+    SPARKLES_MARIADB_MUTATE_UNCERTAIN=4,
+    SPARKLES_MARIADB_MUTATE_DENIED=5
+} sparkles_mariadb_mutate_status_t;
+typedef struct {
+    unsigned int status;
+} sparkles_mariadb_mutate_reply_t;
 
 #endif
