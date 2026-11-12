@@ -16,7 +16,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 2U
+#define SL_PATCH 3U
 
 #define SL_INBOUND_CAP 8U
 #define SL_OUTBOUND_CAP 8U
@@ -139,7 +139,13 @@ static void *dispatch_worker(void *unused)
                     &receipt,sizeof receipt,&memory_used);
                 if(memory_result!=STNLABZ_MODULE_OK ||
                    memory_used!=sizeof receipt || !receipt.saved)
-                    fprintf(stderr,"[SL] observation persistence unavailable; not saved\n");
+                    fprintf(stderr,
+                        "[SL] context observation NOT saved: result=%d used=%zu saved=%u channel=%s\n",
+                        (int)memory_result,memory_used,receipt.saved,
+                        im.ambient?"nearby":"private");
+                else
+                    fprintf(stderr,"[SL] context observation saved: channel=%s\n",
+                            im.ambient?"nearby":"private");
             }
         }
         /* Ambient local chat informs context but is not addressed to the
