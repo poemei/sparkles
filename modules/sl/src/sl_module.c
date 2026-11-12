@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include "sparkles_route.h"
+#include "sparkles_memory.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +16,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 1U
+#define SL_PATCH 2U
 
 #define SL_INBOUND_CAP 8U
 #define SL_OUTBOUND_CAP 8U
@@ -115,6 +116,35 @@ static void *dispatch_worker(void *unused)
                    strlen(request.account)+1U);
         }
         memcpy(request.text,im.text,sizeof request.text);
+        /* Both IM and local chat reach durable context before any optional
+         * conversational response. Identity answers, scheduling paths, and
+         * brief messages must not bypass the observation write. */
+        {
+            sparkles_memory_exchange_request_t observation={0};
+            sparkles_memory_exchange_reply_t receipt={0};
+            size_t memory_used=0U;
+            stnlabz_module_result_t memory_result;
+            size_t text_length=strlen(im.text);
+            memcpy(observation.account,request.account,
+                   strlen(request.account)+1U);
+            if(text_length>SPARKLES_MEMORY_TEXT_MAX) {
+                fprintf(stderr,"[SL] observation exceeds context limit; not saved\n");
+            } else {
+                memcpy(observation.utterance,im.text,text_length+1U);
+                observation.record=1U;
+                observation.ambient=im.ambient?1U:0U;
+                memory_result=module_host->invoke_service(
+                    SPARKLES_MEMORY_EXCHANGE_SERVICE,
+                    &observation,sizeof observation,
+                    &receipt,sizeof receipt,&memory_used);
+                if(memory_result!=STNLABZ_MODULE_OK ||
+                   memory_used!=sizeof receipt || !receipt.saved)
+                    fprintf(stderr,"[SL] observation persistence unavailable; not saved\n");
+            }
+        }
+        /* Ambient local chat informs context but is not addressed to the
+         * assistant; never dispatch it as a conversational command. */
+        if(im.ambient)continue;
         result=module_host->invoke_service(
             SPARKLES_ROUTER_DISPATCH_SERVICE,
             &request,sizeof request,&response,sizeof response,&used);
