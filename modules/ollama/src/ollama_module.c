@@ -1379,7 +1379,8 @@ static stnlabz_module_result_t chat_controller(
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
  if(!strncmp(command->account,"sl:",3U) && owner &&
-    owner->invoke_service && command->sender[0]) {
+    owner->invoke_service && command->sender[0] &&
+    memchr(command->sender,0,sizeof command->sender)) {
   sparkles_contact_request_t identify={{0}};
   size_t contact_used=0U;
   stnlabz_module_result_t contact_status;
@@ -1395,7 +1396,8 @@ static stnlabz_module_result_t chat_controller(
   profile_available=contact_status==STNLABZ_MODULE_OK &&
                     contact_used==sizeof profile;
   if(introduced) {
-   if(profile_available && profile.saved && profile.found) {
+   if(profile_available && profile.saved && profile.found &&
+      !strcmp(profile.first_name,volunteered)) {
     int n=snprintf(message,sizeof message,
         "Your first name, %s, is now saved in my contact records.",
         profile.first_name[0]?profile.first_name:volunteered);
