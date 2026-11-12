@@ -15,6 +15,7 @@ typedef struct {
 
 typedef struct {
     sparkles_sl_session_t circuit;
+    char avatar_name[128];
     char sim_ip[64];
     unsigned short sim_port;
     char seed_capability[2048];
