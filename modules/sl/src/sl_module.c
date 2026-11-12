@@ -18,12 +18,13 @@
 #include "stnlabz_abi/module.h"
 #include "sparkles_route.h"
 
-/* This module owns a private Unix-domain IPC ingress for an authenticated
- * Second Life avatar client. It does not implement SL protocol or intelligence.
- * No IRC transport services are registered or reused. */
+/* Native C staging-only Unix IPC ingress. The peer UID is checked, but the
+ * frame's claimed SL UUID is NOT authenticated against the SL grid. This is
+ * NOT a Second Life protocol client and must not be used in production or
+ * granted executive/calendar privileges. No IRC services are reused. */
 #define SL_MAJOR 0U
 #define SL_MINOR 1U
-#define SL_PATCH 0U
+#define SL_PATCH 1U
 #define SL_FRAME_MAX 4096U
 #define SL_UUID_SIZE 36U
 static pthread_t worker;
@@ -122,7 +123,7 @@ static void handle_peer(int fd) {
     char frame[SL_FRAME_MAX+1U];
     size_t used=0U;
     atomic_store(&peer_fd,fd);
-    log_status("authenticated local avatar bridge connected");
+    log_status("local staging IPC peer connected (SL identity unverified)");
     while(!atomic_load(&stopping)){
         struct pollfd p={fd,POLLIN,0};
         int ready=poll(&p,1,500);
@@ -228,7 +229,7 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host){
         (void)unlink(socket_path);host_ptr=NULL;return STNLABZ_MODULE_ERR_START_FAILED;
     }
     worker_started=1;
-    log_status("Unix IPC listener active (not proof of SL avatar login)");
+    log_status("staging IPC listener active; no Second Life grid connection");
     return STNLABZ_MODULE_OK;
 }
 static stnlabz_module_result_t sl_stop(void){
