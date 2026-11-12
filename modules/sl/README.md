@@ -1,3 +1,5 @@
+**Second Life conversation observation ingress (v0.3.2, 2026-11-12, GitHub source only):** The simulator UDP `ChatFromSimulator` Low 139 decoder accepts fully audible whisper/normal/shout from other avatars, and excludes own speech, objects, system messages, typing, debug and malformed content. Nearby chat is queued as an observation, never passed to the conversational reply router. Every accepted direct private IM is recorded through the MariaDB context exchange service *before* it is dispatched to Core, including short messages and requests handled without model generation. An unavailable context service or saturated queue produces a content-free diagnostic, not a false assertion that memory was saved. Source change is not native-built or SL live-qualified.
+
 # Sparkles Second Life transport — native C v0.3.1
 
 This native C11 STN-Labz module runs inside Sparkles Core, preserving the
