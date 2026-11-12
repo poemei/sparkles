@@ -333,7 +333,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     }
                 }
                 if (!sparkles_sl_im_encode(&login->circuit,response.recipient,
-                      response.conversation,next,response.text,
+                      response.conversation,next,login->avatar_name,response.text,
                       slot->bytes,sizeof slot->bytes,&used)) {
                     report("private IM outbound encoding rejected");
                     continue;
