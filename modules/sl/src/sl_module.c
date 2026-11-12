@@ -15,7 +15,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 0U
+#define SL_PATCH 1U
 
 #define SL_INBOUND_CAP 8U
 #define SL_OUTBOUND_CAP 8U
