@@ -179,13 +179,10 @@ int sparkles_irc_schedule_intent(const char *text)
     /* No channel follow-up can confirm or change an IM-created proposal. */
     if(schedule_word(text,"confirm")||schedule_word(text,"confirmed")||
        schedule_word(text,"cancel")||
-       schedule_phrase(text,"yes") && strlen(text)==3U ||
-       schedule_phrase(text,"no") && strlen(text)==2U)return 1;
+       (strlen(text)==3U && ascii_equal_nocase(text,"yes",3U)) ||
+       (strlen(text)==2U && ascii_equal_nocase(text,"no",2U)))
+        return 1;
     if(schedule_time_token(text))return 1;
-    if(strlen(text)==5U && isdigit((unsigned char)text[0]) &&
-       isdigit((unsigned char)text[1]) && text[2]==':' &&
-       isdigit((unsigned char)text[3]) &&
-       isdigit((unsigned char)text[4]))return 1;
     return 0;
 }
 
