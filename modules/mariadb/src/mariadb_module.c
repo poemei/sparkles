@@ -215,7 +215,7 @@ static stnlabz_module_result_t schedule_command(
     stnlabz_module_command_reply_fn reply,
     void *reply_context, void *context)
 {
-    sparkles_mariadb_appointments_request_t request = {{0}};
+    sparkles_mariadb_appointments_request_t request = {0};
     sparkles_mariadb_appointments_reply_t result = {0};
     char extra;
     char text[512];
@@ -736,7 +736,7 @@ static stnlabz_module_result_t appointment_add_command(
         return reply(reply_context,
           "Usage: /appointment-add YYYY-MM-DD HH:MM HH:MM Title (same day)")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    outcome=insert_appointment(&appointment,command->account,&id);
+    outcome=insert_appointment(&appointment,command->account,NULL,&id);
     if (outcome==APPOINTMENT_DB_CONFLICT)
         return reply(reply_context,
           "Appointment not saved: conflicts with an existing scheduled appointment.")
