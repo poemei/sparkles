@@ -75,6 +75,9 @@ int sparkles_mariadb_context_exchange(
         used+=(size_t)written;
         ++out->recalled;
     }
+    if(!okay)
+        fprintf(stderr,"[MARIADB] context read failed: stmt_errno=%u (content withheld)\n",
+                mysql_stmt_errno(stmt));
     mysql_stmt_close(stmt);
     if(!okay) {
         memset(out,0,sizeof *out);
@@ -113,6 +116,9 @@ int sparkles_mariadb_context_exchange(
     if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
     if(okay&&mysql_stmt_execute(stmt))okay=0;
     if(okay&&mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
+    if(!okay)
+        fprintf(stderr,"[MARIADB] context write failed: stmt_errno=%u (content withheld)\n",
+                mysql_stmt_errno(stmt));
     mysql_stmt_close(stmt);
     out->saved=okay?1U:0U;
     return okay;
