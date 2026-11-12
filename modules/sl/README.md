@@ -42,6 +42,46 @@ Core response, or module ACTIVE status. Do not copy or embed a C++/C#
 client, add a second runtime, or modify Core/shared ABI as a workaround.
 The required native C grid-protocol implementation remains incomplete.
 
+## Account configuration — operator-specified path
+
+Native C credential loading is implemented in `src/sl_config.c`.
+The **single** account configuration file is:
+
+```text
+/opt/sparkles/auth/sl/sl.conf
+```
+
+Expected `key=value` fields (sample placeholders only — do not commit
+a populated file):
+
+```ini
+first=MsSparkles
+last=Resident
+password=REPLACE_LOCALLY
+mac=REPLACE_WITH_OPERATOR_SELECTED_CLIENT_ID
+id0=REPLACE_WITH_OPERATOR_SELECTED_MACHINE_ID
+start=home
+```
+
+This is parsed as data, **not sourced or evaluated by a shell**.
+The file must be owned by the module process UID, be a regular file,
+and must not grant any group/other permissions (use `0600`).
+Symlinks and unknown/duplicate/missing keys are rejected. Do not
+paste a real password into chat or a GitHub repository. The module does
+not create this credential file or alter account details.
+
+`sparkles_sl_login_from_file()` reads this path, invokes the native
+C XML-RPC login implementation, and clears the in-memory credential
+structure. The login response is only a simulator circuit proposal.
+**This function is not yet wired into the module lifecycle or a live SL
+session implementation**, so installing the module still does not log
+MsSparkles into Second Life. Login endpoint compatibility and SL
+authentication challenges remain unverified.
+
+Native build of the login code additionally needs libcurl and libxml2
+development headers and libraries (`pkg-config` for libxml2).
+No C#, C++, .NET or Corrade executable is included.
+
 ## Developer build (staging scaffold only)
 
 ```sh
@@ -50,20 +90,22 @@ make
 ```
 
 This builds `build/sl.so` with the repository ABI headers and Linux
-libcrypto/pthread. It is a source/build smoke check **only**, not a Second
+libcrypto/pthread/libcurl/libxml2. It is a source/build smoke check **only**, not a Second
 Life connection check. No .NET tooling is required.
 
 The module currently requires `SPARKLES_SL_SOCKET` pointing into an
 already-existing, runtime-UID-owned directory with mode 0700. It creates
 a socket with mode 0600. **Do not configure or activate this incomplete
-ingress module in a production Sparkles runtime.** No account credentials
-or avatar login configuration are provided by this source.
+ingress module in a production Sparkles runtime.** Avatar configuration is loaded only from the operator-owned private file
+above; the existing module lifecycle does not yet initiate login.
 
 ## Qualification and evidence
 
 - Native C source and module manifest: committed.
 - C compile, tests and qualification: not performed by this source edit.
-- Native C SL login and grid communication: **NOT IMPLEMENTED**.
+- Native C XML-RPC credential exchange code: **SOURCE IMPLEMENTED,
+  UNTESTED AND NOT INVOKED BY THE MODULE**. Simulator connection and
+  actual SL grid communication: **NOT IMPLEMENTED**.
 - MsSparkles avatar login, IM, group/local chat: **NOT TESTED**.
 - Installation, activation, deployment and operator acceptance: absent.
 
