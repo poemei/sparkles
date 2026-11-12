@@ -27,7 +27,8 @@ int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
-                         uint32_t sequence, const char *message,
+                         uint32_t sequence, const char *sender_name,
+                         const char *message,
                          unsigned char *output, size_t capacity,
                          size_t *used);
 #endif
