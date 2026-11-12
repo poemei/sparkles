@@ -494,7 +494,7 @@ static stnlabz_module_result_t mutate_service(
     MYSQL_BIND bind[7]={{0}};
     unsigned long lengths[7]={0};
     unsigned long long id;
-    int transaction=0,ok=1,matched=0;
+    int transaction=0,matched=0;
     char new_input[256];
     int n;
     (void)ctx;
