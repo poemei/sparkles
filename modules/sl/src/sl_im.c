@@ -81,9 +81,24 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
     pos+=2U;
     if (bucket_size>n-pos) return SPARKLES_SL_IM_INVALID_BUCKET;
     pos+=bucket_size;
-    /* Some newer templates append structured blocks. They are not part
-     * of the historical IM template and cannot be silently guessed.
-     * Reject clearly with an explicit diagnostic until schema-verified. */
+    /* Current Linden Lab message_template.msg appends EstateBlock
+     * (EstateID U32) and MetaData Variable (one U8 count, then each
+     * entry Data Variable2). Validate rather than rejecting live IMs.
+     * Also recognize legacy packets ending immediately after Bucket. */
+    if (pos<n) {
+        unsigned int count, i;
+        if (n-pos<5U) return SPARKLES_SL_IM_TRAILING_DATA;
+        pos+=4U; /* EstateBlock.EstateID */
+        count=p[pos++];
+        for (i=0U;i<count;++i) {
+            size_t data_size;
+            if (n-pos<2U) return SPARKLES_SL_IM_TRAILING_DATA;
+            data_size=(size_t)p[pos] | ((size_t)p[pos+1U]<<8U);
+            pos+=2U;
+            if (data_size>n-pos) return SPARKLES_SL_IM_TRAILING_DATA;
+            pos+=data_size;
+        }
+    }
     if (pos!=n) return SPARKLES_SL_IM_TRAILING_DATA;
     *im=candidate;
     return SPARKLES_SL_IM_VALID;
@@ -113,7 +128,7 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
     if (!textlen || textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
     /* Header(6) + Low ID(4) + fixed fields(103) + name(1) +
      * message size(2) + message NUL(1) + bucket size(2). */
-    total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U;
+    total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U+5U;
     if (total>cap || total>SPARKLES_SL_PACKET_MAX) return 0;
     memset(out,0,total);
     out[0]=SPARKLES_SL_FLAG_RELIABLE;
@@ -136,6 +151,9 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
     offset+=textlen+1U;
     u16le(out+offset,0U);
     offset+=2U;
+    /* New template: EstateBlock.EstateID (4 bytes zero),
+     * MetaData block count (1 byte zero). Already zero-filled. */
+    offset+=5U;
     *used=offset;
     return 1;
 }
