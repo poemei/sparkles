@@ -1,4 +1,4 @@
-# Sparkles Second Life transport — native C v0.2.1
+# Sparkles Second Life transport — native C v0.2.2
 
 This module is in-process native C11, loaded by the existing STN-Labz
 Core module ABI. It does NOT use Corrade, C#, C++, .NET, or another
@@ -69,6 +69,25 @@ checks execute and all pass; it does not loosen Core requirements.
 
 **The 2026-11-12 operator hotload failure was observed; the v0.2.1
 fix is source committed only until compiled and hotload-tested.**
+
+## Login failure evidence (v0.2.2)
+
+Operator logs dated 2026-11-12 18:18–18:19 UTC show repeated
+`grid login failed` messages, so authentication has not established
+a simulator circuit. The prior implementation collapsed all failures
+into one uninformative log line.
+
+Version 0.2.2 logs a separate safe diagnostic for unreadable/invalid
+`sl.conf`, local XML-RPC serialization errors, HTTP client/transport
+errors (curl code), non-200 HTTP status, empty HTTP response, and
+rejected/unrecognized XML-RPC result. Credentials and raw server
+responses are never printed. The XML-RPC parser now accepts a standard
+boolean `1` as well as string `true` for the login result.
+
+These edits **do not establish that the current Second Life grid
+accepts our login request**. Do not infer bad account credentials
+from the historical generic message. Validate the new stage-specific
+log output after operator-authorized installation.
 
 ## Build and offline regression
 
