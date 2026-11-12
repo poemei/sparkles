@@ -301,6 +301,14 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
         goto done;
     }
     ok=parse_login(response.data,response.length,reply);
+    if (ok) {
+        int n=snprintf(reply->avatar_name,sizeof reply->avatar_name,
+                       "%s %s",config->first,config->last);
+        if (n<1 || (size_t)n>=sizeof reply->avatar_name) {
+            memset(reply,0,sizeof *reply);
+            ok=0;
+        }
+    }
     if (!ok)
         fprintf(stderr,"[SL] login XML-RPC result rejected or unrecognized (response withheld)\n");
 done:
