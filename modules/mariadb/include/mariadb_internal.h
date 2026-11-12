@@ -8,6 +8,11 @@
 
 #define SPARKLES_MARIADB_IRC_ACCOUNTS "/opt/sparkles/auth/mariadb/irc-accounts.conf"
 int sparkles_mariadb_account_allowed(const char *path, const char *account);
+/* Calendar permission: authenticated platform identity linked to contacts. */
+int sparkles_mariadb_identity_parts(const char *account,
+                                   const char **platform,
+                                   const char **identifier);
+int sparkles_mariadb_contact_calendar_allowed(MYSQL *db,const char *account);
 
 #define SPARKLES_MARIADB_CONFIG "/opt/sparkles/auth/mariadb/mariadb.env"
 #define SPARKLES_MARIADB_HOST "localhost"
