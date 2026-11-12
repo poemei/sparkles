@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "sl_login.h"
+#include "sl_config.h"
 #include <curl/curl.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
@@ -273,5 +274,16 @@ done:
     if (headers) curl_slist_free_all(headers);
     if (curl) curl_easy_cleanup(curl);
     free(response.data);
+    return ok;
+}
+
+int sparkles_sl_login_from_file(sparkles_sl_login_reply_t *reply)
+{
+    sparkles_sl_login_config_t config = {0};
+    int ok;
+    if (!sparkles_sl_config_load(SPARKLES_SL_CONF_PATH, &config))
+        return 0;
+    ok = sparkles_sl_login(&config, reply);
+    sparkles_sl_config_clear(&config);
     return ok;
 }
