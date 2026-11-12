@@ -20,46 +20,79 @@ static int nonzero_uuid(const unsigned char *p)
     for(i=0U;i<16U;++i) any|=p[i];
     return any!=0U;
 }
-int sparkles_sl_im_decode(const unsigned char *p, size_t n,
-                         const unsigned char own_agent[16],
-                         sparkles_sl_private_im_t *im)
+const char *sparkles_sl_im_validation_name(sparkles_sl_im_validation_t result)
+{
+    switch (result) {
+    case SPARKLES_SL_IM_VALID: return "valid";
+    case SPARKLES_SL_IM_TOO_SHORT: return "truncated";
+    case SPARKLES_SL_IM_WRONG_RECIPIENT: return "wrong_recipient";
+    case SPARKLES_SL_IM_UNSUPPORTED_DIALOG: return "unsupported_dialog";
+    case SPARKLES_SL_IM_INVALID_SENDER: return "invalid_sender";
+    case SPARKLES_SL_IM_INVALID_NAME: return "invalid_name";
+    case SPARKLES_SL_IM_INVALID_TEXT: return "invalid_text";
+    case SPARKLES_SL_IM_INVALID_BUCKET: return "invalid_bucket";
+    case SPARKLES_SL_IM_TRAILING_DATA: return "trailing_data";
+    default: return "unknown";
+    }
+}
+sparkles_sl_im_validation_t sparkles_sl_im_validate(
+    const unsigned char *p, size_t n,
+    const unsigned char own_agent[16], sparkles_sl_private_im_t *im)
 {
     size_t pos=103U, name_size, message_size, bucket_size;
     sparkles_sl_private_im_t candidate;
-    if (!p || !own_agent || !im || n<108U) return 0;
+    if (!p || !own_agent || !im || n<108U)
+        return SPARKLES_SL_IM_TOO_SHORT;
     memset(&candidate,0,sizeof candidate);
-    /* AgentData.AgentID is the claimed sender UUID provided by the
-     * simulator. MessageBlock.ToAgentID must match our login agent UUID.
-     * Dialog 0 is normal personal IM, and FromGroup must be false. */
-    if (!nonzero_uuid(p) || !memcmp(p,own_agent,16U) ||
-        p[32U]!=0U || memcmp(p+33U,own_agent,16U)!=0 ||
-        p[82U]!=0U) return 0;
+    /* message_template.msg ImprovedInstantMessage Low 254:
+     * AgentData: AgentID(16), SessionID(16)
+     * MessageBlock: FromGroup(1), ToAgentID(16), EstateID(4),
+     * RegionID(16), Position(12), Offline(1), Dialog(1),
+     * ID(16), Timestamp(4), Name(Variable1), Text(Variable2),
+     * BinaryBucket(Variable2). Fixed portion totals 103 bytes.
+     * No interpretation of unrelated IM dialog types as personal chat. */
+    if (!nonzero_uuid(p) || !memcmp(p,own_agent,16U))
+        return SPARKLES_SL_IM_INVALID_SENDER;
+    if (memcmp(p+33U,own_agent,16U)!=0)
+        return SPARKLES_SL_IM_WRONG_RECIPIENT;
+    if (p[32U]!=0U || p[82U]!=0U)
+        return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
     memcpy(candidate.sender,p,16U);
     memcpy(candidate.conversation,p+83U,16U);
     name_size=p[pos++];
     if (!name_size || name_size>sizeof candidate.name ||
-        name_size>n-pos) return 0;
-    if (p[pos+name_size-1U]!=0U ||
-        memchr(p+pos,0U,name_size-1U)) return 0;
+        name_size>n-pos || p[pos+name_size-1U]!=0U ||
+        memchr(p+pos,0U,name_size-1U))
+        return SPARKLES_SL_IM_INVALID_NAME;
     memcpy(candidate.name,p+pos,name_size-1U);
     pos+=name_size;
-    if (n-pos<2U) return 0;
+    if (n-pos<2U) return SPARKLES_SL_IM_TOO_SHORT;
     message_size=(size_t)p[pos] | ((size_t)p[pos+1U]<<8U);
     pos+=2U;
     if (!message_size || message_size>sizeof candidate.text ||
-        message_size>n-pos) return 0;
-    /* Message strings are NUL terminated in SL wire format. */
-    if (p[pos+message_size-1U]!=0U ||
-        memchr(p+pos,0U,message_size-1U)) return 0;
+        message_size>n-pos || p[pos+message_size-1U]!=0U ||
+        memchr(p+pos,0U,message_size-1U))
+        return SPARKLES_SL_IM_INVALID_TEXT;
     memcpy(candidate.text,p+pos,message_size-1U);
-    if (!candidate.text[0]) return 0;
+    if (!candidate.text[0]) return SPARKLES_SL_IM_INVALID_TEXT;
     pos+=message_size;
-    if (n-pos<2U) return 0;
+    if (n-pos<2U) return SPARKLES_SL_IM_TOO_SHORT;
     bucket_size=(size_t)p[pos] | ((size_t)p[pos+1U]<<8U);
     pos+=2U;
-    if (bucket_size!=n-pos) return 0;
+    if (bucket_size>n-pos) return SPARKLES_SL_IM_INVALID_BUCKET;
+    pos+=bucket_size;
+    /* Some newer templates append structured blocks. They are not part
+     * of the historical IM template and cannot be silently guessed.
+     * Reject clearly with an explicit diagnostic until schema-verified. */
+    if (pos!=n) return SPARKLES_SL_IM_TRAILING_DATA;
     *im=candidate;
-    return 1;
+    return SPARKLES_SL_IM_VALID;
+}
+int sparkles_sl_im_decode(const unsigned char *p, size_t n,
+                         const unsigned char own_agent[16],
+                         sparkles_sl_private_im_t *im)
+{
+    return sparkles_sl_im_validate(p,n,own_agent,im)==SPARKLES_SL_IM_VALID;
 }
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
