@@ -243,37 +243,44 @@ static stnlabz_module_result_t schedule_command(
     if (rc!=STNLABZ_MODULE_OK || used!=sizeof result)
         return reply(reply_context,"Schedule lookup unavailable.")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    if (!host_owner || !host_owner->send_private_message ||
-        !command->sender[0]) return STNLABZ_MODULE_ERR_INVALID_STATE;
-    if (!result.count) {
-        if (!host_owner->send_private_message(command->sender,
-             "No scheduled appointments stored for that date range."))
+    /* Private response belongs to the originating Core transport, never IRC. */
+    if(!result.count)
+        return reply(reply_context,
+            "No scheduled appointments stored for that date range.")
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
+    {
+        size_t written=0U;
+        unsigned int shown=0U;
+        int n=snprintf(text,sizeof text,
+            "Schedule from %s:",request.from_date);
+        if(n<0||(size_t)n>=sizeof text)
             return STNLABZ_MODULE_ERR_INVALID_STATE;
+        written=(size_t)n;
+        for(i=0U;i<result.count;++i) {
+            const sparkles_mariadb_appointment_t *e=&result.records[i];
+            if(!safe_irc_title(e->title))
+                return STNLABZ_MODULE_ERR_INVALID_STATE;
+            n=snprintf(text+written,sizeof text-written,
+                "\n\n- %.5s - %.5s  %s",
+                e->start_time+11U,e->end_time+11U,e->title);
+            if(n<0)return STNLABZ_MODULE_ERR_INVALID_STATE;
+            if((size_t)n>=sizeof text-written) {
+                text[written]='\0';
+                break;
+            }
+            written+=(size_t)n;
+            ++shown;
+        }
+        if(!shown)return STNLABZ_MODULE_ERR_INVALID_STATE;
+        if(shown<result.count||result.has_more) {
+            static const char note[]=" (More appointments; narrow the range.)";
+            size_t tail=sizeof note-1U;
+            if(written+tail<sizeof text)
+                memcpy(text+written,note,sizeof note);
+        }
+        return reply(reply_context,text)
+            ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
     }
-    /* Validate all transport-sized messages before sending any records. */
-    for (i=0U;i<result.count;++i) {
-        int len=snprintf(text,sizeof text,"%s to %s: %s",
-             result.records[i].start_time,result.records[i].end_time,
-             result.records[i].title);
-        if (len<0 || (size_t)len>=sizeof text ||
-            !safe_irc_title(result.records[i].title))
-            return reply(reply_context,
-              "Schedule contains an oversized title; cannot deliver safely.")
-                ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    }
-    for (i=0U;i<result.count;++i) {
-        int len=snprintf(text,sizeof text,"%s to %s: %s",
-             result.records[i].start_time,result.records[i].end_time,
-             result.records[i].title);
-        if (len<0 || (size_t)len>=sizeof text ||
-            !host_owner->send_private_message(command->sender,text))
-            return STNLABZ_MODULE_ERR_INVALID_STATE;
-    }
-    if (result.has_more &&
-        !host_owner->send_private_message(command->sender,
-             "More appointments exist; narrow the date range."))
-        return STNLABZ_MODULE_ERR_INVALID_STATE;
-    return STNLABZ_MODULE_OK; /* Private schedule already delivered. */
 }
 
 typedef enum {
