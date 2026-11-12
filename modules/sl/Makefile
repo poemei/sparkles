@@ -19,11 +19,12 @@ check-deps:
 TARGET := $(BUILD_DIR)/sl.so
 WIRE_TEST := $(BUILD_DIR)/test_sl_wire
 CONFIG_TEST := $(BUILD_DIR)/test_sl_config
-SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c src/sl_grid.c
+IM_TEST := $(BUILD_DIR)/test_sl_im
+SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c src/sl_grid.c src/sl_im.c
 
 .PHONY: all test clean install uninstall
 all: $(TARGET)
-$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h include/sl_grid.h | check-deps
+$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h include/sl_grid.h include/sl_im.h | check-deps
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -shared $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
 $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
@@ -32,9 +33,13 @@ $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
 $(CONFIG_TEST): tests/test_sl_config.c src/sl_config.c include/sl_config.h include/sl_login.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_config.c src/sl_config.c -lcrypto
-test: $(WIRE_TEST) $(CONFIG_TEST)
+$(IM_TEST): tests/test_sl_im.c src/sl_im.c src/sl_wire.c include/sl_im.h include/sl_wire.h
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_im.c src/sl_im.c src/sl_wire.c
+test: $(WIRE_TEST) $(CONFIG_TEST) $(IM_TEST)
 	./$(WIRE_TEST)
 	./$(CONFIG_TEST)
+	./$(IM_TEST)
 install: $(TARGET)
 	@id -u "$(MODULE_USER)" >/dev/null && getent group "$(MODULE_GROUP)" >/dev/null
 	install -d -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0755 "$(MODULEDIR)"
