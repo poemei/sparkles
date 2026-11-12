@@ -1,4 +1,4 @@
-# Sparkles Second Life transport — native C v0.3.0
+# Sparkles Second Life transport — native C v0.3.1
 
 This native C11 STN-Labz module runs inside Sparkles Core, preserving the
 shared ABI. No C++, C#, .NET, Corrade executable, external bot service,
@@ -44,6 +44,33 @@ other capabilities; no CAPS EventQueueGet implementation exists yet.
 Group/conference/local chat, friends, teleport, inventory and
 full executive SL capabilities are not implemented. Do not claim a
 complete SL chat client from module ACTIVE status.
+
+## v0.3.1 message template compatibility fix
+
+The operator's 2026-11-12 two-message direct-IM test established that
+avatar presence continued but no private IM reached Core. Inspection
+against the Second Life viewer `ImprovedInstantMessage Low 254`
+message template showed an important omitted trailer: current messages
+carry a fixed 4-byte `EstateBlock.EstateID` and a variable
+`MetaData` block (count byte and bounded 2-byte-sized data entries)
+**after** the `BinaryBucket`. The v0.3.0 parser insisted that the
+payload end directly after `BinaryBucket`, silently rejecting modern
+packets. v0.3.1 accepts both legacy packets and strictly bounds and
+validates the contemporary trailer. Outbound private IMs now include
+the estate/metadata fields as prescribed by the current template.
+
+Content-free diagnostics distinguish an `ImprovedInstantMessage UDP
+packet received` from `IM packet rejected: reason=...`, from
+`private IM accepted into Core dispatch queue` and the outbound
+send/ACK milestones. No IM text, sender name or credentials are
+logged. New offline regression cases cover optional trailer presence,
+metadata block contents, bad lengths, wrong recipients, and excluded
+IM dialogs.
+
+**Limit:** Not every live Second Life IM is guaranteed to arrive as
+UDP Low 254; some routes depend on CAPS/EventQueueGet, which remains
+unimplemented. This change is SOURCE COMMITTED but has not been
+compiled, hotloaded or confirmed in the live simulator by the operator.
 
 ## Account configuration
 
