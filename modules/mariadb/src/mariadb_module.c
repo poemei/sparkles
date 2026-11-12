@@ -93,20 +93,22 @@ static stnlabz_module_result_t appointments_service(
     void *response, size_t response_size, size_t *used, void *ctx)
 {
     static const char sql[] =
-        "SELECT id, title, "
-        "DATE_FORMAT(start_time,'%Y-%m-%d %H:%i:%s'), "
-        "DATE_FORMAT(end_time,'%Y-%m-%d %H:%i:%s') "
-        "FROM appointments "
-        "WHERE status='scheduled' AND start_time < ? AND end_time > ? "
-        "ORDER BY start_time, id LIMIT 9";
+        "SELECT a.id, a.title, "
+        "DATE_FORMAT(a.start_time,'%Y-%m-%d %H:%i:%s'), "
+        "DATE_FORMAT(a.end_time,'%Y-%m-%d %H:%i:%s') "
+        "FROM appointments a "
+        "WHERE a.status='scheduled' AND a.start_time < ? AND a.end_time > ? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) "
+        "ORDER BY a.start_time, a.id LIMIT 9";
     const sparkles_mariadb_appointments_request_t *in = request;
     sparkles_mariadb_appointments_reply_t *out = response;
     MYSQL_STMT *stmt = NULL;
-    MYSQL_BIND params[2] = {{0}}, result[4] = {{0}};
+    MYSQL_BIND params[3] = {{0}}, result[4] = {{0}};
     char from[20], until[20], title[801], start[20], end[20];
     unsigned long title_len = 0U, start_len = 0U, end_len = 0U;
     unsigned long params_len[2] = {19UL, 19UL};
-    unsigned long long id = 0ULL;
+    unsigned long long id = 0ULL, contact_id=0ULL;
     unsigned int count = 0U;
     int rc, okay = 1;
     (void)ctx;
@@ -131,6 +133,9 @@ static stnlabz_module_result_t appointments_service(
     params[1].buffer_length = 19U;
     params[1].length = &params_len[1];
 
+    params[2].buffer_type = MYSQL_TYPE_LONGLONG;
+    params[2].buffer = &contact_id;
+    params[2].is_unsigned = 1;
     result[0].buffer_type = MYSQL_TYPE_LONGLONG;
     result[0].buffer = &id;
     result[0].is_unsigned = 1;
@@ -148,7 +153,9 @@ static stnlabz_module_result_t appointments_service(
     result[3].length = &end_len;
 
     (void)pthread_mutex_lock(&db_lock);
-    if (!db || mysql_ping(db)) okay = 0;
+    if (!db || mysql_ping(db) ||
+        !sparkles_mariadb_participants_supported(db) ||
+        !sparkles_mariadb_contact_id(db,in->account,&contact_id))okay=0;
     if (okay) stmt = mysql_stmt_init(db);
     if (!stmt) okay = 0;
     if (okay && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql))) okay = 0;
