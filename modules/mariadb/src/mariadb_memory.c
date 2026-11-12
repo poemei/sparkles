@@ -1,3 +1,56 @@
+/* Record first: a failed history lookup must never suppress the
+ * speaker's new observation. Every insert uses bound values. */
+static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
+{
+    static const char write_sql[] =
+        "INSERT INTO conversation_context "
+        "(account,subject,category,content,context_type,source,"
+        "verification,visibility,status) "
+        "VALUES (?,?,?,?,'OBSERVATION',?,"
+        "'UNVERIFIED',?,'ACTIVE')";
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND bind[6]={{0}};
+    unsigned long lengths[6];
+    const char *category=in->ambient?"local_chat":"conversation";
+    const char *source=!strncmp(in->account,"sl:",3U)?"SL":"IRC";
+    const char *visibility=in->ambient?"SHARED":"PRIVATE";
+    int okay=1;
+    lengths[0]=lengths[1]=(unsigned long)strlen(in->account);
+    lengths[2]=(unsigned long)strlen(category);
+    lengths[3]=(unsigned long)strlen(in->utterance);
+    lengths[4]=(unsigned long)strlen(source);
+    lengths[5]=(unsigned long)strlen(visibility);
+    stmt=mysql_stmt_init(db);
+    if(!stmt)return 0;
+    if(mysql_stmt_prepare(stmt,write_sql,(unsigned long)strlen(write_sql)))okay=0;
+    bind[0].buffer_type=MYSQL_TYPE_STRING;
+    bind[0].buffer=(void *)in->account;
+    bind[0].buffer_length=lengths[0];bind[0].length=&lengths[0];
+    bind[1].buffer_type=MYSQL_TYPE_STRING;
+    bind[1].buffer=(void *)in->account;
+    bind[1].buffer_length=lengths[1];bind[1].length=&lengths[1];
+    bind[2].buffer_type=MYSQL_TYPE_STRING;
+    bind[2].buffer=(void *)category;
+    bind[2].buffer_length=lengths[2];bind[2].length=&lengths[2];
+    bind[3].buffer_type=MYSQL_TYPE_STRING;
+    bind[3].buffer=(void *)in->utterance;
+    bind[3].buffer_length=lengths[3];bind[3].length=&lengths[3];
+    bind[4].buffer_type=MYSQL_TYPE_STRING;
+    bind[4].buffer=(void *)source;
+    bind[4].buffer_length=lengths[4];bind[4].length=&lengths[4];
+    bind[5].buffer_type=MYSQL_TYPE_STRING;
+    bind[5].buffer=(void *)visibility;
+    bind[5].buffer_length=lengths[5];bind[5].length=&lengths[5];
+    if(okay && mysql_stmt_bind_param(stmt,bind))okay=0;
+    if(okay && mysql_stmt_execute(stmt))okay=0;
+    if(okay && mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
+    if(!okay)
+        fprintf(stderr,"[MARIADB] context write failed: stmt_errno=%u (content withheld)\\n",
+                mysql_stmt_errno(stmt));
+    mysql_stmt_close(stmt);
+    return okay;
+}
+
 #include <mysql.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,15 +72,9 @@ int sparkles_mariadb_context_exchange(
         "AND (expires_at IS NULL OR expires_at>NOW()) "
         "AND visibility IN ('PRIVATE','SHARED') "
         "ORDER BY updated_at DESC,id DESC LIMIT 3";
-    static const char write_sql[] =
-        "INSERT INTO conversation_context "
-        "(account,subject,category,content,context_type,source,"
-        "verification,visibility,status) "
-        "VALUES (?,?,?,?,'OBSERVATION',?,"
-        "'UNVERIFIED',?,'ACTIVE')";
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind[6]={{0}}, col={{0}};
-    unsigned long lengths[6],found_len=0U;
+    MYSQL_BIND bind={{0}}, col={{0}};
+    unsigned long account_length=0U,found_len=0U;
     char content[512];
     char *account;
     int rc,okay=1;
@@ -37,20 +84,19 @@ int sparkles_mariadb_context_exchange(
         return 0;
     memset(out,0,sizeof *out);
     account=(char *)in->account;
-    lengths[0]=(unsigned long)strlen(in->account);
-    lengths[1]=lengths[0];
-    lengths[2]=(unsigned long)strlen(in->ambient?"local_chat":"conversation");
-    lengths[3]=(unsigned long)strlen(in->utterance);
-    lengths[4]=!strncmp(in->account,"sl:",3U)?2UL:3UL;
-    lengths[5]=(unsigned long)strlen(in->ambient?"SHARED":"PRIVATE");
+    account_length=(unsigned long)strlen(in->account);
+    if(in->record) {
+        if(!context_write(db,in))return 0;
+        out->saved=1U;
+    }
 
     stmt=mysql_stmt_init(db);
     if(!stmt) return 0;
     if(mysql_stmt_prepare(stmt,read_sql,(unsigned long)strlen(read_sql)))okay=0;
-    bind[0].buffer_type=MYSQL_TYPE_STRING;
-    bind[0].buffer=account;
-    bind[0].buffer_length=lengths[0];
-    bind[0].length=&lengths[0];
+    bind.buffer_type=MYSQL_TYPE_STRING;
+    bind.buffer=account;
+    bind.buffer_length=account_length;
+    bind.length=&account_length;
     if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
     if(okay&&mysql_stmt_execute(stmt))okay=0;
     memset(content,0,sizeof content);
@@ -80,46 +126,9 @@ int sparkles_mariadb_context_exchange(
                 mysql_stmt_errno(stmt));
     mysql_stmt_close(stmt);
     if(!okay) {
-        memset(out,0,sizeof *out);
-        return 0;
+        out->recalled=0U;
+        out->previous[0]=0;
+        return in->record?1:0; /* A successful write stays acknowledged. */
     }
-    if(!in->record)return 1;
-    stmt=mysql_stmt_init(db);
-    if(!stmt)return 0;
-    if(mysql_stmt_prepare(stmt,write_sql,(unsigned long)strlen(write_sql)))
-        okay=0;
-    memset(bind,0,sizeof bind);
-    bind[0].buffer_type=MYSQL_TYPE_STRING;
-    bind[0].buffer=account;
-    bind[0].buffer_length=lengths[0];
-    bind[0].length=&lengths[0];
-    bind[1].buffer_type=MYSQL_TYPE_STRING;
-    bind[1].buffer=account;
-    bind[1].buffer_length=lengths[1];
-    bind[1].length=&lengths[1];
-    bind[2].buffer_type=MYSQL_TYPE_STRING;
-    bind[2].buffer=(void *)(in->ambient?"local_chat":"conversation");
-    bind[2].buffer_length=lengths[2];
-    bind[2].length=&lengths[2];
-    bind[3].buffer_type=MYSQL_TYPE_STRING;
-    bind[3].buffer=(void *)in->utterance;
-    bind[3].buffer_length=lengths[3];
-    bind[3].length=&lengths[3];
-    bind[4].buffer_type=MYSQL_TYPE_STRING;
-    bind[4].buffer=(void *)(!strncmp(in->account,"sl:",3U)?"SL":"IRC");
-    bind[4].buffer_length=lengths[4];
-    bind[4].length=&lengths[4];
-    bind[5].buffer_type=MYSQL_TYPE_STRING;
-    bind[5].buffer=(void *)(in->ambient?"SHARED":"PRIVATE");
-    bind[5].buffer_length=lengths[5];
-    bind[5].length=&lengths[5];
-    if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
-    if(okay&&mysql_stmt_execute(stmt))okay=0;
-    if(okay&&mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
-    if(!okay)
-        fprintf(stderr,"[MARIADB] context write failed: stmt_errno=%u (content withheld)\n",
-                mysql_stmt_errno(stmt));
-    mysql_stmt_close(stmt);
-    out->saved=okay?1U:0U;
-    return okay;
+    return 1;
 }
