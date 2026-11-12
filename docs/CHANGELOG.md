@@ -1,5 +1,15 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — SL conversation_context ingress (source only)
+
+- SL v0.3.2: capture authenticated simulator private IMs and audible nearby avatar chat; passive ambient observations never trigger model responses.
+- MariaDB v1.9.3: distinguish SL private `conversation` and shared `local_chat` observations using existing `conversation_context` columns; preserve UUID attribution and unverified status.
+- Ollama v1.2.1: avoid duplicate IM writes when fetching speaker memory.
+- Added SL chat decode and memory-flag negative checks; did not remove historical IRC rows or require IRC installation.
+- No SQL schema changes, deployment, automated native build, live capture test, or operator acceptance established.
+
+
+
 ## 2026-11-12 — Contact-linked shared appointments (source only)
 
 - MariaDB v1.9.2: exact unique contact lookup for one explicitly named guest; personal conflict checks for creator and guest; atomically insert creator as accepted and guest as pending.
