@@ -11,7 +11,9 @@ int sparkles_mariadb_memory_valid(
        !memchr(request->utterance,0,sizeof request->utterance))return 0;
     account_len=strlen(request->account);
     text_len=strlen(request->utterance);
-    if(request->record>1U||!account_len||account_len>127U||!text_len||
+    if(request->record>1U||request->ambient>1U||
+       (request->ambient && (!request->record ||
+        strncmp(request->account,"sl:",3U)))||!account_len||account_len>127U||!text_len||
        text_len>SPARKLES_MEMORY_TEXT_MAX)return 0;
     /* Native SL transport identifies the caller as sl:<UUID>. Treat it
      * as a platform-scoped observation namespace, NOT calendar authority.
@@ -73,6 +75,17 @@ int sparkles_mariadb_memory_selftests(
     CHECK(!sparkles_mariadb_memory_valid(&req));
     req.account[11U]='-';
     CHECK(sparkles_mariadb_memory_valid(&req));
+    req.record=1U;
+    req.ambient=1U;
+    CHECK(sparkles_mariadb_memory_valid(&req));
+    req.record=0U;
+    CHECK(!sparkles_mariadb_memory_valid(&req));
+    req.record=1U;
+    req.ambient=2U;
+    CHECK(!sparkles_mariadb_memory_valid(&req));
+    req.ambient=1U;
+    memcpy(req.account,"PoeMei",7U);
+    CHECK(!sparkles_mariadb_memory_valid(&req));
 #undef CHECK
     if(executed)*executed=e;
     if(passed)*passed=p;
