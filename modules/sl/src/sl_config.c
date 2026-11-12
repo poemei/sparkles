@@ -62,8 +62,8 @@ int sparkles_sl_config_load(const char *path, sparkles_sl_login_config_t *out)
         equals = strchr(key, '=');
         if (!equals) goto done;
         *equals = '\0';
-        end = equals - 1;
-        while (end >= key && (*end == ' ' || *end == '\t')) *end-- = '\0';
+        end = equals;
+        while (end > key && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
         value = equals + 1;
         while (*value == ' ' || *value == '\t') ++value;
         end = value + strlen(value);
