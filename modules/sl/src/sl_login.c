@@ -81,8 +81,8 @@ static int make_request(const sparkles_sl_login_config_t *config,
          member(w, "channel", "string", "STN-Labz Sparkles") &&
          member(w, "version", "string", "0.2.0") &&
          member(w, "platform", "string", "Lin") &&
-         member(w, "mac", "string", config->mac) &&
-         member(w, "id0", "string", config->id0) &&
+         member(w, "mac", "string", "00:00:00:00:00:00") &&
+         member(w, "id0", "string", "00000000-0000-0000-0000-000000000000") &&
          member(w, "agree_to_tos", "boolean", "0") &&
          member(w, "read_critical", "boolean", "0") &&
          member(w, "viewer_digest", "string", "") &&
@@ -238,7 +238,7 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
     response_buf_t response = {0};
     int ok = 0;
     if (!config || !reply || !config->first[0] || !config->last[0] ||
-        !config->password[0] || !config->mac[0] || !config->id0[0] ||
+        !config->password[0] ||
         !config->start[0]) return 0;
     memset(reply,0,sizeof *reply);
     if (strlen(config->password) >= sizeof secret) goto done;
