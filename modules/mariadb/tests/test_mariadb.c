@@ -2,37 +2,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include "mariadb_internal.h"
 #include "sparkles_contacts.h"
 
 static int auth_tests(unsigned int *e, unsigned int *p)
 {
-    char name[] = "/tmp/sparkles-mariadb-auth-XXXXXX";
-    int fd, good;
-    FILE *fp;
+    const char *platform=NULL,*id=NULL;
     unsigned int checks=0U, passed=0U;
 #define CHECK(v) do { ++checks; if (v) ++passed; } while (0)
-    CHECK(!sparkles_mariadb_account_allowed("/does/not/exist","PoeMei"));
-    CHECK(!sparkles_mariadb_account_allowed(NULL,"PoeMei"));
-    CHECK(!sparkles_mariadb_account_allowed("/does/not/exist",""));
-    fd=mkstemp(name);
-    if (fd<0) { *e=checks+1U;*p=passed;return 0; }
-    fp=fdopen(fd,"w");
-    if (!fp) { close(fd);unlink(name);*e=checks+1U;*p=passed;return 0; }
-    good=fputs("PoeMei\n",fp)>=0 && fflush(fp)==0;
-    if (!good) { fclose(fp);unlink(name);*e=checks+1U;*p=passed;return 0; }
-    CHECK(sparkles_mariadb_account_allowed(name,"PoeMei"));
-    CHECK(sparkles_mariadb_account_allowed(name,"poemei"));
-    CHECK(!sparkles_mariadb_account_allowed(name,"other"));
-    CHECK(!sparkles_mariadb_account_allowed(name,"PoeMei;admin"));
-    CHECK(!sparkles_mariadb_account_allowed(name,"*"));
-    CHECK(!sparkles_mariadb_account_allowed(name,NULL));
-    fclose(fp);
-    unlink(name);
+    CHECK(sparkles_mariadb_identity_parts(
+        "sl:12345678-1234-1234-1234-123456789abc",&platform,&id) &&
+        !strcmp(platform,"second_life") &&
+        !strcmp(id,"12345678-1234-1234-1234-123456789abc"));
+    CHECK(!sparkles_mariadb_identity_parts("sl:invalid",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts(
+        "sl:12345678-1234-1234-1234-123456789abz",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts(
+        "sl:12345678-1234-1234-1234-123456789ABC",&platform,&id));
+    CHECK(sparkles_mariadb_identity_parts("PoeMei",&platform,&id) &&
+        !strcmp(platform,"irc") && !strcmp(id,"PoeMei"));
+    CHECK(sparkles_mariadb_identity_parts("001",&platform,&id) &&
+        !strcmp(platform,"irc") && !strcmp(id,"001"));
+    CHECK(!sparkles_mariadb_identity_parts("*",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts("",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts("sl:",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts("PoeMei;admin",&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts(NULL,&platform,&id));
+    CHECK(!sparkles_mariadb_identity_parts("PoeMei",NULL,&id));
+    CHECK(!sparkles_mariadb_contact_calendar_allowed(NULL,"PoeMei"));
 #undef CHECK
-    *e=checks;
-    *p=passed;
+    *e=checks; *p=passed;
     return checks==passed;
 }
 
