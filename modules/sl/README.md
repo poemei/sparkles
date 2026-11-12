@@ -1,114 +1,75 @@
-# Sparkles Second Life transport — v0.1.0
+# Sparkles Second Life module — native C staging source (v0.1.1)
 
-This is a **native Sparkles ABI module** plus a **headless Second Life
-avatar process**. It is not Corrade and it is not an LSL object. The avatar
-process uses LibreMetaverse as a library, inside the process, for login and
-protocol handling. Core remains responsible for routing and inference.
+**Architecture requirement:** Sparkles is native C (C11). The operator did
+NOT approve C++, C#, a managed runtime, Corrade, or a separate SL service.
+No such runtime or client is part of this module.
 
-## Provenance and current scope
+## What is present
 
-- A dedicated in-world MsSparkles account has been created by the operator.
-- Source presently implements grid login, reconnect attempts, bounded private
-  IM reception, avatar UUID attribution, an owner-only local Unix socket,
-  Core dispatch, and UUID-targeted private replies.
-- The C module starts an IPC listener; **its ACTIVE status does NOT mean
-  the avatar process has logged in**. They are distinct processes.
-- No claim is made that the source has been compiled, installed or tested
-  with Second Life. No credentials, payments, or accounts were changed.
-- Group and conference IMs, local chat, notices, teleport, inventory,
-  automated reminders, and in-world payments are **not enabled**.
-  These require typed, session-aware Core interfaces and separately
-  authorized policies. Silent group interception would break discretion.
+`src/sl_module.c` is a native C, STN-Labz ABI-compatible module. Its
+existing implementation is a **local Unix-domain IPC ingress scaffold**,
+not a Second Life grid client. It invokes the existing Core router for
+framed private messages, and has bounded input, Unix peer UID checks,
+and a private socket. It does **not** log the avatar in, negotiate the
+SL protocol, authenticate a grid session, receive real SL IMs, manage
+group sessions, or deliver anything to the Second Life grid itself.
 
-## Protocol boundary
+**Crucial trust limitation:** the current IPC frame contains a claimed
+sender UUID, not a UUID verified by the grid. Same-UID IPC authorization
+does not prove grid identity. This interface therefore MUST NOT be
+used as an authoritative SL identity source or granted calendar
+privileges. It is a local testing scaffold only, not a deployable SL
+transport. The previous C# avatar project and LibreMetaverse dependency
+were removed because the human operator requires a native C module.
 
-The C module accepts a single Unix peer with the same effective user ID.
-Its socket directory must already exist, be owned by the runtime user, and
-must have no group/other permissions. Socket itself is mode 0600. Never
-expose the IPC socket over a network. No unverified external client can
-inject an arbitrary `account` identity by using a public HTTP endpoint.
+## What the requested native C SL transport still requires
 
-One tab-separated, base64-framed line per message:
+A native C implementation of the Second Life login/session protocol and
+message transport must be implemented and qualified before the module
+can represent MsSparkles as an in-world avatar. That work includes:
 
-- Avatar -> module: `I<TAB>avatar-uuid<TAB>base64(display-name)<TAB>base64(utf8-text)\n`
-- Module -> avatar: `R<TAB>avatar-uuid<TAB>base64(utf8-reply)\n`
+- SL authentication, persistent simulator/session connection and
+  reconnect recovery without placing account credentials in source;
+- IM reception and UUID verification from authenticated SL traffic;
+- outbound IM transport with delivery outcomes;
+- group/conference sessions and local chat with correct provenance,
+  privacy and routing boundaries;
+- robust network/main-loop separation from blocking Core inference;
+- strict rate limits, permission boundaries and operator acceptance.
 
-The module derives the Core account as `sl:<avatar-uuid>`.
-Names are **display only**, not authorization. The local socket is an
-authenticated trust boundary, not a substitute for grid authentication.
+Do not claim these capabilities based on the existence of an IPC socket,
+Core response, or module ACTIVE status. Do not copy or embed a C++/C#
+client, add a second runtime, or modify Core/shared ABI as a workaround.
+The required native C grid-protocol implementation remains incomplete.
 
-The existing IRC account allowlist is NOT automatically extended to
-Second Life identities. Consequently, no claim is made that privileged
-calendar operations will work for SL residents until identity/authorization
-and outbound private notification interfaces are deliberately adapted.
-IRC remains unchanged.
-
-## Build (on an authorized development host)
-
-From `modules/sl`:
+## Developer build (staging scaffold only)
 
 ```sh
+cd modules/sl
 make
-dotnet build avatar/Sparkles.SLAvatar.csproj -c Release
 ```
 
-The native module uses the repository's `include/stnlabz_abi` headers.
-The avatar uses the NuGet `LibreMetaverse` package (pinned to 3.3.0).
-Builds require a suitable .NET 8 SDK, restore connectivity, Linux,
-libcrypto and pthread.
+This builds `build/sl.so` with the repository ABI headers and Linux
+libcrypto/pthread. It is a source/build smoke check **only**, not a Second
+Life connection check. No .NET tooling is required.
 
-## Isolated installation and activation (operator directed only)
+The module currently requires `SPARKLES_SL_SOCKET` pointing into an
+already-existing, runtime-UID-owned directory with mode 0700. It creates
+a socket with mode 0600. **Do not configure or activate this incomplete
+ingress module in a production Sparkles runtime.** No account credentials
+or avatar login configuration are provided by this source.
 
-Example with Sparkles operating as the already configured `stnchain`
-Linux account. Do not run both the SL viewer and this avatar client
-concurrently on the same account.
+## Qualification and evidence
 
-```sh
-sudo install -d -o stnchain -g stnchain -m 0700 /opt/sparkles/state/sl
-sudo make install
-```
+- Native C source and module manifest: committed.
+- C compile, tests and qualification: not performed by this source edit.
+- Native C SL login and grid communication: **NOT IMPLEMENTED**.
+- MsSparkles avatar login, IM, group/local chat: **NOT TESTED**.
+- Installation, activation, deployment and operator acceptance: absent.
 
-Set `SPARKLES_SL_SOCKET=/opt/sparkles/state/sl/sparkles.sock` in the
-**Sparkles Core runtime environment** before activating the sl module.
-The directory must be mode 0700 and owned by the Core process UID.
-The module will refuse startup if these conditions are not met.
+This document supersedes the earlier unapproved C# implementation
+instructions. The current artifact is a **C-only foundation**, not
+a completed Second Life module.
 
-For the headless avatar process, set the same socket path and:
-
-- `SPARKLES_SL_FIRST` — account first name (typically MsSparkles)
-- `SPARKLES_SL_LAST` — account last name (typically Resident)
-- `SPARKLES_SL_PASSWORD` — from a private service credential store
-- `SPARKLES_SL_SOCKET` — local IPC socket path
-
-Do **not** commit, paste, log, or put passwords in shell history, argv,
-repository files, or chat. Use private service environment injection.
-Run the avatar under the **same UID** as the Sparkles Core module;
-it will refuse IPC when the UIDs do not match. Supervise both processes
-with your existing process manager and configure restart behavior.
-Do not claim continuous SL availability merely because processes restart.
-
-The avatar is a scripted agent and must comply with SL's applicable
-scripted-agent, communication-rate, and estate policies.
-
-## First operator qualification
-
-1. Build and inspect warnings for both components; verify package API
-   compatibility and no missing symbols.
-2. Install/activate the native module; verify it reports only IPC
-   listener activation, not SL login.
-3. Start the avatar client as the same UID using private credentials;
-   observe a successful grid login and authenticated IPC handshake.
-4. Send MsSparkles a **private IM** from an unrelated SL account;
-   confirm a real Core/Ollama reply is delivered to the original avatar.
-5. Send a message from a second account; verify replies are not crossed.
-6. Try group chat and local chat: neither must trigger an unintended
-   conversational reply or leak private content.
-7. Stop the avatar, disrupt IPC and reconnect; verify behavior and
-   observe queue limitations, then inspect service logs.
-8. Verify an unauthorized avatar cannot read/write privileged calendar
-   data merely by knowing an avatar name, UUID, or group membership.
-
-No SL payments, proactive notifications, group minutes, or calendar
-mutations are qualified by this transport-only increment.
-
-**AWAITING OPERATOR END-TO-END TESTING AND ACCEPTANCE.**
+**AWAITING OPERATOR END-TO-END TESTING AND ACCEPTANCE** after a complete
+operator-authorized native C implementation exists.
