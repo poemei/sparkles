@@ -165,7 +165,6 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     unsigned char raw[SPARKLES_SL_PACKET_MAX], decoded[SPARKLES_SL_PACKET_MAX];
     reliable_t circuit={0}, movement={0};
     uint32_t next=1U, recently_seen[128]={0};
-    size_t seen_count=0U;
     unsigned char ping=0U;
     uint64_t began, last_recv, last_ping;
     int fd, started_movement=0, present=0;
@@ -198,12 +197,11 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement);
             if ((view.flags & SPARKLES_SL_FLAG_RELIABLE) &&
                 !send_ack(fd,view.sequence,&next)) break;
-            for (i=0U;i<seen_count;++i) {
+            for (i=0U;i<128U;++i) {
                 if (recently_seen[i]==view.sequence) {duplicate=1;break;}
             }
             if (duplicate) continue;
             recently_seen[view.sequence % 128U]=view.sequence;
-            if (seen_count<128U) ++seen_count;
             if (view.message_frequency==0U && view.message_id==1U &&
                 view.payload_size>=5U &&
                 !send_ping_reply(fd,view.payload[0],&next)) break;
@@ -218,6 +216,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 !memcmp(view.payload,login->circuit.agent,16U) &&
                 !memcmp(view.payload+16U,login->circuit.session,16U)) {
                 if (!present) {
+                    circuit.pending=0;
+                    movement.pending=0;
                     present=1;
                     report("simulator confirmed AgentMovementComplete; avatar presence observed");
                 }
