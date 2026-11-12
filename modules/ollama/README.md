@@ -10,6 +10,34 @@ The Ollama module implements the established STN-LABZ shared module ABI. Sparkle
 
 The selected model is defined by `SPARKLES_OLLAMA_MODEL` in `include/ollama_internal.h`, not an environment variable. **No exports or runtime configuration steps are required.** The model is already reported installed on the operator's Ollama server. Ollama performs model loading on the first generation request; the module does not pull or install models.
 
+## SL contact persistence acknowledgement (v1.1.8 source)
+
+For native Second Life IMs (identified by the transport-created
+`sl:<avatar UUID>` principal), Ollama invokes MariaDB's
+`sparkles.mariadb.contacts.identify` service. Explicit volunteered
+introductions such as `my name is Poe` and `call me Poe` are written
+as a self-reported first name, linked to the corresponding SL UUID.
+A name is not considered saved until MariaDB commits the contact and
+identity transaction. An unsuccessful schema match or SQL write
+produces an explicit *not saved* response instead of a promise of
+memory.
+
+An SL requester asking `do you know me?` receives the name returned
+by MariaDB's contact lookup, if found, not a guessed identity. Later
+chat prompts may use the saved, self-reported first name as bounded
+context. No inferred executive relationship or calendar authorization
+is granted by this association. Existing IRC account verification,
+calendar permission gates and Core/router ABI remain unchanged.
+
+The implementation is intentionally limited to first-name discovery
+and avatar-UUID linkage. Email/phone collection, richer demographics,
+cross-transport identity proof, permission grants and task management
+remain distinct unimplemented functions. The MariaDB contact service
+performs conservative runtime schema inspection and may fail against
+unrecognized existing column layouts. GitHub source changes alone
+do not establish native build, actual database writes or operator
+acceptance.
+
 ## Build and install
 
 Requires the `libcurl` development headers and library.
