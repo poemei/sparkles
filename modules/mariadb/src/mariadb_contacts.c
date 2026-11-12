@@ -145,13 +145,15 @@ static void bind_id(MYSQL_BIND *b,unsigned long long *id)
     b->buffer=id;
     b->is_unsigned=1;
 }
-static int prepared_execute(MYSQL *db,const char *sql, MYSQL_BIND *params)
+static int prepared_execute(MYSQL *db,const char *sql, MYSQL_BIND *params,
+                            unsigned long long *inserted_id)
 {
     MYSQL_STMT *st=mysql_stmt_init(db);
     int ok=st!=NULL;
     if(ok && mysql_stmt_prepare(st,sql,(unsigned long)strlen(sql)))ok=0;
     if(ok && mysql_stmt_bind_param(st,params))ok=0;
     if(ok && mysql_stmt_execute(st))ok=0;
+    if(ok && inserted_id)*inserted_id=mysql_stmt_insert_id(st);
     if(st)mysql_stmt_close(st);
     return ok;
 }
@@ -259,7 +261,7 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
                s.first,s.id)>=(int)sizeof sql)goto done;
             bind_string(&params[0],(char *)req->first_name,&lens[0]);
             bind_id(&params[1],&id);
-            if(!prepared_execute(db,sql,params))goto done;
+            if(!prepared_execute(db,sql,params,NULL))goto done;
             out->saved=1U;
         }
         if(!get_first(db,&s,&id,out->first_name))goto done;
@@ -282,9 +284,7 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
                  s.first)>=(int)sizeof sql)goto done;
             bind_string(&params[0],(char *)req->first_name,&lens[0]);
         }
-        if(!prepared_execute(db,sql,params))goto done;
-        id=mysql_insert_id(db);
-        if(!id)goto done;
+        if(!prepared_execute(db,sql,params,&id) || !id)goto done;
         if(s.identity_display[0]) {
             if(snprintf(sql,sizeof sql,
                 "INSERT INTO contact_identities (`%s`,`%s`,`%s`,`%s`) "
@@ -305,8 +305,8 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             unsigned long avatar_len;
             memcpy(four,params,sizeof params);
             bind_string(&four[3],(char *)req->avatar_name,&avatar_len);
-            if(!prepared_execute(db,sql,four))goto done;
-        } else if(!prepared_execute(db,sql,params))goto done;
+            if(!prepared_execute(db,sql,four,NULL))goto done;
+        } else if(!prepared_execute(db,sql,params,NULL))goto done;
         out->found=out->saved=1U;
         memcpy(out->first_name,req->first_name,strlen(req->first_name)+1U);
     }
