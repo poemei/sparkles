@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 4U
+#define OLLAMA_VERSION_PATCH 5U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -541,9 +541,40 @@ static int mutation_offer_selection(pending_mutation_t *state,
         if(hint[0] && strncmp(e->start_time+11,hint,5U))continue;
         ++matched;choice=i;
     }
-    if(!state->found.count || (hint[0]&&!matched))
-        return schedule_private_reply(state->sender,
-          "No matching scheduled appointment was found. Nothing changed.");
+    if(!state->found.count) {
+        /* A relative day can be wrong when server and user have different
+         * local calendars. Never conclude the appointment does not exist. */
+        state->stage=1U;
+        if(!mutation_store(state))return 0;
+        n=snprintf(message,sizeof message,
+            "No scheduled appointments were returned for %s. "
+            "Nothing changed. Please enter the exact appointment date "
+            "(YYYY-MM-DD or MM/DD/YYYY) to check again.",state->day);
+        return n>0&&(size_t)n<sizeof message &&
+               schedule_private_reply(state->sender,message);
+    }
+    if(hint[0]&&!matched) {
+        /* A strict time hint may not match the stored clock notation.
+         * Offer the authoritative records rather than claiming no event. */
+        n=snprintf(message,sizeof message,
+            "No appointment starts at %s on %s. "
+            "I found %u scheduled appointment(s). "
+            "Reply with a number to select one: ",
+            hint,state->day,state->found.count);
+        if(n<=0||(size_t)n>=sizeof message)return 0;
+        used=(size_t)n;
+        for(i=0U;i<state->found.count;++i) {
+            const sparkles_mariadb_appointment_t *e=&state->found.records[i];
+            n=snprintf(message+used,sizeof message-used,
+              "%s%u) %.5s %.65s",i?"; ":"",i+1U,
+              e->start_time+11,e->title);
+            if(n<0||(size_t)n>=sizeof message-used)return 0;
+            used+=(size_t)n;
+        }
+        state->stage=2U;
+        if(!mutation_store(state))return 0;
+        return schedule_private_reply(state->sender,message);
+    }
     if(matched==1U || (!hint[0] && state->found.count==1U)) {
         const sparkles_mariadb_appointment_t *e=&state->found.records[choice];
         state->request.id=e->id;
@@ -649,7 +680,9 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         return 1;
     }
     if(state.stage==1U) {
-        if(!date_from_human(text,state.day)) {
+        /* Accept only an explicit date after a failed relative-day lookup.
+         * Do not loop on the potentially incorrect server-local tomorrow. */
+        if(!sparkles_schedule_find_date(text,state.day)) {
             (void)schedule_private_reply(state.sender,
                 "Please give a calendar date (YYYY-MM-DD or MM/DD/YYYY).");
             return 1;
