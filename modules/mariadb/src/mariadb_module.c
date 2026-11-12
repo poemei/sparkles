@@ -295,21 +295,21 @@ typedef enum {
  * External database clients must preserve the same scheduling discipline. */
 static appointment_write_result_t insert_appointment(
     const sparkles_mariadb_new_appointment_t *appointment,
-    const char *account,unsigned long long *created_id)
+    const char *account,const char *guest_name,unsigned long long *created_id)
 {
     static const char overlap_sql[] =
         "SELECT a.id FROM appointments a "
         "WHERE a.status='scheduled' AND a.start_time < ? AND a.end_time > ? "
         "AND EXISTS (SELECT 1 FROM appointment_participants ap "
-        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) "
+        "WHERE ap.appointment_id=a.id AND ap.contact_id IN (?,?)) "
         "LIMIT 1 FOR UPDATE";
     static const char insert_sql[] =
         "INSERT INTO appointments (title,start_time,end_time,status) "
         "VALUES (?,?,?,'scheduled')";
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND params[3]={{0}};
+    MYSQL_BIND params[4]={{0}};
     unsigned long lengths[3];
-    unsigned long long contact_id=0ULL;
+    unsigned long long contact_id=0ULL,guest_id=0ULL;
     appointment_write_result_t outcome=APPOINTMENT_DB_ERROR;
     int transaction_started=0;
     if (!appointment||!account||!created_id) return APPOINTMENT_DB_ERROR;
@@ -322,6 +322,10 @@ static appointment_write_result_t insert_appointment(
     transaction_started=1;
     if(!sparkles_mariadb_participants_supported(db) ||
        !sparkles_mariadb_contact_id(db,account,&contact_id))goto done;
+    guest_id=contact_id;
+    if(guest_name && guest_name[0] &&
+       (!sparkles_mariadb_guest_id(db,guest_name,&guest_id)||
+        guest_id==contact_id))goto done;
 
     stmt=mysql_stmt_init(db);
     if (!stmt || mysql_stmt_prepare(stmt,overlap_sql,
@@ -336,6 +340,8 @@ static appointment_write_result_t insert_appointment(
     params[1].length=&lengths[1];
     params[2].buffer_type=MYSQL_TYPE_LONGLONG;
     params[2].buffer=&contact_id;params[2].is_unsigned=1;
+    params[3].buffer_type=MYSQL_TYPE_LONGLONG;
+    params[3].buffer=&guest_id;params[3].is_unsigned=1;
     if (mysql_stmt_bind_param(stmt,params) ||
         mysql_stmt_execute(stmt) ||
         mysql_stmt_store_result(stmt)) goto done;
@@ -371,6 +377,8 @@ static appointment_write_result_t insert_appointment(
     stmt=NULL;
     /* Appointment and owner association commit atomically. */
     if(!sparkles_mariadb_participant_add(db,*created_id,contact_id))goto done;
+    if(guest_id!=contact_id &&
+       !sparkles_mariadb_participant_invite(db,*created_id,guest_id))goto done;
     /* COMMIT failures cannot conclusively establish whether a write persisted. */
     outcome=APPOINTMENT_DB_UNCERTAIN;
     if (mysql_query(db,"COMMIT")==0) {
@@ -395,13 +403,13 @@ static stnlabz_module_result_t check_service(
         "SELECT a.id FROM appointments a WHERE a.status='scheduled' "
         "AND a.start_time < ? AND a.end_time > ? "
         "AND EXISTS (SELECT 1 FROM appointment_participants ap "
-        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) LIMIT 1";
+        "WHERE ap.appointment_id=a.id AND ap.contact_id IN (?,?)) LIMIT 1";
     const sparkles_mariadb_create_request_t *in=request;
     sparkles_mariadb_check_reply_t *out=response;
     sparkles_mariadb_new_appointment_t appointment;
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind[3]={{0}};
-    unsigned long long contact_id=0ULL;
+    MYSQL_BIND bind[4]={{0}};
+    unsigned long long contact_id=0ULL,guest_id=0ULL;
     unsigned long lens[2];
     char source[256];
     int n,ok=1,conflict=0;
@@ -411,7 +419,8 @@ static stnlabz_module_result_t check_service(
        !memchr(in->account,0,sizeof in->account)||
        !memchr(in->start_time,0,sizeof in->start_time)||
        !memchr(in->end_time,0,sizeof in->end_time)||
-       !memchr(in->title,0,sizeof in->title))
+       !memchr(in->title,0,sizeof in->title) ||
+       !memchr(in->guest_name,0,sizeof in->guest_name))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
     if(!calendar_contact_allowed(in->account)) {
@@ -439,10 +448,16 @@ static stnlabz_module_result_t check_service(
     bind[1].buffer_length=lens[1];bind[1].length=&lens[1];
     bind[2].buffer_type=MYSQL_TYPE_LONGLONG;
     bind[2].buffer=&contact_id;bind[2].is_unsigned=1;
+    bind[3].buffer_type=MYSQL_TYPE_LONGLONG;
+    bind[3].buffer=&guest_id;bind[3].is_unsigned=1;
     (void)pthread_mutex_lock(&db_lock);
     if(!db||mysql_ping(db)||
        !sparkles_mariadb_participants_supported(db)||
        !sparkles_mariadb_contact_id(db,in->account,&contact_id))ok=0;
+    guest_id=contact_id;
+    if(ok && in->guest_name[0] &&
+       (!sparkles_mariadb_guest_id(db,in->guest_name,&guest_id)||
+        guest_id==contact_id))ok=0;
     if(ok)stmt=mysql_stmt_init(db);
     if(!stmt)ok=0;
     if(ok&&mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))ok=0;
@@ -479,7 +494,8 @@ static stnlabz_module_result_t create_service(
         !memchr(in->account,0,sizeof in->account) ||
         !memchr(in->start_time,0,sizeof in->start_time) ||
         !memchr(in->end_time,0,sizeof in->end_time) ||
-        !memchr(in->title,0,sizeof in->title))
+        !memchr(in->title,0,sizeof in->title) ||
+        !memchr(in->guest_name,0,sizeof in->guest_name))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
     if (!calendar_contact_allowed(in->account)) {
@@ -499,7 +515,7 @@ static stnlabz_module_result_t create_service(
         strcmp(appointment.start_time,in->start_time) ||
         strcmp(appointment.end_time,in->end_time))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-    outcome=insert_appointment(&appointment,in->account,&id);
+    outcome=insert_appointment(&appointment,in->account,in->guest_name,&id);
     out->id=outcome==APPOINTMENT_DB_SAVED?id:0ULL;
     out->status=outcome==APPOINTMENT_DB_SAVED?SPARKLES_MARIADB_CREATE_SAVED:
         outcome==APPOINTMENT_DB_CONFLICT?SPARKLES_MARIADB_CREATE_CONFLICT:
