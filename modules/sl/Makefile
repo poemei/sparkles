@@ -19,11 +19,11 @@ check-deps:
 TARGET := $(BUILD_DIR)/sl.so
 WIRE_TEST := $(BUILD_DIR)/test_sl_wire
 CONFIG_TEST := $(BUILD_DIR)/test_sl_config
-SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c
+SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c src/sl_grid.c
 
 .PHONY: all test clean install uninstall
 all: $(TARGET)
-$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h | check-deps
+$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h include/sl_grid.h | check-deps
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -shared $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
 $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
