@@ -1360,7 +1360,7 @@ static int dialogue_selftest(unsigned int *executed,unsigned int *passed)
 static int memory_exchange(const stnlabz_module_command_t *command,
                            sparkles_memory_exchange_reply_t *memory)
 {
-    sparkles_memory_exchange_request_t req={{0}};
+    sparkles_memory_exchange_request_t req={0};
     stnlabz_module_result_t rc;
     size_t length,used=0U;
     if(!owner||!owner->invoke_service||!command||!memory ||
