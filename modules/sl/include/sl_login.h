@@ -27,4 +27,7 @@ typedef struct {
  * No credentials or raw login responses are logged. */
 int sparkles_sl_login(const sparkles_sl_login_config_t *config,
                      sparkles_sl_login_reply_t *reply);
+/* Load operator-owned /opt/sparkles/auth/sl/sl.conf, attempt grid login,
+ * and securely clear credentials before returning. */
+int sparkles_sl_login_from_file(sparkles_sl_login_reply_t *reply);
 #endif
