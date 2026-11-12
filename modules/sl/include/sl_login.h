@@ -10,8 +10,6 @@ typedef struct {
     char first[64];
     char last[64];
     char password[256];
-    char mac[32];
-    char id0[64];
     char start[128];
 } sparkles_sl_login_config_t;
 
