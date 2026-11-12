@@ -13,7 +13,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 2U
-#define SL_PATCH 1U
+#define SL_PATCH 2U
 
 static pthread_t worker;
 static atomic_int stopping = ATOMIC_VAR_INIT(0);
