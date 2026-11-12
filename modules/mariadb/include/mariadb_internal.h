@@ -17,6 +17,12 @@ int sparkles_mariadb_participants_supported(MYSQL *db);
 int sparkles_mariadb_participant_add(MYSQL *db,
                                     unsigned long long appointment_id,
                                     unsigned long long contact_id);
+/* Unique first-name contact lookup; no name-based identity authorization. */
+int sparkles_mariadb_guest_id(MYSQL *db,const char *name,
+                             unsigned long long *contact_id);
+int sparkles_mariadb_participant_invite(MYSQL *db,
+                                       unsigned long long appointment_id,
+                                       unsigned long long contact_id);
 
 #define SPARKLES_MARIADB_CONFIG "/opt/sparkles/auth/mariadb/mariadb.env"
 #define SPARKLES_MARIADB_HOST "localhost"
