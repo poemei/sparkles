@@ -12,6 +12,7 @@ MODULE_GROUP ?= stnchain
 CPPFLAGS += -I$(ROOT)/include -Iinclude $(shell pkg-config --cflags libxml-2.0)
 TARGET := $(BUILD_DIR)/sl.so
 WIRE_TEST := $(BUILD_DIR)/test_sl_wire
+CONFIG_TEST := $(BUILD_DIR)/test_sl_config
 SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c
 
 .PHONY: all test clean install uninstall
@@ -22,8 +23,12 @@ $(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h
 $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_wire.c src/sl_wire.c
-test: $(WIRE_TEST)
+$(CONFIG_TEST): tests/test_sl_config.c src/sl_config.c include/sl_config.h include/sl_login.h
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_config.c src/sl_config.c -lcrypto
+test: $(WIRE_TEST) $(CONFIG_TEST)
 	./$(WIRE_TEST)
+	./$(CONFIG_TEST)
 install: $(TARGET)
 	@id -u "$(MODULE_USER)" >/dev/null && getent group "$(MODULE_GROUP)" >/dev/null
 	install -d -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0755 "$(MODULEDIR)"
