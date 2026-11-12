@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 9U
+#define OLLAMA_VERSION_PATCH 10U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -293,7 +293,7 @@ static int send_schedule_summary(stnlabz_module_command_reply_fn reply,
     size_t used=0U;
     unsigned int i;
     int n;
-    if(!owner||!owner->send_private_message)return 0;
+    if(!reply)return 0;
     n=snprintf(message,sizeof message,"Please confirm these appointments: ");
     if(n<0 || (size_t)n>=sizeof message)return 0;
     used=(size_t)n;
