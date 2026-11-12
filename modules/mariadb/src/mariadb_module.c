@@ -6,6 +6,7 @@
 #include "stnlabz_abi/module.h"
 #include "sparkles_mariadb.h"
 #include "sparkles_memory.h"
+#include "sparkles_contacts.h"
 #include "mariadb_internal.h"
 
 static MYSQL *db;
@@ -17,6 +18,7 @@ static int add_command_registered;
 static int create_service_registered;
 static int check_service_registered;
 static int memory_service_registered;
+static int contacts_service_registered;
 static int mutate_service_registered;
 
 static unsigned int schema_table_count(MYSQL *connection)
@@ -712,6 +714,32 @@ static stnlabz_module_result_t memory_exchange_service(
     return STNLABZ_MODULE_OK;
 }
 
+/* Contact discovery is scoped to a simulator-issued SL UUID.
+ * Contact identity is NOT an authorization to read or mutate a calendar. */
+static stnlabz_module_result_t contacts_service(
+    const void *request,size_t request_size,
+    void *response,size_t response_size,size_t *used,void *context)
+{
+    const sparkles_contact_request_t *in=request;
+    sparkles_contact_reply_t *out=response;
+    int ok=0;
+    (void)context;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||response_size<sizeof *out||
+       !memchr(in->account,0,sizeof in->account) ||
+       !memchr(in->avatar_name,0,sizeof in->avatar_name) ||
+       !memchr(in->first_name,0,sizeof in->first_name))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    (void)pthread_mutex_lock(&db_lock);
+    if(db && !mysql_ping(db))
+        ok=sparkles_mariadb_contact_identify(db,in,out);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!ok)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+
 static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
 {
     unsigned int e = 0U, p = 0U;
@@ -877,12 +905,36 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     memory_service_registered=1;
+    if(!h->register_service(SPARKLES_CONTACTS_SERVICE,contacts_service,NULL)) {
+        (void)h->unregister_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,NULL);
+        memory_service_registered=0;
+        (void)h->unregister_command("appointment-add",NULL);
+        add_command_registered=0;
+        (void)h->unregister_command("schedule",NULL);
+        command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL);
+        mutate_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
+        check_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        registered=0;host_owner=NULL;db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    contacts_service_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if (contacts_service_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_CONTACTS_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    contacts_service_registered=0;
     if (memory_service_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -923,7 +975,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 6U, 1U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 7U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
