@@ -13,7 +13,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 2U
-#define SL_PATCH 0U
+#define SL_PATCH 1U
 
 static pthread_t worker;
 static atomic_int stopping = ATOMIC_VAR_INIT(0);
@@ -28,26 +28,77 @@ static void *grid_worker(void *unused)
 static stnlabz_module_result_t sl_qualify(
     stnlabz_module_qualification_result_t *result)
 {
-    unsigned char uuid[16]={0}, packet[SPARKLES_SL_PACKET_MAX];
-    sparkles_sl_session_t session={{0},{0},1234U};
+    unsigned char uuid[16]={0}, agent[16]={0}, session_id[16]={0};
+    unsigned char packet[SPARKLES_SL_PACKET_MAX]={0};
+    unsigned char decoded[SPARKLES_SL_PACKET_MAX]={0};
+    char formatted[37]={0};
+    sparkles_sl_session_t session={{0},{0},0x12345678U};
+    sparkles_sl_packet_view_t view;
     size_t used=0U;
-    int ok_uuid, ok_packet;
+    unsigned int i;
+    unsigned int count=0U, passed=0U;
+    int ok;
+
+#define CHECK(test) do { ++count; if ((test)) ++passed; } while (0)
+
     if (!result) return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(result,0,sizeof *result);
-    ok_uuid=sparkles_sl_uuid_parse(
-        "12345678-1234-1234-1234-123456789abc",uuid);
-    ok_packet=sparkles_sl_use_circuit(&session,1U,packet,
-            sizeof packet,&used) && used==46U &&
-            packet[6]==0xffU && packet[9]==3U;
-    result->tests_executed=3U;
-    result->tests_passed=(unsigned int)ok_uuid +
-        (unsigned int)ok_packet +
-        (unsigned int)!sparkles_sl_uuid_parse("invalid",uuid);
-    result->tests_failed=result->tests_executed-result->tests_passed;
+
+    CHECK(sparkles_sl_uuid_parse(
+        "12345678-1234-1234-1234-123456789abc",uuid));
+    sparkles_sl_uuid_format(uuid,formatted);
+    CHECK(strcmp(formatted,"12345678-1234-1234-1234-123456789abc")==0);
+    CHECK(!sparkles_sl_uuid_parse("invalid",uuid));
+    CHECK(!sparkles_sl_uuid_parse(
+        "12345678-1234-1234-1234-123456789abz",uuid));
+    CHECK(!sparkles_sl_uuid_parse(
+        "123456781234-1234-1234-123456789abc",uuid));
+    CHECK(!sparkles_sl_uuid_parse(NULL,uuid));
+    CHECK(!sparkles_sl_uuid_parse(
+        "12345678-1234-1234-1234-123456789abc",NULL));
+
+    for (i=0U;i<16U;++i) {
+        agent[i]=(unsigned char)(i+1U);
+        session_id[i]=(unsigned char)(i+17U);
+    }
+    memcpy(session.agent,agent,16U);
+    memcpy(session.session,session_id,16U);
+
+    ok=sparkles_sl_use_circuit(&session,1U,packet,sizeof packet,&used);
+    CHECK(ok && used==46U);
+    CHECK(ok && packet[0]==SPARKLES_SL_FLAG_RELIABLE &&
+          packet[6]==0xffU && packet[7]==0xffU &&
+          packet[8]==0U && packet[9]==3U);
+    CHECK(ok && packet[10]==0x78U && packet[11]==0x56U &&
+          packet[12]==0x34U && packet[13]==0x12U);
+    CHECK(ok && !memcmp(packet+14U,session.session,16U) &&
+          !memcmp(packet+30U,session.agent,16U));
+    CHECK(ok && sparkles_sl_packet_view(packet,used,decoded,
+          sizeof decoded,&view) && view.message_frequency==2U &&
+          view.message_id==3U && view.sequence==1U);
+    CHECK(!sparkles_sl_use_circuit(&session,0U,packet,sizeof packet,&used));
+    CHECK(!sparkles_sl_use_circuit(&session,1U,packet,45U,&used));
+
+    ok=sparkles_sl_complete_movement(&session,2U,packet,
+                                      sizeof packet,&used);
+    CHECK(ok && used==46U);
+    CHECK(ok && packet[9]==0xf9U &&
+          !memcmp(packet+10U,session.agent,16U) &&
+          !memcmp(packet+26U,session.session,16U));
+    CHECK(ok && sparkles_sl_packet_view(packet,used,decoded,
+          sizeof decoded,&view) && view.message_frequency==2U &&
+          view.message_id==249U && view.sequence==2U);
+    CHECK(!sparkles_sl_packet_view(packet,6U,decoded,
+                                  sizeof decoded,&view));
+
+#undef CHECK
+    result->tests_executed=count;
+    result->tests_passed=passed;
+    result->tests_failed=count-passed;
     result->negative_test_executed=1;
     result->negative_test_passed=1;
-    return result->tests_failed ? STNLABZ_MODULE_ERR_QUALIFICATION :
-           STNLABZ_MODULE_OK;
+    return count>=STNLABZ_MODULE_MIN_TESTS && count==passed ?
+           STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_QUALIFICATION;
 }
 static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
 {
