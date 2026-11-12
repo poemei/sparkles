@@ -387,6 +387,381 @@ static int calendar_mutation_intent(const char *text)
         strstr(lower," at the river")!=NULL;
     return action && subject;
 }
+
+/* A separate, account-scoped, one-use modification proposal. The source
+ * snapshot is an authoritative MariaDB row, never a model recollection. */
+typedef struct {
+    char account[128];
+    char sender[128];
+    time_t expires;
+    unsigned int operation;
+    unsigned int stage; /* 1 date, 2 select, 3 replacement, 4 confirm */
+    char day[11];
+    sparkles_mariadb_appointments_reply_t found;
+    sparkles_mariadb_mutate_request_t request;
+} pending_mutation_t;
+static pending_mutation_t mutations[SPARKLES_PENDING_MAX];
+static pthread_mutex_t mutations_lock=PTHREAD_MUTEX_INITIALIZER;
+
+static int mutation_slot(const char *account,const char *sender)
+{
+    unsigned int i;
+    time_t now=time(NULL);
+    for(i=0U;i<SPARKLES_PENDING_MAX;++i) {
+        if(mutations[i].expires && mutations[i].expires<=now)
+            memset(&mutations[i],0,sizeof mutations[i]);
+        if(mutations[i].expires &&
+           !strcmp(mutations[i].account,account) &&
+           !strcmp(mutations[i].sender,sender))return (int)i;
+    }
+    return -1;
+}
+static int mutation_store(const pending_mutation_t *state)
+{
+    int slot;
+    unsigned int i;
+    if(!state||!state->account[0]||!state->sender[0])return 0;
+    (void)pthread_mutex_lock(&mutations_lock);
+    slot=mutation_slot(state->account,state->sender);
+    if(slot<0)for(i=0U;i<SPARKLES_PENDING_MAX;++i)
+        if(!mutations[i].expires){slot=(int)i;break;}
+    if(slot>=0) {
+        mutations[slot]=*state;
+        mutations[slot].expires=time(NULL)+SPARKLES_PENDING_SECONDS;
+    }
+    (void)pthread_mutex_unlock(&mutations_lock);
+    return slot>=0;
+}
+static void mutation_clear(const char *account,const char *sender)
+{
+    int slot;
+    (void)pthread_mutex_lock(&mutations_lock);
+    slot=mutation_slot(account,sender);
+    if(slot>=0)memset(&mutations[slot],0,sizeof mutations[slot]);
+    (void)pthread_mutex_unlock(&mutations_lock);
+}
+static int date_from_human(const char *text,char date[11])
+{
+    char lower[701];
+    struct tm day;
+    size_t i,n;
+    time_t now=time(NULL);
+    if(sparkles_schedule_find_date(text,date))return 1;
+    if(!text||(n=strlen(text))>=sizeof lower)return 0;
+    for(i=0U;i<n;++i){
+        unsigned char c=(unsigned char)text[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+32):(char)c;
+    }
+    lower[n]='\0';
+    if(!strstr(lower,"today") && !strstr(lower,"tomorrow") &&
+       !strstr(lower,"tommorrow"))return 0;
+    if(!localtime_r(&now,&day))return 0;
+    day.tm_hour=12;day.tm_min=0;day.tm_sec=0;day.tm_isdst=-1;
+    if(strstr(lower,"tomorrow")||strstr(lower,"tommorrow"))
+        ++day.tm_mday;
+    if(mktime(&day)==(time_t)-1)return 0;
+    return strftime(date,11U,"%Y-%m-%d",&day)==10U;
+}
+static int mutation_hour_hint(const char *text,char timepart[6])
+{
+    size_t i,n;
+    if(!text)return 0;
+    n=strlen(text);
+    for(i=0U;i<n;++i){
+        unsigned hh,mm;
+        if(i>0U && text[i-1]>='0' && text[i-1]<='9')continue;
+        if(i+4U<=n && text[i]>='0'&&text[i]<='2' &&
+           text[i+1]>='0'&&text[i+1]<='9' &&
+           text[i+2]>='0'&&text[i+2]<='5' &&
+           text[i+3]>='0'&&text[i+3]<='9' &&
+           (i+4U==n || text[i+4U]<'0'||text[i+4U]>'9')){
+            hh=(unsigned)(text[i]-'0')*10U+(unsigned)(text[i+1]-'0');
+            mm=(unsigned)(text[i+2]-'0')*10U+(unsigned)(text[i+3]-'0');
+            if(hh<24U && snprintf(timepart,6U,"%02u:%02u",hh,mm)==5)return 1;
+        }
+        if(i+5U<=n && text[i]>='0'&&text[i]<='2' &&
+           text[i+1]>='0'&&text[i+1]<='9' && text[i+2]==':' &&
+           text[i+3]>='0'&&text[i+3]<='5' &&
+           text[i+4]>='0'&&text[i+4]<='9'){
+            hh=(unsigned)(text[i]-'0')*10U+(unsigned)(text[i+1]-'0');
+            if(hh<24U){
+                memcpy(timepart,text+i,5U);
+                timepart[5]='\0';
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+static int mutation_fetch(pending_mutation_t *state)
+{
+    sparkles_mariadb_appointments_request_t req={{0}};
+    size_t used=0U;
+    struct tm day={0};
+    unsigned y,m,d;
+    stnlabz_module_result_t rc;
+    if(!owner||!owner->invoke_service||
+       sscanf(state->day,"%4u-%2u-%2u",&y,&m,&d)!=3)
+        return 0;
+    day.tm_year=(int)y-1900;day.tm_mon=(int)m-1;day.tm_mday=(int)d;
+    day.tm_hour=12;day.tm_isdst=-1;
+    memcpy(req.from_date,state->day,11U);
+    ++day.tm_mday;
+    if(mktime(&day)==(time_t)-1 ||
+       !strftime(req.until_date,sizeof req.until_date,"%Y-%m-%d",&day))
+        return 0;
+    memcpy(req.account,state->account,strlen(state->account)+1U);
+    memset(&state->found,0,sizeof state->found);
+    rc=owner->invoke_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,
+        &req,sizeof req,&state->found,sizeof state->found,&used);
+    return rc==STNLABZ_MODULE_OK &&
+           used==sizeof state->found &&
+           state->found.count<=SPARKLES_MARIADB_APPOINTMENTS_MAX &&
+           !state->found.has_more;
+}
+static int mutation_offer_selection(pending_mutation_t *state,
+                                    const char *initial)
+{
+    char message[512];
+    char hint[6]={0};
+    unsigned int i,matched=0,choice=0;
+    int n;
+    size_t used;
+    mutation_hour_hint(initial,hint);
+    for(i=0U;i<state->found.count;++i) {
+        const sparkles_mariadb_appointment_t *e=&state->found.records[i];
+        if(!memchr(e->title,0,sizeof e->title) ||
+           !memchr(e->start_time,0,sizeof e->start_time) ||
+           !memchr(e->end_time,0,sizeof e->end_time))return 0;
+        if(hint[0] && strncmp(e->start_time+11,hint,5U))continue;
+        ++matched;choice=i;
+    }
+    if(!state->found.count || (hint[0]&&!matched))
+        return schedule_private_reply(state->sender,
+          "No matching scheduled appointment was found. Nothing changed.");
+    if(matched==1U || (!hint[0] && state->found.count==1U)) {
+        const sparkles_mariadb_appointment_t *e=&state->found.records[choice];
+        state->request.id=e->id;
+        memcpy(state->request.previous_title,e->title,strlen(e->title)+1U);
+        memcpy(state->request.previous_start,e->start_time,20U);
+        memcpy(state->request.previous_end,e->end_time,20U);
+        state->stage=state->operation==SPARKLES_MARIADB_MUTATE_CANCEL?4U:3U;
+        if(!mutation_store(state))return 0;
+        if(state->stage==3U) {
+            n=snprintf(message,sizeof message,
+                "Selected: %s (%s to %s). Reply with the new date and interval "
+                "as YYYY-MM-DD HH:MM HH:MM, or 'cancel' to abort.",
+                e->title,e->start_time,e->end_time);
+        } else {
+            n=snprintf(message,sizeof message,
+                "Cancel appointment #%llu: %s (%s to %s)? "
+                "Reply 'confirm' or 'cancel'.",
+                e->id,e->title,e->start_time,e->end_time);
+        }
+        return n>0&&(size_t)n<sizeof message &&
+               schedule_private_reply(state->sender,message);
+    }
+    n=snprintf(message,sizeof message,
+       "I found %u appointments on %s. Reply with a number to select one: ",
+       state->found.count,state->day);
+    if(n<=0||(size_t)n>=sizeof message)return 0;
+    used=(size_t)n;
+    for(i=0U;i<state->found.count;++i) {
+        const sparkles_mariadb_appointment_t *e=&state->found.records[i];
+        n=snprintf(message+used,sizeof message-used,
+             "%s%u) %.5s %.65s",i?"; ":"",i+1U,e->start_time+11,e->title);
+        if(n<0||(size_t)n>=sizeof message-used)return 0;
+        used+=(size_t)n;
+    }
+    state->stage=2U;
+    if(!mutation_store(state))return 0;
+    return schedule_private_reply(state->sender,message);
+}
+static int mutation_conversation(const stnlabz_module_command_t *command,
+    stnlabz_module_command_reply_fn reply,void *ctx)
+{
+    pending_mutation_t state={0};
+    int slot;
+    const char *text=command->arguments;
+    char message[512];
+    int n;
+    (void)reply;(void)ctx;
+    if(!command->account[0]||!command->sender[0]) {
+        if(calendar_mutation_intent(text))
+            return schedule_reply(reply,ctx,
+                "Calendar changes require a verified IRC account.");
+        return 0;
+    }
+    (void)pthread_mutex_lock(&mutations_lock);
+    slot=mutation_slot(command->account,command->sender);
+    if(slot>=0)state=mutations[slot];
+    (void)pthread_mutex_unlock(&mutations_lock);
+    if(slot<0) {
+        if(!calendar_mutation_intent(text))return 0;
+        memset(&state,0,sizeof state);
+        memcpy(state.account,command->account,strlen(command->account)+1U);
+        memcpy(state.sender,command->sender,strlen(command->sender)+1U);
+        state.operation=(strstr(text,"cancel")||strstr(text,"Cancel"))?
+            SPARKLES_MARIADB_MUTATE_CANCEL:SPARKLES_MARIADB_MUTATE_UPDATE;
+        state.request.operation=state.operation;
+        memcpy(state.request.account,state.account,strlen(state.account)+1U);
+        if(!date_from_human(text,state.day)) {
+            state.stage=1U;
+            if(!mutation_store(&state))
+                return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
+            if(!schedule_private_reply(state.sender,
+                "Which appointment date? Reply YYYY-MM-DD or MM/DD/YYYY."))
+                return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+            return 1;
+        }
+        if(!mutation_fetch(&state)) {
+            (void)schedule_private_reply(state.sender,
+                "I could not verify the schedule. Nothing changed.");
+            return 1;
+        }
+        if(!mutation_offer_selection(&state,text))
+            return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+        return 1;
+    }
+    if(!strcmp(text,"cancel")||!strcmp(text,"no")) {
+        mutation_clear(state.account,state.sender);
+        (void)schedule_private_reply(state.sender,
+            "Request canceled. No appointment changed.");
+        return 1;
+    }
+    if(state.stage==1U) {
+        if(!date_from_human(text,state.day)) {
+            (void)schedule_private_reply(state.sender,
+                "Please give a calendar date (YYYY-MM-DD or MM/DD/YYYY).");
+            return 1;
+        }
+        if(!mutation_fetch(&state)) {
+            mutation_clear(state.account,state.sender);
+            (void)schedule_private_reply(state.sender,
+                "I could not verify that day's schedule. Nothing changed.");
+            return 1;
+        }
+        if(!mutation_offer_selection(&state,""))
+            return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+        return 1;
+    }
+    if(state.stage==2U) {
+        unsigned selection=0;
+        char extra;
+        const sparkles_mariadb_appointment_t *e;
+        if(sscanf(text,"%u %c",&selection,&extra)!=1 ||
+           selection==0U || selection>state.found.count) {
+            (void)schedule_private_reply(state.sender,
+                "Reply with the appointment number shown, or 'cancel'.");
+            return 1;
+        }
+        e=&state.found.records[selection-1U];
+        state.request.id=e->id;
+        memcpy(state.request.previous_title,e->title,strlen(e->title)+1U);
+        memcpy(state.request.previous_start,e->start_time,20U);
+        memcpy(state.request.previous_end,e->end_time,20U);
+        state.stage=state.operation==SPARKLES_MARIADB_MUTATE_CANCEL?4U:3U;
+        if(!mutation_store(&state))
+            return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
+        n=state.stage==4U?
+            snprintf(message,sizeof message,
+                "Cancel #%llu: %.150s (%s to %s)? Reply 'confirm' or 'cancel'.",
+                e->id,e->title,e->start_time,e->end_time):
+            snprintf(message,sizeof message,
+                "Update #%llu: %.150s (%s to %s). "
+                "Reply YYYY-MM-DD HH:MM HH:MM for the new interval, or 'cancel'.",
+                e->id,e->title,e->start_time,e->end_time);
+        if(n>0&&(size_t)n<sizeof message)
+            (void)schedule_private_reply(state.sender,message);
+        return 1;
+    }
+    if(state.stage==3U) {
+        char date[11],start[6],end[6],extra;
+        if(sscanf(text,"%10s %5s %5s %c",date,start,end,&extra)!=3 ||
+           !sparkles_schedule_date(date,date) ||
+           !sparkles_schedule_end_time(end,start,state.request.next_end)) {
+            (void)schedule_private_reply(state.sender,
+                "Please reply YYYY-MM-DD HH:MM HH:MM (end later than start).");
+            return 1;
+        }
+        n=snprintf(state.request.next_start,sizeof state.request.next_start,
+                   "%s %s:00",date,start);
+        if(n!=19) return schedule_reply(reply,ctx,"Invalid replacement time.");
+        n=snprintf(state.request.next_end,sizeof state.request.next_end,
+                   "%s %s:00",date,end);
+        if(n!=19) return schedule_reply(reply,ctx,"Invalid replacement time.");
+        /* Preserve the original title for a time/date-only move. */
+        if(strlen(state.request.previous_title)>=sizeof state.request.next_title) {
+            mutation_clear(state.account,state.sender);
+            (void)schedule_private_reply(state.sender,
+                "The original title is too long to update safely. Nothing changed.");
+            return 1;
+        }
+        memcpy(state.request.next_title,state.request.previous_title,
+               strlen(state.request.previous_title)+1U);
+        state.stage=4U;
+        if(!mutation_store(&state))
+            return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
+        n=snprintf(message,sizeof message,
+            "Move #%llu from %s–%s to %s–%s? "
+            "Reply 'confirm' to update or 'cancel'.",
+            state.request.id,state.request.previous_start,
+            state.request.previous_end,state.request.next_start,
+            state.request.next_end);
+        if(n>0&&(size_t)n<sizeof message)
+            (void)schedule_private_reply(state.sender,message);
+        return 1;
+    }
+    if(state.stage==4U) {
+        sparkles_mariadb_mutate_reply_t out={0};
+        stnlabz_module_result_t rc;
+        size_t used=0U;
+        const char *result;
+        if(strcmp(text,"confirm") && strcmp(text,"yes")) {
+            (void)schedule_private_reply(state.sender,
+                "Reply 'confirm' to apply this change, or 'cancel' to abort.");
+            return 1;
+        }
+        /* One-use intent is cleared before attempting a database write. */
+        mutation_clear(state.account,state.sender);
+        if(!owner||!owner->invoke_service) {
+            (void)schedule_private_reply(state.sender,
+                "Calendar service unavailable. No confirmed change.");
+            return 1;
+        }
+        rc=owner->invoke_service(SPARKLES_MARIADB_MUTATE_SERVICE,
+             &state.request,sizeof state.request,&out,sizeof out,&used);
+        if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)
+            result="Calendar operation failed; outcome not verified. Please check your schedule.";
+        else switch(out.status) {
+            case SPARKLES_MARIADB_MUTATE_APPLIED:
+                result=state.operation==SPARKLES_MARIADB_MUTATE_CANCEL?
+                     "The selected appointment was canceled in MariaDB.":
+                     "The selected appointment was updated in MariaDB.";
+                break;
+            case SPARKLES_MARIADB_MUTATE_STALE:
+                result="That appointment changed or was already canceled. No new change applied.";
+                break;
+            case SPARKLES_MARIADB_MUTATE_CONFLICT:
+                result="The new time conflicts with another appointment. Nothing changed.";
+                break;
+            case SPARKLES_MARIADB_MUTATE_DENIED:
+                result="Calendar change denied. Nothing changed.";
+                break;
+            case SPARKLES_MARIADB_MUTATE_UNCERTAIN:
+                result="Database commit outcome uncertain. Check the calendar before retrying.";
+                break;
+            default:
+                result="Database change failed. Nothing confirmed.";
+                break;
+        }
+        (void)schedule_private_reply(state.sender,result);
+        return 1;
+    }
+    mutation_clear(state.account,state.sender);
+    return schedule_reply(reply,ctx,"Scheduling state invalid. Nothing changed.");
+}
+
 /* Returns 1 if this utterance is fully handled as a scheduling turn. */
 static int schedule_conversation(const stnlabz_module_command_t *command,
     stnlabz_module_command_reply_fn reply,void *ctx)
