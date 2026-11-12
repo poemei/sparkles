@@ -4,7 +4,7 @@
 #include "sparkles_memory.h"
 #include "mariadb_internal.h"
 
-/* Record first: a failed history lookup must never suppress the
+/* Independent write: a failed history lookup must never suppress the
  * speaker's new observation. Every insert uses bound values. */
 static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
 {
