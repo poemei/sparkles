@@ -264,7 +264,8 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             if(!prepared_execute(db,sql,params,NULL))goto done;
             out->saved=1U;
         }
-        if(!get_first(db,&s,&id,out->first_name))goto done;
+        if(!get_first(db,&s,&id,out->first_name) ||
+           !valid_name(out->first_name))goto done;
     } else {
         if(!req->first_name[0]) {
             /* Unknown avatar is not a verified human contact.
