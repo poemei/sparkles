@@ -1,8 +1,9 @@
 #ifndef SPARKLES_MARIADB_H
 #define SPARKLES_MARIADB_H
 
-/* Private Core ABI 1.5 services. Callers must forward a verified transport
- * account; MariaDB checks the account allowlist before returning records. */
+/* Private Core ABI 1.5 services. Callers forward a transport-verified
+ * account (authenticated IRC account or sl:UUID); MariaDB resolves it
+ * through contact_identities to an existing contacts record. */
 #define SPARKLES_MARIADB_CHECK_SERVICE "sparkles.mariadb.appointments.check"
 #define SPARKLES_MARIADB_CREATE_SERVICE "sparkles.mariadb.appointments.create"
 #define SPARKLES_MARIADB_MUTATE_SERVICE "sparkles.mariadb.appointments.mutate"
@@ -16,7 +17,7 @@ typedef struct {
     unsigned int tables_found;
 } sparkles_mariadb_status_t;
 
-/* Caller supplies a server-verified account; MariaDB applies its allowlist.
+/* Caller supplies a verified transport account; MariaDB requires a contact.
  * Date-only inclusive start and exclusive end; both YYYY-MM-DD. */
 typedef struct {
     char account[128];
@@ -38,7 +39,8 @@ typedef struct {
 } sparkles_mariadb_appointments_reply_t;
 
 /* Trusted in-process caller only. Account must originate from verified transport.
- * Database service enforces the same runtime allowlist as /appointment-add. */
+ * Database service enforces the same contact identity gate as all calendar
+ * services. */
 typedef struct {
     char account[128];
     char start_time[20];
