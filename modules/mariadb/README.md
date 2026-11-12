@@ -1,6 +1,48 @@
-# Sparkles MariaDB module — v1.5.0
+# Sparkles MariaDB module — v1.7.0
 
 This module uses the Core ABI 1.5 lifecycle, registers authenticated explicit `/schedule` and `/appointment-add` commands and two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. An explicit authorized `/appointment-add` request can INSERT one appointment after rejecting overlaps with existing scheduled appointments. It does not update or delete appointments, alter Core/chat routing, IRC or Ollama, or grant unrelated users access. No model inference is treated as authority over database records.
+
+## v1.7.0 — Second Life contact discovery (source only)
+
+The native C service `sparkles.mariadb.contacts.identify` accepts a
+verified `sl:<lowercase-avatar-UUID>` transport principal, the SL agent
+name and an optional **self-reported first name**. The service inspects
+the live `information_schema.columns` for the *existing* `contacts`
+and `contact_identities` tables, matches a narrow set of known column
+names, and uses bound SQL statements and a transaction to:
+
+- look up an existing SL UUID association before making any change;
+- create a contact and its SL platform identity together when the
+  speaker voluntarily provides a first name;
+- update that same contact's first name on later introductions;
+- return the persisted first name for subsequent conversations.
+
+On unsupported column names, missing mandatory fields, invalid identity
+data, or SQL errors, it fails without a success acknowledgement. No
+schema creation, migration, contact permissions, calendar access,
+IRC identity merge, or task management is introduced. A stored
+self-reported name is *not proof* that the person owns an unrelated
+calendar. The existing calendar authorization path remains unchanged.
+
+Recognized contact columns include `id`/`contact_id`,
+`first_name`/`firstname`, and optionally `display_name`/`name`.
+Identity mappings require `contact_id`, a supported
+`platform`/`provider`/`source`/`identity_type` column, and an
+identity-value column such as `identity_value`, `agent_uuid`, or
+`avatar_uuid`. Other schema layouts are explicitly unsupported
+until verified; no invented field is silently written.
+
+Ollama v1.1.8 uses this service for explicit SL introductions such as
+`my name is Poe`, and for `do you know me?`. It only confirms that a
+name is saved after MariaDB reports a committed transaction. It includes
+the persisted first name as bounded conversational context for later
+IMs. An unknown avatar is not automatically trusted with private
+calendar privileges.
+
+The module's existing `conversation_context` exchange is separate.
+The new contact transaction does not depend on optional
+`source='SL'` enum support. Live schema compatibility, native build,
+installation, and end-to-end persistence remain **unverified**.
 
 ## Database prerequisite
 
