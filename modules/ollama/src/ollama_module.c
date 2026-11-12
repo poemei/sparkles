@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 2U
+#define OLLAMA_VERSION_PATCH 3U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -78,6 +78,8 @@ static int schedule_lookup_intent(const char *text)
     }
     lower[n]='\0';
     return strstr(lower,"what is my schedule")!=NULL ||
+        strstr(lower,"my schdule")!=NULL ||
+        strstr(lower,"schdule for")!=NULL ||
         strstr(lower,"what's my schedule")!=NULL ||
         strstr(lower,"my schedule today")!=NULL ||
         strstr(lower,"schedule for today")!=NULL ||
@@ -106,21 +108,34 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
         lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
     }
     lower[n]='\0';
-    if(!strstr(lower,"today"))
-        return reply(ctx,"Which date? Please ask for today's schedule or use /schedule YYYY-MM-DD YYYY-MM-DD.");
-    if(!command->account[0] || !command->sender[0])
-        return reply(ctx,"Schedule access requires a verified IRC account.");
-    if(!owner || !owner->invoke_service || !owner->send_private_message)
-        return reply(ctx,"Schedule lookup unavailable.");
-    /* The runtime's configured local timezone determines today's date. */
-    if(!localtime_r(&now,&day) ||
-       !strftime(request.from_date,sizeof request.from_date,"%Y-%m-%d",&day))
-        return reply(ctx,"Schedule date unavailable.");
-    day.tm_mday+=1;
-    day.tm_isdst=-1;
-    if(mktime(&day)==(time_t)-1 ||
-       !strftime(request.until_date,sizeof request.until_date,"%Y-%m-%d",&day))
-        return reply(ctx,"Schedule date unavailable.");
+    {
+        char explicit_date[11];
+        if(sparkles_schedule_find_date(command->arguments,explicit_date)) {
+            unsigned year,month,dom;
+            if(sscanf(explicit_date,"%4u-%2u-%2u",&year,&month,&dom)!=3)
+                return reply(ctx,"Schedule date unavailable.");
+            memset(&day,0,sizeof day);
+            day.tm_year=(int)year-1900;day.tm_mon=(int)month-1;
+            day.tm_mday=(int)dom;day.tm_hour=12;day.tm_isdst=-1;
+            memcpy(request.from_date,explicit_date,11U);
+        } else {
+            if(!strstr(lower,"today") && !strstr(lower,"tomorrow") &&
+               !strstr(lower,"tommorrow"))
+                return reply(ctx,"Which date? Please give YYYY-MM-DD or MM/DD/YYYY.");
+            if(!localtime_r(&now,&day))
+                return reply(ctx,"Schedule date unavailable.");
+            day.tm_hour=12;day.tm_min=0;day.tm_sec=0;day.tm_isdst=-1;
+            if(strstr(lower,"tomorrow")||strstr(lower,"tommorrow"))
+                ++day.tm_mday;
+            if(mktime(&day)==(time_t)-1 ||
+               !strftime(request.from_date,sizeof request.from_date,"%Y-%m-%d",&day))
+                return reply(ctx,"Schedule date unavailable.");
+        }
+        ++day.tm_mday;day.tm_isdst=-1;
+        if(mktime(&day)==(time_t)-1 ||
+           !strftime(request.until_date,sizeof request.until_date,"%Y-%m-%d",&day))
+            return reply(ctx,"Schedule date unavailable.");
+    }
     memcpy(request.account,command->account,strlen(command->account)+1U);
     rc=owner->invoke_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,
         &request,sizeof request,&result,sizeof result,&used);
@@ -147,7 +162,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
     }
     if(!result.count) {
         if(!owner->send_private_message(command->sender,
-            "No scheduled appointments stored for today."))
+            "No scheduled appointments stored for the requested date."))
             return reply(ctx,"Private schedule delivery failed.");
     } else for(i=0;i<result.count;++i) {
         const sparkles_mariadb_appointment_t *e=&result.records[i];
@@ -161,7 +176,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
        !owner->send_private_message(command->sender,
             "More appointments exist; narrow the date range."))
         return reply(ctx,"Private schedule delivery incomplete.");
-    return reply(ctx,"I sent today's schedule privately.");
+    return reply(ctx,"Schedule lookup sent privately from MariaDB.");
 }
 
 
@@ -343,6 +358,35 @@ static int finish_schedule(const sparkles_schedule_plan_t *plan,
     return ambiguous?-3:conflicts?(saved?-2:-1):(int)saved;
 }
 
+/* MariaDB cannot yet cancel or modify records; never invent a success. */
+static int calendar_mutation_intent(const char *text)
+{
+    char lower[701];
+    size_t i,n;
+    int action,subject;
+    if(!text||(n=strlen(text))>=sizeof lower)return 0;
+    for(i=0;i<n;++i) {
+        unsigned char c=(unsigned char)text[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+32):(char)c;
+    }
+    lower[n]='\0';
+    action=strstr(lower,"cancel")!=NULL ||
+        strstr(lower,"reschedul")!=NULL ||
+        strstr(lower,"move ")!=NULL ||
+        strstr(lower,"change ")!=NULL ||
+        strstr(lower,"update ")!=NULL ||
+        strstr(lower,"delete ")!=NULL ||
+        strstr(lower,"remove ")!=NULL;
+    subject=strstr(lower,"appointment")!=NULL ||
+        strstr(lower,"meeting")!=NULL ||
+        strstr(lower,"schedule")!=NULL ||
+        strstr(lower,"schdule")!=NULL ||
+        strstr(lower,"calendar")!=NULL ||
+        strstr(lower,"tomorrow")!=NULL ||
+        strstr(lower,"tommorrow")!=NULL ||
+        strstr(lower," at the river")!=NULL;
+    return action && subject;
+}
 /* Returns 1 if this utterance is fully handled as a scheduling turn. */
 static int schedule_conversation(const stnlabz_module_command_t *command,
     stnlabz_module_command_reply_fn reply,void *ctx)
@@ -485,6 +529,12 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         slot=pending_find(account,sender,time(NULL));
         if(slot>=0)memset(&pending[slot],0,sizeof pending[slot]);
         (void)pthread_mutex_unlock(&pending_lock);
+    }
+    if(calendar_mutation_intent(text)) {
+        if(!schedule_private_reply(sender,
+           "No appointment was changed or canceled. Calendar cancellation and modification are not implemented. Please use an authorized operator to make that change."))
+            return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+        return schedule_reply(reply,ctx,"No calendar change was made; details sent privately.");
     }
     /* Only invoke the calendar extractor when the utterance plausibly
      * describes a scheduled commitment. Ordinary social conversation must
