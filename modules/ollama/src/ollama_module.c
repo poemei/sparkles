@@ -17,8 +17,8 @@
 #include "ollama_internal.h"
 
 #define OLLAMA_VERSION_MAJOR 1U
-#define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 11U
+#define OLLAMA_VERSION_MINOR 2U
+#define OLLAMA_VERSION_PATCH 0U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -66,6 +66,32 @@ static int calendar_request(const char *text)
     return 0;
 }
 
+
+/* Detect one explicit named guest; unknown or multi-guest expressions
+ * cannot be silently collapsed into a creator-only appointment. */
+static int schedule_guest(const char *text,char name[64])
+{
+    const char *p;
+    size_t j=0U;
+    if(!text||!name)return -1;
+    name[0]=0;
+    for(p=text;*p;++p) {
+        if(p!=text && p[-1]!=' ' && p[-1]!='\t')continue;
+        if(strncasecmp(p,"with ",5U))continue;
+        p+=5U;
+        while(*p==' ')++p;
+        for(j=0U;j<48U && p[j] &&
+            ((p[j]>='A'&&p[j]<='Z')||(p[j]>='a'&&p[j]<='z')||
+             p[j]=='-'||p[j]=='\'');++j)
+            name[j]=p[j];
+        if(!j || (p[j] && p[j]!=' ' && p[j]!=',' && p[j]!='.' &&
+                   p[j]!='!' && p[j]!='?'))return -1;
+        name[j]=0;
+        if(p[j]==' ' && !strncasecmp(p+j+1U,"and ",4U))return -1;
+        return 1;
+    }
+    return 0;
+}
 
 /* Schedule retrieval is not appointment creation. Protect the private record
  * path with MariaDB's existing verified-account authorization. */
@@ -321,6 +347,12 @@ static int send_schedule_summary(stnlabz_module_command_reply_fn reply,
         if(n<0 || (size_t)n>=sizeof message-used)return 0;
         used+=(size_t)n;
     }
+    if(plan->guest_name[0]) {
+        n=snprintf(message+used,sizeof message-used,
+                   " (with %s, invitation pending)",plan->guest_name);
+        if(n<0 || (size_t)n>=sizeof message-used)return 0;
+        used+=(size_t)n;
+    }
     n=snprintf(message+used,sizeof message-used,
                ". Reply 'confirm' to save, or 'cancel'.");
     if(n<0 || (size_t)n>=sizeof message-used)return 0;
@@ -351,6 +383,7 @@ static int check_schedule_plan(const sparkles_schedule_plan_t *plan,
                     e->date,e->end)!=19)return -2;
         memcpy(req.account,account,strlen(account)+1U);
         memcpy(req.title,e->title,strlen(e->title)+1U);
+        memcpy(req.guest_name,plan->guest_name,strlen(plan->guest_name)+1U);
         rc=owner->invoke_service(SPARKLES_MARIADB_CHECK_SERVICE,
             &req,sizeof req,&out,sizeof out,&used);
         if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return -2;
@@ -379,6 +412,7 @@ static int finish_schedule(const sparkles_schedule_plan_t *plan,
             return 0;
         memcpy(request.account,account,strlen(account)+1U);
         memcpy(request.title,e->title,strlen(e->title)+1U);
+        memcpy(request.guest_name,plan->guest_name,strlen(plan->guest_name)+1U);
         rc=owner->invoke_service(SPARKLES_MARIADB_CREATE_SERVICE,
             &request,sizeof request,&result,sizeof result,&used);
         if(rc!=STNLABZ_MODULE_OK||used!=sizeof result)return 0;
@@ -919,7 +953,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     pending_clear(account,sender);
                     if(!schedule_private_reply(reply,ctx,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
-                                  "Calendar conflict check unavailable; nothing saved."))
+                                  "Calendar or named guest could not be verified; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                     return 1; /* Already replied in DM. */
                 }
@@ -1031,6 +1065,12 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             ? schedule_reply(reply,ctx,
                 "I couldn't identify appointment times. Please clarify the event details.")
             : 0;
+    {
+        int guest=schedule_guest(text,plan.guest_name);
+        if(guest<0 || (guest>0 && plan.count!=1U))
+            return schedule_reply(reply,ctx,
+                "Please name one existing contact per appointment; no booking was made.");
+    }
     if(!account[0])return schedule_reply(reply,ctx,
        "Calendar changes require a verified account.");
     {
