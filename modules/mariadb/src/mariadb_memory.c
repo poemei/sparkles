@@ -47,7 +47,7 @@ static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
     bind[5].buffer_type=MYSQL_TYPE_STRING;
     bind[5].buffer=(void *)visibility;
     bind[5].buffer_length=lengths[5];bind[5].length=&lengths[5];
-    if(okay && mysql_stmt_bind_param(stmt,&bind))okay=0;
+    if(okay && mysql_stmt_bind_param(stmt,bind))okay=0;
     if(okay && mysql_stmt_execute(stmt))okay=0;
     if(okay && mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
     if(!okay)
@@ -97,7 +97,7 @@ int sparkles_mariadb_context_exchange(
     bind.buffer=account;
     bind.buffer_length=account_length;
     bind.length=&account_length;
-    if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
+    if(okay&&mysql_stmt_bind_param(stmt,&bind))okay=0;
     if(okay&&mysql_stmt_execute(stmt))okay=0;
     memset(content,0,sizeof content);
     col.buffer_type=MYSQL_TYPE_STRING;
