@@ -36,6 +36,52 @@ int sparkles_schedule_date(const char *text,char date[11])
     memcpy(date,text,11U);
     return 1;
 }
+/* Accept explicit ISO or US calendar dates, never relative dates.
+ * Validate through the same strict calendar validator as model output. */
+int sparkles_schedule_find_date(const char *text,char date[11])
+{
+    size_t i,n;
+    if(!text||!date)return 0;
+    n=strlen(text);
+    for(i=0;i<n;++i) {
+        char value[11];
+        unsigned m,d,y;
+        int consumed=0;
+        if(i && text[i-1]>='0'&&text[i-1]<='9')continue;
+        if(i+10U<=n) {
+            memcpy(value,text+i,10U);
+            value[10]='\0';
+            if(sparkles_schedule_date(value,date) &&
+               (i+10U==n||text[i+10U]<'0'||text[i+10U]>'9'))
+                return 1;
+        }
+        if(sscanf(text+i,"%2u/%2u/%4u%n",&m,&d,&y,&consumed)==3 &&
+           consumed>=8 && consumed<=10 &&
+           (i+(size_t)consumed==n ||
+            text[i+(size_t)consumed]<'0' ||
+            text[i+(size_t)consumed]>'9')) {
+            int length=snprintf(value,sizeof value,"%04u-%02u-%02u",y,m,d);
+            if(length==10 && sparkles_schedule_date(value,date))return 1;
+        }
+    }
+    return 0;
+}
+
+/* Follow-up is deliberately unambiguous: an exact 24-hour HH:MM clock time.
+ * The caller must already have a validated start time. */
+int sparkles_schedule_end_time(const char *text,const char *start,char end[8])
+{
+    char value[6];
+    size_t length;
+    if(!text||!start||!end||!valid_time(start))return 0;
+    length=strlen(text);
+    if(length!=5U)return 0;
+    memcpy(value,text,5U);value[5]='\0';
+    if(!valid_time(value)||strcmp(value,start)<=0)return 0;
+    memcpy(end,value,6U);
+    return 1;
+}
+
 int sparkles_schedule_parse(const char *output,sparkles_schedule_plan_t *plan)
 {
     const char *p;
@@ -117,6 +163,18 @@ int sparkles_schedule_selftests(unsigned int *executed,unsigned int *passed)
     T(!sparkles_schedule_parse(NULL,&p));
     T(!sparkles_schedule_parse("NONE",NULL));
     T(sparkles_schedule_date("2026-11-11",date)&&!strcmp(date,"2026-11-11"));
+    T(sparkles_schedule_find_date("tomorrow 11/12/2026 at River",date) &&
+      !strcmp(date,"2026-11-12"));
+    T(sparkles_schedule_find_date("on 2026-11-12 at River",date) &&
+      !strcmp(date,"2026-11-12"));
+    T(!sparkles_schedule_find_date("tomorrow at River",date));
+    T(!sparkles_schedule_find_date("02/30/2026 at River",date));
+    {
+        char end[8]={0};
+        T(sparkles_schedule_end_time("17:30","16:30",end) && !strcmp(end,"17:30"));
+        T(!sparkles_schedule_end_time("16:00","16:30",end));
+        T(!sparkles_schedule_end_time("5:30pm","16:30",end));
+    }
     T(!sparkles_schedule_date("tomorrow",date));
     T(!sparkles_schedule_date("2026-02-30",date));
 #undef T
