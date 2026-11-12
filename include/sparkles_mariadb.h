@@ -46,6 +46,7 @@ typedef struct {
     char start_time[20];
     char end_time[20];
     char title[201];
+    char guest_name[64]; /* Optional exact existing contact first name. */
 } sparkles_mariadb_create_request_t;
 
 typedef enum {
