@@ -117,12 +117,31 @@ static stnlabz_module_result_t appointments_service(
         !memchr(in->account,0,sizeof in->account) ||
         !memchr(in->from_date,0,sizeof in->from_date) ||
         !memchr(in->until_date,0,sizeof in->until_date) ||
+        !memchr(in->from_time,0,sizeof in->from_time) ||
         !sparkles_mariadb_valid_range(in->from_date,in->until_date))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out, 0, sizeof *out);
     if (!calendar_contact_allowed(in->account))
         return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
     (void)snprintf(from,sizeof from,"%s 00:00:00",in->from_date);
+    if(in->from_time[0]) {
+        size_t j;
+        static const size_t digits[]={11U,12U,14U,15U,17U,18U};
+        if(strlen(in->from_time)!=19U ||
+           memcmp(in->from_time,in->from_date,10U) ||
+           in->from_time[10U]!=' ' || in->from_time[13U]!=':' ||
+           in->from_time[16U]!=':')
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+        for(j=0U;j<sizeof digits/sizeof digits[0];++j) {
+            unsigned char digit=(unsigned char)in->from_time[digits[j]];
+            if(digit<'0'||digit>'9')return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+        }
+        if(in->from_time[11U]>'2' ||
+           (in->from_time[11U]=='2' && in->from_time[12U]>'3') ||
+           in->from_time[14U]>'5' || in->from_time[17U]>'5')
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+        memcpy(from,in->from_time,20U);
+    }
     (void)snprintf(until,sizeof until,"%s 00:00:00",in->until_date);
     params[0].buffer_type = MYSQL_TYPE_STRING;
     params[0].buffer = until;
@@ -1042,7 +1061,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 4U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 5U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
