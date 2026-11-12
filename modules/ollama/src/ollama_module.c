@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 10U
+#define OLLAMA_VERSION_PATCH 11U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -169,12 +169,16 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
     {
         size_t written=0U;
         unsigned int shown=0U;
-        message[0]='\0';
+        int header=snprintf(message,sizeof message,
+                            "Schedule for %s:",request.from_date);
+        if(header<0||(size_t)header>=sizeof message)
+            return reply(ctx,"Schedule date unavailable.");
+        written=(size_t)header;
         for(i=0U;i<result.count;++i) {
             const sparkles_mariadb_appointment_t *e=&result.records[i];
             int length=snprintf(message+written,sizeof message-written,
-                "%s%s to %s: %s",shown?"; ":"",
-                e->start_time,e->end_time,e->title);
+                "\n\n- %.5s - %.5s  %s",
+                e->start_time+11U,e->end_time+11U,e->title);
             if(length<0)return reply(ctx,"Schedule record invalid.");
             if((size_t)length>=sizeof message-written) {
                 message[written]='\0';
