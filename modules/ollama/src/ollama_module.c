@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 1U
+#define OLLAMA_VERSION_PATCH 2U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -173,6 +173,7 @@ typedef struct {
     char sender[128];
     time_t expires;
     int waiting_for_date;
+    int waiting_for_end;
     sparkles_schedule_plan_t plan;
 } pending_schedule_t;
 
@@ -192,7 +193,7 @@ static int pending_find(const char *account,const char *sender,time_t now)
     return -1;
 }
 static int pending_save(const char *account,const char *sender,
-                        const sparkles_schedule_plan_t *plan,int needs_date)
+                        const sparkles_schedule_plan_t *plan,int needs_date,int needs_end)
 {
     time_t now=time(NULL);
     int slot;
@@ -210,6 +211,7 @@ static int pending_save(const char *account,const char *sender,
         memcpy(pending[slot].sender,sender,strlen(sender)+1U);
         pending[slot].expires=now+SPARKLES_PENDING_SECONDS;
         pending[slot].waiting_for_date=needs_date;
+        pending[slot].waiting_for_end=needs_end;
         pending[slot].plan=*plan;
     }
     (void)pthread_mutex_unlock(&pending_lock);
@@ -228,6 +230,31 @@ static int schedule_reply(stnlabz_module_command_reply_fn reply,void *ctx,
 {
     return reply(ctx,text)?1:0;
 }
+/* Calendar details and follow-up questions are private by default. */
+static int schedule_private_prompt(const char *sender,
+                                  const sparkles_schedule_plan_t *plan)
+{
+    char message[512];
+    const sparkles_schedule_item_t *e=&plan->items[0];
+    const char *date=!strcmp(e->date,"UNKNOWN")?"date not confirmed":e->date;
+    const char *end=!strcmp(e->end,"UNKNOWN")?"end time not provided":e->end;
+    int n;
+    if(!owner||!owner->send_private_message)return 0;
+    n=snprintf(message,sizeof message,
+       "I have: %s on %s, starting %s (end: %s). %s",
+       e->title,date,e->begin,end,
+       !strcmp(e->date,"UNKNOWN")
+       ?"What date is it? Reply YYYY-MM-DD or MM/DD/YYYY."
+       :"What time does it end? Reply HH:MM in 24-hour time.");
+    return n>=0 && (size_t)n<sizeof message &&
+           owner->send_private_message(sender,message);
+}
+static int schedule_private_reply(const char *sender,const char *text)
+{
+    return owner&&owner->send_private_message &&
+           owner->send_private_message(sender,text);
+}
+
 static int send_schedule_summary(const char *sender,
                                  const sparkles_schedule_plan_t *plan)
 {
@@ -250,21 +277,6 @@ static int send_schedule_summary(const char *sender,
                ". Reply 'confirm' to save, or 'cancel'.");
     if(n<0 || (size_t)n>=sizeof message-used)return 0;
     return owner->send_private_message(sender,message);
-}
-static int find_explicit_date(const char *text,char date[11])
-{
-    size_t i,n;
-    if(!text)return 0;
-    n=strlen(text);
-    for(i=0U;i+10U<=n;++i) {
-        char sample[11];
-        if(i>0U && text[i-1U]>='0' && text[i-1U]<='9')continue;
-        if(i+10U<n && text[i+10U]>='0' && text[i+10U]<='9')continue;
-        memcpy(sample,text+i,10U);
-        sample[10]='\0';
-        if(sparkles_schedule_date(sample,date))return 1;
-    }
-    return 0;
 }
 /* Authoritative pre-confirmation conflict check; never model arithmetic. */
 static int check_schedule_plan(const sparkles_schedule_plan_t *plan,
@@ -337,7 +349,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
 {
     sparkles_schedule_plan_t plan={0};
     int slot;
-    int waiting=0;
+    int waiting=0,waiting_end=0;
     time_t now=time(NULL);
     char date[11];
     char account[128],sender[128];
@@ -358,6 +370,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     if(slot>=0) {
         plan=pending[slot].plan;
         waiting=pending[slot].waiting_for_date;
+        waiting_end=pending[slot].waiting_for_end;
     }
     (void)pthread_mutex_unlock(&pending_lock);
     if(slot>=0) {
@@ -370,29 +383,73 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         }
         if(waiting) {
             unsigned int i;
-            if(!find_explicit_date(text,date))
-                return schedule_reply(reply,ctx,
-                    "Which date? Please give the calendar date, e.g. 2026-11-11.");
+            if(!sparkles_schedule_find_date(text,date)) {
+                if(!schedule_private_reply(sender,
+                    "Please confirm the calendar date as YYYY-MM-DD or MM/DD/YYYY."))
+                    return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+            }
             for(i=0U;i<plan.count;++i)
                 if(!strcmp(plan.items[i].date,"UNKNOWN"))
                     memcpy(plan.items[i].date,date,11U);
+            waiting=0;
+            if(!pending_save(account,sender,&plan,0,waiting_end))
+                return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
+            if(waiting_end) {
+                if(!schedule_private_prompt(sender,&plan)) {
+                    pending_clear(account,sender);
+                    return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                }
+                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+            }
             {
                 int check=check_schedule_plan(&plan,account);
                 if(check!=1) {
                     pending_clear(account,sender);
-                    return schedule_reply(reply,ctx,
+                    if(!schedule_private_reply(sender,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
-                                  "Calendar conflict check unavailable; nothing saved.");
+                                  "Calendar conflict check unavailable; nothing saved."))
+                        return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                    return schedule_reply(reply,ctx,"Please continue in our private IM.");
                 }
             }
-            if(!pending_save(account,sender,&plan,0))
+            if(!send_schedule_summary(sender,&plan)) {
+                pending_clear(account,sender);
+                return schedule_reply(reply,ctx,"Private confirmation unavailable.");
+            }
+            return schedule_reply(reply,ctx,"Please confirm privately.");
+        }
+        if(waiting_end) {
+            unsigned int i;
+            for(i=0U;i<plan.count;++i) {
+                if(!strcmp(plan.items[i].end,"UNKNOWN")) {
+                    if(!sparkles_schedule_end_time(text,plan.items[i].begin,
+                                                   plan.items[i].end)) {
+                        if(!schedule_private_reply(sender,
+                            "What time does it end? Reply HH:MM in 24-hour time, later than the start."))
+                            return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                        return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                    }
+                }
+            }
+            {
+                int check=check_schedule_plan(&plan,account);
+                if(check!=1) {
+                    pending_clear(account,sender);
+                    if(!schedule_private_reply(sender,
+                        check==-1?"The proposed time conflicts with your calendar; nothing saved.":
+                                  "Calendar conflict check unavailable; nothing saved."))
+                        return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                    return schedule_reply(reply,ctx,"Please continue in our private IM.");
+                }
+            }
+            if(!pending_save(account,sender,&plan,0,0))
                 return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
             if(!send_schedule_summary(sender,&plan)) {
                 pending_clear(account,sender);
                 return schedule_reply(reply,ctx,"Private confirmation unavailable.");
             }
-            return schedule_reply(reply,ctx,
-                "I sent your appointment details privately for confirmation.");
+            return schedule_reply(reply,ctx,"Please confirm privately.");
         }
         if(!strcmp(text,"confirm")||!strcmp(text,"yes")) {
             int result;
@@ -407,20 +464,21 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             memset(&pending[slot],0,sizeof pending[slot]);
             (void)pthread_mutex_unlock(&pending_lock);
             result=finish_schedule(&plan,account);
-            if(result==(int)plan.count)
-                return schedule_reply(reply,ctx,
-                    "Your confirmed appointments were saved in the calendar.");
-            if(result==-1)
-                return schedule_reply(reply,ctx,
-                    "Nothing saved; the proposed times conflict with existing appointments.");
-            if(result==-2)
-                return schedule_reply(reply,ctx,
-                    "Some appointments were saved; others conflicted. Check your schedule.");
-            if(result==-3)
-                return schedule_reply(reply,ctx,
-                    "Database confirmation uncertain. Check your schedule before retrying.");
-            return schedule_reply(reply,ctx,
-                "Calendar save failed or incomplete. Check your schedule before retrying.");
+            {
+                const char *message=
+                    result==(int)plan.count?
+                      "Your confirmed appointments were saved in the calendar.":
+                    result==-1?
+                      "Nothing saved; the proposed times conflict with existing appointments.":
+                    result==-2?
+                      "Some appointments were saved; others conflicted. Check your schedule.":
+                    result==-3?
+                      "Database confirmation uncertain. Check your schedule before retrying.":
+                      "Calendar save failed or incomplete. Check your schedule before retrying.";
+                if(!schedule_private_reply(sender,message))
+                    return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                return schedule_reply(reply,ctx,"Scheduling result sent privately.");
+            }
         }
         /* A new message can supersede the old proposal, but never confirm it. */
         (void)pthread_mutex_lock(&pending_lock);
@@ -438,11 +496,12 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     n=snprintf(prompt,sizeof prompt,
         "Extract at most 2 calendar events directly stated by the human. "
         "Output ONLY NONE if no proposed/specified event is given, or one "
-        "EVENT|DATE|HH:MM|HH:MM|TITLE per line. DATE must be an explicit "
-        "YYYY-MM-DD in the message; otherwise use UNKNOWN. "
-        "Use 24-hour times. Never invent a date, time, venue or person. "
-        "Do not add prose or formatting. For multiple events use two lines. "
-        "Human: %s",text);
+        "EVENT|DATE|START|END|TITLE per line. "
+        "DATE is YYYY-MM-DD for explicit ISO or MM/DD/YYYY dates, "
+        "otherwise UNKNOWN. START is 24-hour HH:MM. "
+        "END is 24-hour HH:MM or UNKNOWN when no end time is given. "
+        "Never invent dates, times, venues or people. "
+        "Do not add prose or formatting. Human: %s",text);
     if(n<=0||(size_t)n>=sizeof prompt)return 0;
     memcpy(req.prompt,prompt,(size_t)n+1U);
     rc=generate(&req,sizeof req,&out,sizeof out,&used,
@@ -464,33 +523,48 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
        "Calendar changes require a verified IRC account.");
     {
         unsigned int i;
-        int needs_date=0;
+        int needs_date=0,needs_end=0;
         char explicit_date[11];
-        int has_explicit=find_explicit_date(text,explicit_date);
+        int has_explicit=sparkles_schedule_find_date(text,explicit_date);
         for(i=0U;i<plan.count;++i) {
-            /* Ignore model-invented dates; only an explicitly supplied
-             * ISO calendar date can be used. */
-            if(!has_explicit || strcmp(plan.items[i].date,explicit_date))
+            /* Only an explicit, validated human date is authoritative. */
+            if(has_explicit)
+                memcpy(plan.items[i].date,explicit_date,11U);
+            else
                 memcpy(plan.items[i].date,"UNKNOWN",8U);
             if(!strcmp(plan.items[i].date,"UNKNOWN"))needs_date=1;
+            if(!strcmp(plan.items[i].end,"UNKNOWN"))needs_end=1;
         }
-        if(!needs_date) {
+        if(plan.count>1U && (needs_date || needs_end)) {
+            if(!schedule_private_reply(sender,
+                "I need complete dates and start/end times for both events. Please send each appointment separately in this IM."))
+                return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+            return schedule_reply(reply,ctx,"Please continue in our private IM.");
+        }
+        if(!needs_date&&!needs_end) {
             int check=check_schedule_plan(&plan,account);
-            if(check!=1)return schedule_reply(reply,ctx,
-                check==-1?"The proposed time conflicts with your calendar; nothing saved.":
-                          "Calendar conflict check unavailable; nothing saved.");
+            if(check!=1) {
+                if(!schedule_private_reply(sender,
+                    check==-1?"The proposed time conflicts with your calendar; nothing saved.":
+                              "Calendar conflict check unavailable; nothing saved."))
+                    return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+                return schedule_reply(reply,ctx,"Please continue in our private IM.");
+            }
         }
-        if(!pending_save(account,sender,&plan,needs_date))
-            return schedule_reply(reply,ctx,"Calendar proposal unavailable.");
-        if(needs_date)
-            return schedule_reply(reply,ctx,
-                "I have your event details. Which date (YYYY-MM-DD)?");
+        if(!pending_save(account,sender,&plan,needs_date,needs_end))
+            return schedule_reply(reply,ctx,"Schedule proposal unavailable.");
+        if(needs_date || needs_end) {
+            if(!schedule_private_prompt(sender,&plan)) {
+                pending_clear(account,sender);
+                return schedule_reply(reply,ctx,"Private scheduling unavailable.");
+            }
+            return schedule_reply(reply,ctx,"Please continue in our private IM.");
+        }
         if(!send_schedule_summary(sender,&plan)) {
             pending_clear(account,sender);
             return schedule_reply(reply,ctx,"Private confirmation unavailable.");
         }
-        return schedule_reply(reply,ctx,
-            "I sent your appointment details privately for confirmation.");
+        return schedule_reply(reply,ctx,"Please confirm privately.");
     }
 }
 
