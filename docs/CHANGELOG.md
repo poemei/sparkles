@@ -1,5 +1,14 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — Contact-linked shared appointments (source only)
+
+- MariaDB v1.9.2: exact unique contact lookup for one explicitly named guest; personal conflict checks for creator and guest; atomically insert creator as accepted and guest as pending.
+- Ollama v1.2.0: preserve explicit guest through conversational proposal and confirmation; reject multi-guest expressions instead of silently omitting participants; add parser qualification cases.
+- Preserve contact-scoped reads, transport identity authentication, and existing unlinked appointments. No database changes or migration performed.
+
+**Verification:** GitHub source changes and readback only. Native compilation, SQL integration, deployed behavior and operator acceptance remain unverified.
+
+
 ## Unreleased — 2026-11-10 — Adopt Ezra Core foundation
 
 - Replaced the inherited Rictus Core source and headers with the corresponding Ezra Core implementation, adapted to Sparkles identity, namespace and paths.
