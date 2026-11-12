@@ -47,20 +47,20 @@ int main(void)
     memcpy(session.session,conversation,16U);
     assert(sparkles_sl_im_encode(&session,sender,conversation,42U,
                                 "MsSparkles Resident","Hi",packet,sizeof packet,&used));
-    assert(used==140U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
+    assert(used==141U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
     assert(packet[6U]==0xffU && packet[7U]==0xffU &&
            packet[8U]==0U && packet[9U]==254U);
     assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
     assert(view.message_frequency==2U && view.message_id==254U);
-    assert(view.sequence==42U && view.payload_size==130U);
+    assert(view.sequence==42U && view.payload_size==131U);
     assert(!memcmp(view.payload,own,16U));
     assert(!memcmp(view.payload+33U,sender,16U));
     assert(!memcmp(view.payload+83U,conversation,16U));
     assert(view.payload[82U]==0U);
-    assert(view.payload[103U]==19U);
+    assert(view.payload[103U]==20U);
     assert(!strcmp((const char *)(view.payload+104U),"MsSparkles Resident"));
-    assert(view.payload[123U]==3U && view.payload[124U]==0U);
-    assert(!strcmp((const char *)(view.payload+125U),"Hi"));
+    assert(view.payload[124U]==3U && view.payload[125U]==0U);
+    assert(!strcmp((const char *)(view.payload+126U),"Hi"));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,0U,
                                  "MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,1U,
