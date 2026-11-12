@@ -1281,7 +1281,7 @@ static int dialogue_selftest(unsigned int *executed,unsigned int *passed)
  return e==p;
 }
 
-/* Memory is retrieved only for a server-verified IRC account.
+/* Memory is retrieved under a transport-verified account namespace.
  * Short acknowledgements are recall-only to avoid drowning long-term memory
  * in "yes", "confirm", ISO dates, and greetings. */
 static int memory_exchange(const stnlabz_module_command_t *command,
@@ -1298,7 +1298,16 @@ static int memory_exchange(const stnlabz_module_command_t *command,
     if(length>SPARKLES_MEMORY_TEXT_MAX)return 0;
     memcpy(req.account,command->account,strlen(command->account)+1U);
     memcpy(req.utterance,command->arguments,length+1U);
-    req.record=length>=24U ? 1U : 0U;
+    /* Store volunteered contact facts even when short. These are speaker
+     * claims, not verified identity or authorization evidence. */
+    req.record=length>=24U || strstr(command->arguments,"my name is ") ||
+               strstr(command->arguments,"My name is ") ||
+               strstr(command->arguments,"call me ") ||
+               strstr(command->arguments,"Call me ") ||
+               strstr(command->arguments,"my email ") ||
+               strstr(command->arguments,"My email ") ||
+               strstr(command->arguments,"my phone ") ||
+               strstr(command->arguments,"My phone ") ? 1U : 0U;
     memset(memory,0,sizeof *memory);
     rc=owner->invoke_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,
                              &req,sizeof req,memory,sizeof *memory,&used);
