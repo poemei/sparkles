@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 5U
+#define OLLAMA_VERSION_PATCH 6U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -795,8 +795,8 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         else switch(out.status) {
             case SPARKLES_MARIADB_MUTATE_APPLIED:
                 result=state.operation==SPARKLES_MARIADB_MUTATE_CANCEL?
-                     "The selected appointment was canceled in MariaDB.":
-                     "The selected appointment was updated in MariaDB.";
+                     "Your appointment has been canceled.":
+                     "Your appointment has been updated.";
                 break;
             case SPARKLES_MARIADB_MUTATE_STALE:
                 result="That appointment changed or was already canceled. No new change applied.";
