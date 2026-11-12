@@ -40,7 +40,7 @@ internal static class Program
             {
                 SingleReader = true,
                 SingleWriter = false,
-                FullMode = BoundedChannelFullMode.DropWrite
+                FullMode = BoundedChannelFullMode.Wait
             });
 
             client.Network.Disconnected += (_, _) => disconnected.TrySetResult(true);
