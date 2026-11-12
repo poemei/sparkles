@@ -1641,8 +1641,11 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
    if(result==cases[i].expected &&
       (result!=1 || !strcmp(name,cases[i].name)))++p;
    else ok=0;
+   if(cases[i].expected<0) {
+    ++ne;
+    if(result==cases[i].expected)++np;
+   }
   }
-  ne+=2;np+=2; /* The rejected cases are checked in the loop above. */
  }
  /* Regression: schedule reads must not trigger appointment extraction. */
  {
