@@ -1,4 +1,4 @@
-# Sparkles Second Life transport — native C v0.2.0
+# Sparkles Second Life transport — native C v0.2.1
 
 This module is in-process native C11, loaded by the existing STN-Labz
 Core module ABI. It does NOT use Corrade, C#, C++, .NET, or another
@@ -55,6 +55,20 @@ configuration fields**. The implementation sends neutral values
 internally (all-zero MAC and UUID); whether the grid currently accepts
 these values and the XML-RPC endpoint is UNVERIFIED. No actual device
 identifiers are collected from the server.
+
+## ABI qualification (v0.2.1)
+
+Core requires at least `STNLABZ_MODULE_MIN_TESTS` (10) qualification
+checks, even when all earlier checks pass. SL v0.2.0 executed only 3
+and was denied hotload by Core as qualification result 8. Version
+0.2.1 adds 18 concrete offline checks covering UUID validation and
+round trip, correct circuit packet layout and byte order, movement
+packet layout, decoding and malformed/bounded packet rejection.
+The module returns qualification success only when at least 10
+checks execute and all pass; it does not loosen Core requirements.
+
+**The 2026-11-12 operator hotload failure was observed; the v0.2.1
+fix is source committed only until compiled and hotload-tested.**
 
 ## Build and offline regression
 
