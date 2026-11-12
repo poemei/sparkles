@@ -1,4 +1,5 @@
 #include <mysql.h>
+#include <stdio.h>
 #include <string.h>
 #include "mariadb_internal.h"
 
