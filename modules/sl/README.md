@@ -90,7 +90,7 @@ Use the existing Core module hotload mechanism to activate the new
 binary; do not reboot the server. After operator activation, inspect:
 
 ```sh
-journalctl -u sparkles -b --no-pager | grep '\\[SL\\]'
+journalctl -u sparkles -b --no-pager | grep -F '[SL]'
 ```
 
 Useful milestone messages include `private IM accepted into Core dispatch
