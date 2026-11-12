@@ -270,6 +270,14 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
            strstr(request,"structured calendar appointment data") &&
            strstr(request,"EVENT|UNKNOWN|14:00|16:00") &&
            strstr(request,"\"temperature\":0"),&e,&p);
+    expect(sparkles_ollama_build_schedule_request(
+           "test-model",
+           "I have an appointment tomorrow 11/12/2026 at the River with management at 4:30pm PST",
+           request,sizeof request) &&
+           strstr(request,"UNKNOWN as END") &&
+           strstr(request,"MM/DD/YYYY") &&
+           strstr(request,"16:30|UNKNOWN"),
+           &e,&p);
 
     ne = 1;
     np = !sparkles_ollama_extract_response(NULL, response, sizeof response);
