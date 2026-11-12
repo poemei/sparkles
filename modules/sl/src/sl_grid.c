@@ -131,7 +131,10 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
         if ((size_t)count <= (view->payload_size-1U)/4U) {
             for (i=0U;i<count;++i) {
                 uint32_t seq=read_u32le(view->payload+1U+i*4U);
+                size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
+                for (j=0U;j<SL_OUTSTANDING_IM;++j)
+                    clear_ack(&outgoing[j],seq);
             }
         }
     }
@@ -158,6 +161,8 @@ static int resend(int fd, reliable_t *slot, uint64_t now)
 {
     if (!slot->pending || now-slot->sent_at < SL_RETRY_MS) return 1;
     if (slot->attempts >= SL_MAX_RESENDS) return 0;
+    /* Retransmissions carry the Resent flag and preserve sequence ID. */
+    slot->bytes[0] |= 0x20U;
     if (!send_packet(fd,slot->bytes,slot->length)) return 0;
     slot->sent_at=now;
     ++slot->attempts;
