@@ -16,7 +16,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 6U
+#define OLLAMA_VERSION_PATCH 7U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1401,11 +1401,17 @@ static stnlabz_module_result_t chat_controller(
   * reply disclose them; the account holder receives the response in DM. */
  if(recent_available || (memory_available && memory.recalled &&
                           memory.previous[0])) {
-  /* History may be private: send only to this account's current DM. */
-  if(!owner || !owner->send_private_message ||
-     !command->sender[0] ||
-     !owner->send_private_message(command->sender,out.text))
-   return STNLABZ_MODULE_ERR_INVALID_STATE;
+  /* Second Life's authenticated private IM transport owns the response.
+   * send_private_message is the IRC service and cannot target an SL UUID. */
+  if(!strncmp(command->account,"sl:",3U)) {
+   if(!reply(reply_context,out.text))return STNLABZ_MODULE_ERR_INVALID_STATE;
+  } else {
+   /* Preserve the existing IRC private delivery behavior. */
+   if(!owner || !owner->send_private_message ||
+      !command->sender[0] ||
+      !owner->send_private_message(command->sender,out.text))
+    return STNLABZ_MODULE_ERR_INVALID_STATE;
+  }
   dialogue_record(command->account,command->arguments,out.text);
   return STNLABZ_MODULE_OK;
  }
