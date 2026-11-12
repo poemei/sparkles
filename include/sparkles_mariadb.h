@@ -1,9 +1,8 @@
 #ifndef SPARKLES_MARIADB_H
 #define SPARKLES_MARIADB_H
 
-/* Private Core ABI 1.5 services. Caller authentication is not part of the ABI.
- * Do not expose appointment lookup to IRC/chat until verified caller identity
- * and authorization are implemented. */
+/* Private Core ABI 1.5 services. Callers must forward a verified transport
+ * account; MariaDB checks the account allowlist before returning records. */
 #define SPARKLES_MARIADB_CHECK_SERVICE "sparkles.mariadb.appointments.check"
 #define SPARKLES_MARIADB_CREATE_SERVICE "sparkles.mariadb.appointments.create"
 #define SPARKLES_MARIADB_STATUS_SERVICE "sparkles.mariadb.status"
@@ -17,7 +16,10 @@ typedef struct {
 } sparkles_mariadb_status_t;
 
 /* Date-only inclusive start and exclusive end; both YYYY-MM-DD. */
+/* Caller supplies a server-verified account; MariaDB applies its allowlist.
+ * Date-only inclusive start and exclusive end; both YYYY-MM-DD. */
 typedef struct {
+    char account[128];
     char from_date[11];
     char until_date[11];
 } sparkles_mariadb_appointments_request_t;
