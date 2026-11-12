@@ -82,7 +82,7 @@ static int load_columns(MYSQL *db,contact_schema_t *s)
     static const char *const c_display[]={"display_name","name",NULL};
     static const char *const i_fk[]={"contact_id",NULL};
     static const char *const i_provider[]={"platform","provider","source","identity_type","identity_platform","identity_source",NULL};
-    static const char *const i_value[]={"identity_value","platform_user_id","external_uuid",
+    static const char *const i_value[]={"platform_identifier","identity_value","platform_user_id","external_uuid",
         "external_id","platform_id","identifier","agent_uuid","avatar_uuid","uuid",NULL};
     static const char *const i_display[]={"display_name","agent_name","username",NULL};
     MYSQL_RES *res;
@@ -196,6 +196,33 @@ done:
     mysql_stmt_close(st);
     return result;
 }
+/* Do not create another human record when an unlinked avatar appears to
+ * refer to an existing contact. A matching name is not a verified cross-
+ * platform identity link and must never inherit that contact's permissions. */
+static int existing_contact_collision(MYSQL *db,const contact_schema_t *s,
+                                      const char *display,const char *first)
+{
+    char sql[256];
+    MYSQL_STMT *st=NULL;
+    MYSQL_BIND in[2]={{0}};
+    unsigned long lengths[2];
+    int result=-1;
+    if(!s->display[0])return 0;
+    if(snprintf(sql,sizeof sql,"SELECT 1 FROM contacts WHERE `%s`=? "
+        "AND `%s`=? LIMIT 1",s->display,s->first)>=(int)sizeof sql)
+        return -1;
+    st=mysql_stmt_init(db);
+    if(!st)return -1;
+    bind_string(&in[0],(char *)display,&lengths[0]);
+    bind_string(&in[1],(char *)first,&lengths[1]);
+    if(mysql_stmt_prepare(st,sql,(unsigned long)strlen(sql)) ||
+       mysql_stmt_bind_param(st,in) || mysql_stmt_execute(st) ||
+       mysql_stmt_store_result(st))goto done;
+    result=mysql_stmt_num_rows(st)>0U?1:0;
+done:
+    mysql_stmt_close(st);
+    return result;
+}
 static int get_first(MYSQL *db,const contact_schema_t *s,
                      unsigned long long *id,char name[64])
 {
@@ -285,6 +312,9 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             ok=1;
             goto done;
         }
+        /* Name-only matches cannot authorize a link or duplicate a person. */
+        if(existing_contact_collision(db,&s,req->avatar_name,
+                                      req->first_name)!=0)goto done;
         if(s.display[0]) {
             if(snprintf(sql,sizeof sql,
                  "INSERT INTO contacts (`%s`,`%s`) VALUES (?,?)",
