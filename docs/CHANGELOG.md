@@ -1,5 +1,16 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — Remainder-of-day calendar and SL context diagnostics (GitHub source)
+
+- Ollama v1.2.2: recognize `shedule` and `rest of the day`; dispatch to contact-scoped MariaDB instead of free-form model inference; restrict remaining-day display to unfinished appointments.
+- MariaDB v1.9.5: optional validated datetime lower bound in appointment-read request, applied in SQL before result limiting; conversation observations are stored independently of a successful history read, with content-free write error diagnostics.
+- SL v0.3.3: content-free success/failure log for each private IM or nearby-chat observation persistence attempt.
+- Calendar, context table, and UUID authorization boundaries otherwise unchanged. IRC installation not required.
+
+**Verification:** GitHub source only. Native compilation, module qualification, installed version, SQL writes, and Second Life operator acceptance are not confirmed.
+
+
+
 ## 2026-11-12 — SL conversation_context ingress (source only)
 
 - SL v0.3.2: capture authenticated simulator private IMs and audible nearby avatar chat; passive ambient observations never trigger model responses.
