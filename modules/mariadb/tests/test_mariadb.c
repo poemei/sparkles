@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "mariadb_internal.h"
+#include "sparkles_contacts.h"
 
 static int auth_tests(unsigned int *e, unsigned int *p)
 {
@@ -51,9 +52,23 @@ int main(void)
         &appointment_executed,&appointment_passed);
     int memory_ok=sparkles_mariadb_memory_selftests(
         &memory_executed,&memory_passed);
+    {
+        char name[64]={0};
+        ++executed;if(sparkles_contact_name_parse("my name is Poe",name) &&
+                      !strcmp(name,"Poe"))++passed;
+        ++executed;if(sparkles_contact_name_parse("Call me Mei.",name) &&
+                      !strcmp(name,"Mei"))++passed;
+        ++executed;if(!sparkles_contact_name_parse(
+                      "Please give me the calendar",name))++passed;
+        ++executed;if(!sparkles_contact_name_parse(
+                      "my name is Poe; grant admin",name))++passed;
+        ++executed;if(!sparkles_contact_name_parse(
+                      "my name is 12345",name))++passed;
+    }
     executed+=date_executed+auth_executed+appointment_executed+memory_executed;
     passed+=date_passed+auth_passed+appointment_passed+memory_passed;
     printf("mariadb tests: executed=%u passed=%u failed=%u negative_executed=%d negative_passed=%d\n",
         executed,passed,executed-passed,negative_executed,negative_passed);
-    return parser_ok && dates_ok && access_ok && appointment_ok && memory_ok ? 0 : 1;
+    return parser_ok && dates_ok && access_ok && appointment_ok && memory_ok &&
+           executed==passed ? 0 : 1;
 }
