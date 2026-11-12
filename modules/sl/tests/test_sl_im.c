@@ -36,7 +36,7 @@ int main(void)
     input[33U]^=1U;
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[33U]^=1U;
-    input[115U]=1U; /* Embedded NUL in text. */
+    input[115U]=1U; /* Missing trailing NUL. */
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[115U]=0U;
     input[111U]=0U;
@@ -46,26 +46,27 @@ int main(void)
     memcpy(session.agent,own,16U);
     memcpy(session.session,conversation,16U);
     assert(sparkles_sl_im_encode(&session,sender,conversation,42U,
-                                "Hi",packet,sizeof packet,&used));
-    assert(used==121U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
+                                "MsSparkles Resident","Hi",packet,sizeof packet,&used));
+    assert(used==140U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
     assert(packet[6U]==0xffU && packet[7U]==0xffU &&
            packet[8U]==0U && packet[9U]==254U);
     assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
     assert(view.message_frequency==2U && view.message_id==254U);
-    assert(view.sequence==42U && view.payload_size==111U);
+    assert(view.sequence==42U && view.payload_size==130U);
     assert(!memcmp(view.payload,own,16U));
     assert(!memcmp(view.payload+33U,sender,16U));
     assert(!memcmp(view.payload+83U,conversation,16U));
     assert(view.payload[82U]==0U);
-    assert(view.payload[103U]==0U);
-    assert(view.payload[104U]==3U && view.payload[105U]==0U);
-    assert(!strcmp((const char *)(view.payload+106U),"Hi"));
+    assert(view.payload[103U]==19U);
+    assert(!strcmp((const char *)(view.payload+104U),"MsSparkles Resident"));
+    assert(view.payload[123U]==3U && view.payload[124U]==0U);
+    assert(!strcmp((const char *)(view.payload+125U),"Hi"));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,0U,
-                                 "Hi",packet,sizeof packet,&used));
+                                 "MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,1U,
-                                 "",packet,sizeof packet,&used));
+                                 "MsSparkles Resident","",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,1U,
-                                 "Hi",packet,10U,&used));
+                                 "MsSparkles Resident","Hi",packet,10U,&used));
     puts("SL private IM codec regression: PASS");
     return 0;
 }
