@@ -1409,7 +1409,11 @@ static stnlabz_module_result_t chat_controller(
      STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
   }
   if(sl_know_question(command->arguments)) {
-   if(profile_available && profile.found && profile.first_name[0]) {
+   if(!profile_available)
+    return reply(reply_context,
+      "I couldn't check my saved contact records right now.") ?
+      STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+   if(profile.found && profile.first_name[0]) {
     int n=snprintf(message,sizeof message,
          "I have your Second Life avatar linked to a contact record. "
          "You told me your first name is %s.",profile.first_name);
