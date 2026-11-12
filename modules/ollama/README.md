@@ -1,3 +1,5 @@
+**Second Life executive calendar reply routing (GitHub source, 2026-11-12):** In Ollama v1.1.10, calendar read responses, scheduling prompts, summaries, confirmations, cancellation and rescheduling messages use the incoming Core reply callback. The previous IRC `send_private_message` delivery path was removed from executive scheduling, preventing SL avatar names from being sent as IRC DM destinations. Bounded schedule-read results are returned in a single IM, with an overflow/has-more indicator when space permits. A callback qualification probe was added; native compilation, SL end-to-end delivery, and operator acceptance remain unverified. The operator removed IRC from the running installation; this source correction does not install or activate it.
+
 # Sparkles Ollama inference module
 
 The Ollama module implements the established STN-LABZ shared module ABI. Sparkles Core routes ordinary conversation to its registered `chat` controller. Identity and mission questions are answered by the registered `sparkles.identity.answer` service when recognized.
