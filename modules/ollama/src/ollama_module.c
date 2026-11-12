@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 8U
+#define OLLAMA_VERSION_PATCH 9U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1345,10 +1345,23 @@ static int sl_introduction(const char *text,char name[64])
  name[j]=0;
  return 1;
 }
+static const char *sl_strip_address(const char *text)
+{
+ if(!text)return "";
+ while(*text==' ')++text;
+ /* The user can address Sparkles by name before an identity question.
+  * This must not fall through to free-form inference or session dialogue. */
+ if(!strncasecmp(text,"sparkles",8U) &&
+    (text[8]==','||text[8]==':'||text[8]==' ')) {
+  text+=8;
+  if(*text==','||*text==':')++text;
+  while(*text==' ')++text;
+ }
+ return text;
+}
 static int sl_know_question(const char *text)
 {
- if(!text)return 0;
- while(*text==' ')++text;
+ text=sl_strip_address(text);
  return !strncasecmp(text,"do you know me",14U) ||
         !strncasecmp(text,"who am i",8U) ||
         !strncasecmp(text,"remember my name",16U) ||
@@ -1385,7 +1398,7 @@ static stnlabz_module_result_t chat_controller(
   size_t contact_used=0U;
   stnlabz_module_result_t contact_status;
   char message[256], volunteered[64]={0};
-  int introduced=sl_introduction(command->arguments,volunteered);
+  int introduced=sl_introduction(sl_strip_address(command->arguments),volunteered);
   memcpy(identify.account,command->account,strlen(command->account)+1U);
   memcpy(identify.avatar_name,command->sender,
          strlen(command->sender)+1U);
