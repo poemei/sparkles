@@ -6,7 +6,8 @@
 
 /* All data is scoped to a server-verified account. Each observation is an
  * unverified statement by the speaker, not a verified third-party fact.
- * This module does not resolve or assert cross-transport identity. */
+ * This module does not resolve or assert cross-transport identity.
+ * SL observations are segregated by verified simulator UUID namespace. */
 int sparkles_mariadb_context_exchange(
     MYSQL *db,
     const sparkles_memory_exchange_request_t *in,
@@ -22,11 +23,11 @@ int sparkles_mariadb_context_exchange(
         "INSERT INTO conversation_context "
         "(account,subject,category,content,context_type,source,"
         "verification,visibility,status) "
-        "VALUES (?,?,'conversation',?,'OBSERVATION','IRC',"
+        "VALUES (?,?,'conversation',?,'OBSERVATION',?,"
         "'UNVERIFIED','PRIVATE','ACTIVE')";
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind[3]={{0}}, col={{0}};
-    unsigned long lengths[3],found_len=0U;
+    MYSQL_BIND bind[4]={{0}}, col={{0}};
+    unsigned long lengths[4],found_len=0U;
     char content[512];
     char *account;
     int rc,okay=1;
@@ -39,6 +40,7 @@ int sparkles_mariadb_context_exchange(
     lengths[0]=(unsigned long)strlen(in->account);
     lengths[1]=lengths[0];
     lengths[2]=(unsigned long)strlen(in->utterance);
+    lengths[3]=!strncmp(in->account,"sl:",3U)?2UL:3UL;
 
     stmt=mysql_stmt_init(db);
     if(!stmt) return 0;
@@ -94,6 +96,10 @@ int sparkles_mariadb_context_exchange(
     bind[2].buffer=(void *)in->utterance;
     bind[2].buffer_length=lengths[2];
     bind[2].length=&lengths[2];
+    bind[3].buffer_type=MYSQL_TYPE_STRING;
+    bind[3].buffer=(void *)(!strncmp(in->account,"sl:",3U)?"SL":"IRC");
+    bind[3].buffer_length=lengths[3];
+    bind[3].length=&lengths[3];
     if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
     if(okay&&mysql_stmt_execute(stmt))okay=0;
     if(okay&&mysql_stmt_affected_rows(stmt)!=1ULL)okay=0;
