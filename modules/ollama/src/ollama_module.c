@@ -474,7 +474,9 @@ static int mutation_hour_hint(const char *text,char timepart[6])
            text[i+1]>='0'&&text[i+1]<='9' &&
            text[i+2]>='0'&&text[i+2]<='5' &&
            text[i+3]>='0'&&text[i+3]<='9' &&
-           (i+4U==n || text[i+4U]<'0'||text[i+4U]>'9')){
+           (i+4U==n || text[i+4U]<'0'||text[i+4U]>'9') &&
+           (i+4U==n || (text[i+4U]!='-' && text[i+4U]!='/')) &&
+           (i==0U || (text[i-1]!='-' && text[i-1]!='/'))){
             hh=(unsigned)(text[i]-'0')*10U+(unsigned)(text[i+1]-'0');
             mm=(unsigned)(text[i+2]-'0')*10U+(unsigned)(text[i+3]-'0');
             if(hh<24U && snprintf(timepart,6U,"%02u:%02u",hh,mm)==5)return 1;
@@ -944,7 +946,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         unsigned int i;
         int needs_date=0,needs_end=0;
         char explicit_date[11];
-        int has_explicit=sparkles_schedule_find_date(text,explicit_date);
+        int has_explicit=date_from_human(text,explicit_date);
         for(i=0U;i<plan.count;++i) {
             /* Only an explicit, validated human date is authoritative. */
             if(has_explicit)
@@ -1391,6 +1393,15 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
    int passed=calendar_mutation_intent(cases[i].text)==cases[i].expected;
    ++e;if(passed)++p;else ok=0;
   }
+ }
+ {
+    char hint[6]={0},date[11]={0};
+    ++e;if(mutation_hour_hint("cancel 1630 tomorrow at River",hint) &&
+           !strcmp(hint,"16:30"))++p;else ok=0;
+    ++e;if(!mutation_hour_hint("cancel 2026-11-12 meeting",hint))++p;else ok=0;
+    ++e;if(date_from_human("tomorrow 11/12/2026 at River",date) &&
+           !strcmp(date,"2026-11-12"))++p;else ok=0;
+    ++e;if(calendar_mutation_intent("cancel my meeting for tomorrow"))++p;else ok=0;
  }
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
