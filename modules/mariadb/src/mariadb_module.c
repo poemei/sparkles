@@ -384,13 +384,16 @@ static stnlabz_module_result_t check_service(
     void *response,size_t response_size,size_t *used,void *ctx)
 {
     static const char sql[] =
-        "SELECT id FROM appointments WHERE status='scheduled' "
-        "AND start_time < ? AND end_time > ? LIMIT 1";
+        "SELECT a.id FROM appointments a WHERE a.status='scheduled' "
+        "AND a.start_time < ? AND a.end_time > ? "
+        "AND EXISTS (SELECT 1 FROM appointment_participants ap "
+        "WHERE ap.appointment_id=a.id AND ap.contact_id=?) LIMIT 1";
     const sparkles_mariadb_create_request_t *in=request;
     sparkles_mariadb_check_reply_t *out=response;
     sparkles_mariadb_new_appointment_t appointment;
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind[2]={{0}};
+    MYSQL_BIND bind[3]={{0}};
+    unsigned long long contact_id=0ULL;
     unsigned long lens[2];
     char source[256];
     int n,ok=1,conflict=0;
@@ -426,8 +429,12 @@ static stnlabz_module_result_t check_service(
     bind[1].buffer_type=MYSQL_TYPE_STRING;
     bind[1].buffer=appointment.start_time;
     bind[1].buffer_length=lens[1];bind[1].length=&lens[1];
+    bind[2].buffer_type=MYSQL_TYPE_LONGLONG;
+    bind[2].buffer=&contact_id;bind[2].is_unsigned=1;
     (void)pthread_mutex_lock(&db_lock);
-    if(!db||mysql_ping(db))ok=0;
+    if(!db||mysql_ping(db)||
+       !sparkles_mariadb_participants_supported(db)||
+       !sparkles_mariadb_contact_id(db,in->account,&contact_id))ok=0;
     if(ok)stmt=mysql_stmt_init(db);
     if(!stmt)ok=0;
     if(ok&&mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))ok=0;
