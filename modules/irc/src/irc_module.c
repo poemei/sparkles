@@ -22,8 +22,9 @@
 
 #define IRC_VERSION_MAJOR 1U
 #define IRC_VERSION_MINOR 1U
-#define IRC_VERSION_PATCH 4U
+#define IRC_VERSION_PATCH 5U
 #define IRC_OUTBOUND_MAX 32U
+#define IRC_INBOUND_MAX 16U
 #define IRC_STARTUP_WAIT_SECONDS 30U
 
 typedef struct {
@@ -33,6 +34,12 @@ typedef struct {
 } irc_outbound_t;
 
 static pthread_t worker;
+static pthread_t dispatch_worker;
+static pthread_mutex_t inbound_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t inbound_ready = PTHREAD_COND_INITIALIZER;
+static char inbound[IRC_INBOUND_MAX][SPARKLES_IRC_LINE_MAX];
+static size_t inbound_head, inbound_tail, inbound_count;
+static int dispatch_started;
 static pthread_mutex_t outbound_lock = PTHREAD_MUTEX_INITIALIZER;
 static atomic_int stop_requested;
 static atomic_int active_socket;
@@ -312,6 +319,32 @@ static void sanitize_irc_text(char *text)
     }
 }
 
+/* Model and database operations execute outside the IRC socket thread.
+ * The bounded FIFO never blocks PING/PONG or TLS reads under inference load. */
+static int queue_inbound(const char *line)
+{
+    size_t length;
+    if(!line || (length=strlen(line))>=SPARKLES_IRC_LINE_MAX)return 0;
+    if(pthread_mutex_lock(&inbound_lock)!=0)return 0;
+    if(atomic_load(&stop_requested) || inbound_count==IRC_INBOUND_MAX) {
+        (void)pthread_mutex_unlock(&inbound_lock);
+        return 0;
+    }
+    memcpy(inbound[inbound_tail],line,length+1U);
+    inbound_tail=(inbound_tail+1U)%IRC_INBOUND_MAX;
+    ++inbound_count;
+    (void)pthread_cond_signal(&inbound_ready);
+    (void)pthread_mutex_unlock(&inbound_lock);
+    return 1;
+}
+static void reset_inbound(void)
+{
+    (void)pthread_mutex_lock(&inbound_lock);
+    memset(inbound,0,sizeof inbound);
+    inbound_head=inbound_tail=inbound_count=0U;
+    (void)pthread_mutex_unlock(&inbound_lock);
+}
+
 static void handle_conversation_message(const char *line)
 {
     char sender[SPARKLES_IRC_NICK_MAX];
@@ -402,6 +435,30 @@ static void handle_conversation_message(const char *line)
         (void)queue_outbound(0, target, response.text);
 }
 
+/* Serializes application routing while keeping the IRC session responsive.
+ * Stop joins this worker before unregistering Core services. */
+static void *irc_dispatch_worker(void *unused)
+{
+    char line[SPARKLES_IRC_LINE_MAX];
+    (void)unused;
+    for(;;) {
+        (void)pthread_mutex_lock(&inbound_lock);
+        while(!inbound_count && !atomic_load(&stop_requested))
+            (void)pthread_cond_wait(&inbound_ready,&inbound_lock);
+        if(atomic_load(&stop_requested)) {
+            (void)pthread_mutex_unlock(&inbound_lock);
+            break;
+        }
+        memcpy(line,inbound[inbound_head],sizeof line);
+        memset(inbound[inbound_head],0,sizeof inbound[inbound_head]);
+        inbound_head=(inbound_head+1U)%IRC_INBOUND_MAX;
+        --inbound_count;
+        (void)pthread_mutex_unlock(&inbound_lock);
+        handle_conversation_message(line);
+    }
+    return NULL;
+}
+
 static int send_authenticate_plain(SSL *ssl)
 {
     char encoded[1024];
@@ -477,7 +534,7 @@ static int handle_line(SSL *ssl, const char *line, int *sasl_seen,
     }
 
     if (!strcmp(command, "PRIVMSG")) {
-        handle_conversation_message(line);
+        if (!queue_inbound(line)) status("inbound request queue full or unavailable; message dropped");
         return 1;
     }
 
@@ -787,11 +844,22 @@ static stnlabz_module_result_t irc_start(const stnlabz_module_host_t *host)
     }
 
     reset_outbound();
+    reset_inbound();
     atomic_store(&stop_requested, 0);
     atomic_store(&active_socket, -1);
     atomic_store(&online, 0);
 
+    if (pthread_create(&dispatch_worker, NULL, irc_dispatch_worker, NULL) != 0) {
+        sparkles_irc_config_clear(&config);
+        unregister_transport_services();
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    dispatch_started = 1;
     if (pthread_create(&worker, NULL, irc_worker, NULL) != 0) {
+        atomic_store(&stop_requested, 1);
+        (void)pthread_cond_broadcast(&inbound_ready);
+        (void)pthread_join(dispatch_worker, NULL);
+        dispatch_started = 0;
         sparkles_irc_config_clear(&config);
         unregister_transport_services();
         return STNLABZ_MODULE_ERR_START_FAILED;
@@ -814,6 +882,12 @@ static stnlabz_module_result_t irc_start(const stnlabz_module_host_t *host)
     }
     (void)pthread_join(worker, NULL);
     worker_started = 0;
+    (void)pthread_cond_broadcast(&inbound_ready);
+    if (dispatch_started) {
+        (void)pthread_join(dispatch_worker, NULL);
+        dispatch_started = 0;
+    }
+    reset_inbound();
     reset_outbound();
     sparkles_irc_config_clear(&config);
     unregister_transport_services();
@@ -829,6 +903,11 @@ static stnlabz_module_result_t irc_stop(void)
     if (fd >= 0) (void)shutdown(fd, SHUT_RDWR);
     if (pthread_join(worker, NULL) != 0) return STNLABZ_MODULE_ERR_STOP_FAILED;
     worker_started = 0;
+    (void)pthread_cond_broadcast(&inbound_ready);
+    if (dispatch_started && pthread_join(dispatch_worker, NULL) != 0)
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    dispatch_started = 0;
+    reset_inbound();
     atomic_store(&online, 0);
     reset_outbound();
     sparkles_irc_config_clear(&config);
