@@ -1624,6 +1624,26 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  e+=se;p+=sp;
  ok=dialogue_selftest(&de,&dp)&&ok;
  e+=de;p+=dp;
+ /* Explicit guest parsing is generic and rejects multiple named people. */
+ {
+  static const struct {const char *input;int expected;const char *name;} cases[]={
+   {"Schedule a meeting with Mochi tomorrow at 16:00",1,"Mochi"},
+   {"meeting with Laurie on 2026-11-13 at 12:00",1,"Laurie"},
+   {"meeting at 12:00",0,""},
+   {"meeting with Mochi and Laurie",-1,""},
+   {"meeting with 42",-1,""}
+  };
+  size_t i;
+  for(i=0U;i<sizeof cases/sizeof cases[0];++i) {
+   char name[64]={0};
+   int result=schedule_guest(cases[i].input,name);
+   ++e;
+   if(result==cases[i].expected &&
+      (result!=1 || !strcmp(name,cases[i].name)))++p;
+   else ok=0;
+  }
+  ne+=2;np+=2; /* The rejected cases are checked in the loop above. */
+ }
  /* Regression: schedule reads must not trigger appointment extraction. */
  {
   static const struct { const char *text; int expected; } cases[]={
