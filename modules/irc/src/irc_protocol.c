@@ -69,6 +69,97 @@ int sparkles_irc_word_present(const char *text, const char *word)
 }
 
 
+/* Transport-level privacy gate. It does not infer or create appointments:
+ * it only prevents scheduling requests from reaching Core via a channel. */
+static int schedule_word(const char *text,const char *word)
+{
+    const char *p=text;
+    size_t length=strlen(word);
+    if(!text||!word||!length)return 0;
+    while(*p) {
+        const char *start;
+        size_t n;
+        while(*p && !(isalnum((unsigned char)*p)))++p;
+        if(!*p)break;
+        start=p;
+        while(*p && (isalnum((unsigned char)*p)||*p=='_'||*p=='-'))++p;
+        n=(size_t)(p-start);
+        if(n==length && ascii_equal_nocase(start,word,length))return 1;
+    }
+    return 0;
+}
+static int schedule_phrase(const char *text,const char *phrase)
+{
+    size_t n=strlen(phrase);
+    const char *p;
+    for(p=text;*p;++p)
+        if(strlen(p)>=n && ascii_equal_nocase(p,phrase,n))return 1;
+    return 0;
+}
+int sparkles_irc_schedule_intent(const char *text)
+{
+    int scheduling,action,lookup;
+    if(!text||!*text)return 0;
+    while(*text==' '||*text=='\t')++text;
+    /* Explicit routed commands never execute in a channel. */
+    if(schedule_phrase(text,"/schedule")||
+       schedule_phrase(text,"/appointment-add")||
+       schedule_phrase(text,"/appointment-")||
+       schedule_phrase(text,"/calendar"))return 1;
+    scheduling=schedule_word(text,"schedule")||
+       schedule_word(text,"schdule")||
+       schedule_word(text,"calendar")||
+       schedule_word(text,"appointment")||
+       schedule_word(text,"appointments")||
+       schedule_word(text,"meeting")||
+       schedule_word(text,"meetings")||
+       schedule_word(text,"booking")||
+       schedule_word(text,"reservation")||
+       schedule_word(text,"reminder")||
+       schedule_word(text,"reminders");
+    lookup=schedule_phrase(text,"what do i have")||
+       schedule_phrase(text,"what have i got")||
+       schedule_phrase(text,"what am i doing tomorrow")||
+       schedule_phrase(text,"what am i doing today")||
+       schedule_phrase(text,"am i free")||
+       schedule_phrase(text,"am i available");
+    action=schedule_word(text,"add")||
+       schedule_word(text,"set")||
+       schedule_word(text,"book")||
+       schedule_word(text,"create")||
+       schedule_word(text,"change")||
+       schedule_word(text,"move")||
+       schedule_word(text,"reschedule")||
+       schedule_word(text,"cancel")||
+       schedule_word(text,"delete")||
+       schedule_word(text,"remove")||
+       schedule_word(text,"confirm")||
+       schedule_word(text,"save")||
+       schedule_word(text,"check")||
+       schedule_word(text,"show")||
+       schedule_word(text,"list")||
+       schedule_word(text,"tell")||
+       schedule_word(text,"have")||
+       schedule_word(text,"got")||
+       schedule_word(text,"tomorrow")||
+       schedule_word(text,"tommorrow")||
+       schedule_word(text,"today");
+    if(scheduling &&
+       (action||schedule_word(text,"my")||schedule_word(text,"an")||
+        schedule_word(text,"a")||schedule_word(text,"next")||
+        schedule_word(text,"upcoming")))return 1;
+    if(lookup)return 1;
+    /* A continuing scheduling turn should not be handled in a channel. */
+    if(schedule_word(text,"confirm")||schedule_word(text,"confirmed")||
+       schedule_word(text,"cancel"))return 1;
+    if(strlen(text)==5U && isdigit((unsigned char)text[0]) &&
+       isdigit((unsigned char)text[1]) && text[2]==':' &&
+       isdigit((unsigned char)text[3]) &&
+       isdigit((unsigned char)text[4]))return 1;
+    return 0;
+}
+
+
 int sparkles_irc_parse_account_tag(const char *line, char *account,
                                   size_t account_size)
 {
@@ -255,6 +346,22 @@ int sparkles_irc_run_selftests(unsigned int *executed, unsigned int *passed,
     expect(!sparkles_irc_parse_account_tag("@account= :x PRIVMSG #test :hi",account,sizeof account),&e,&p);
     expect(!sparkles_irc_parse_account_tag("@time=1 :x PRIVMSG #test :hi",account,sizeof account),&e,&p);
     expect(!sparkles_irc_parse_account_tag("@account=PoeMei :x PRIVMSG #test :hi",account,3U),&e,&p);
+
+    expect(sparkles_irc_schedule_intent("I have an appointment tomorrow 11/12/2026 at River at 4:30pm"),&e,&p);
+    expect(sparkles_irc_schedule_intent("what is my schdule for tommorrow?"),&e,&p);
+    expect(sparkles_irc_schedule_intent("/schedule 2026-11-12 2026-11-13"),&e,&p);
+    expect(sparkles_irc_schedule_intent("/appointment-add 2026-11-12 16:30 17:00 River"),&e,&p);
+    expect(sparkles_irc_schedule_intent("move my meeting to next week"),&e,&p);
+    expect(sparkles_irc_schedule_intent("cancel my appointment"),&e,&p);
+    expect(sparkles_irc_schedule_intent("remind me about my appointment"),&e,&p);
+    expect(sparkles_irc_schedule_intent("what do I have tomorrow?"),&e,&p);
+    expect(sparkles_irc_schedule_intent("confirm"),&e,&p);
+    expect(sparkles_irc_schedule_intent("17:00"),&e,&p);
+    expect(!sparkles_irc_schedule_intent("hello sparkles"),&e,&p);
+    expect(!sparkles_irc_schedule_intent("how is the weather?"),&e,&p);
+    expect(!sparkles_irc_schedule_intent("tell digicat hello"),&e,&p);
+    expect(!sparkles_irc_schedule_intent("I like the show at the River"),&e,&p);
+    expect(!sparkles_irc_schedule_intent("how does calendar software work?"),&e,&p);
 
     neg_e = 1;
     neg_p = !sparkles_irc_build_plain(NULL, "p", encoded, sizeof encoded);
