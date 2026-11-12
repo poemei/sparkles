@@ -1,6 +1,36 @@
-# Sparkles MariaDB module — v1.7.2
+# Sparkles MariaDB module — v1.8.0
 
 This module uses the Core ABI 1.5 lifecycle, registers authenticated explicit `/schedule` and `/appointment-add` commands and two named services: `sparkles.mariadb.status` and **read-only** `sparkles.mariadb.appointments.read`. The latter retrieves scheduled appointments by an explicit date range using a prepared SQL statement. An explicit authorized `/appointment-add` request can INSERT one appointment after rejecting overlaps with existing scheduled appointments. It does not update or delete appointments, alter Core/chat routing, IRC or Ollama, or grant unrelated users access. No model inference is treated as authority over database records.
+
+## v1.8.0 — Calendar authority follows contact membership
+
+All six existing MariaDB calendar authorization checks (appointment reads,
+conflict checks, creation, mutation and the explicit schedule/add commands)
+now resolve the caller's transport-verified account via the database:
+`contact_identities.platform` + `platform_identifier` must identify a
+row whose `contact_id` references an existing `contacts.id`. For
+Second Life the transport provides `sl:<UUID>`, mapped to platform
+`second_life` and the UUID as `platform_identifier`. For IRC the
+server-authenticated account maps to platform `irc` with that verified
+account string as the identifier. Display names and IRC nicknames are
+never used as substitute authority.
+
+A linked contact receives calendar access immediately. There is no
+per-contact calendar permission configuration, account allowlist file or
+manual server record required. An unknown/unlinked identity, a failed
+query, malformed identifier or disconnected database fails closed.
+`contact_permissions` is not a prerequisite for ordinary calendar
+features. The underlying calendar remains a shared appointment store:
+contact membership is access to the existing schedule, not a new
+person-specific calendar partition.
+
+The old IRC file-allowlist implementation and its tests were removed.
+This is a GitHub-source change only, not evidence of native build, deployed
+modules, live SQL lookup or end-to-end operator acceptance. Rebuild,
+qualify and activate MariaDB v1.8.0, then test SL schedule read, conflict
+check, create and mutation with a verified linked contact and negative
+tests from an unknown avatar. IRC also requires its authenticated account
+to be represented in `contact_identities` (nicknames do not count).
 
 ## v1.7.2 — Contact identity schema readback
 
@@ -113,7 +143,7 @@ This service uses bound SQL parameters; no SQL is constructed from natural-langu
 
 IRC transport v1.1.3 copies the **server-authenticated IRCv3 `account` tag**, received over verified TLS with `account-tag` capability negotiated, into `sparkles_route_request_t.account`. A visible IRC nickname does **not** establish identity. Messages without account tags, with anonymous `account=*`, or malformed tags have an empty account and are denied schedule access. This code does not alter the shared ABI or Core router.
 
-Create the private allowlist on the VPS (the account running `sparkles.service` is shown as `stnchain` in current operator logs):
+Historical note (superseded by v1.8.0): The following file-allowlist instructions were once required for older versions. They are **not** required or used by v1.8.0.\n\nCreate the private allowlist on the VPS (the account running `sparkles.service` is shown as `stnchain` in current operator logs):
 
 ```sh
 sudo install -d -o stnchain -g stnchain -m 0700 /opt/sparkles/auth/mariadb
