@@ -27,34 +27,6 @@ typedef struct {
     size_t capacity;
 } response_buf_t;
 
-static int read_password(const char *path, char secret[256])
-{
-    int fd, good = 0;
-    struct stat st;
-    ssize_t n;
-    size_t count = 0U;
-    if (!path || path[0] != '/' || strlen(path) >= 256U) return 0;
-    fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd < 0) return 0;
-    if (fstat(fd, &st) || !S_ISREG(st.st_mode) ||
-        st.st_uid != geteuid() || (st.st_mode & 077U) != 0U ||
-        st.st_size > 255 || st.st_size < 1) goto done;
-    while (count < 255U) {
-        n = read(fd, secret + count, 255U - count);
-        if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) break;
-        count += (size_t)n;
-    }
-    while (count && (secret[count-1U] == '\n' || secret[count-1U] == '\r'))
-        --count;
-    if (!count || memchr(secret, '\0', count)) goto done;
-    secret[count] = '\0';
-    good = 1;
-done:
-    (void)close(fd);
-    if (!good) OPENSSL_cleanse(secret, 256U);
-    return good;
-}
 static int password_digest(const char *secret, char output[36])
 {
     unsigned char digest[EVP_MAX_MD_SIZE];
@@ -265,11 +237,12 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
     response_buf_t response = {0};
     int ok = 0;
     if (!config || !reply || !config->first[0] || !config->last[0] ||
-        !config->password_file[0] || !config->mac[0] || !config->id0[0] ||
+        !config->password[0] || !config->mac[0] || !config->id0[0] ||
         !config->start[0]) return 0;
     memset(reply,0,sizeof *reply);
-    if (!read_password(config->password_file,secret) ||
-        !password_digest(secret,hashed)) goto done;
+    if (strlen(config->password) >= sizeof secret) goto done;
+    memcpy(secret, config->password, strlen(config->password) + 1U);
+    if (!password_digest(secret,hashed)) goto done;
     request=xmlBufferCreate();
     if (!request || !make_request(config,hashed,request)) goto done;
     curl=curl_easy_init();
