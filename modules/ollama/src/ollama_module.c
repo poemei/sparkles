@@ -862,6 +862,24 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  e+=se;p+=sp;
  ok=dialogue_selftest(&de,&dp)&&ok;
  e+=de;p+=dp;
+ /* Regression: schedule reads must not trigger appointment extraction. */
+ {
+  static const struct { const char *text; int expected; } cases[]={
+   {"SparklesR, what is my schedule for today?",1},
+   {"what is my schedule today?",1},
+   {"what's my schedule today?",1},
+   {"show my schedule today",1},
+   {"what's on my calendar today?",1},
+   {"schedule a meeting at 14:00",0},
+   {"I have a show today at 20:00",0},
+   {"hello Sparkles",0}
+  };
+  size_t i;
+  for(i=0;i<sizeof cases/sizeof cases[0];++i) {
+   int passed=schedule_lookup_intent(cases[i].text)==cases[i].expected;
+   ++e;if(passed)++p;else ok=0;
+  }
+ }
  q->tests_executed=e;q->tests_passed=p;q->tests_failed=e-p;
  q->negative_test_executed=ne;q->negative_test_passed=np;
  return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_QUALIFICATION;
