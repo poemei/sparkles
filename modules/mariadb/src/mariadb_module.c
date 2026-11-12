@@ -1042,7 +1042,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 3U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 4U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
