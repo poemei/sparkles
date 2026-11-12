@@ -185,3 +185,32 @@ int sparkles_mariadb_participant_add(MYSQL *db,
     mysql_stmt_close(stmt);
     return okay;
 }
+
+/* Guest association remains pending until that contact responds. */
+int sparkles_mariadb_participant_invite(MYSQL *db,
+                                       unsigned long long appointment_id,
+                                       unsigned long long contact_id)
+{
+    static const char sql[]=
+        "INSERT INTO appointment_participants "
+        "(appointment_id,contact_id,response_status) "
+        "VALUES (?,?,'pending')";
+    MYSQL_STMT *stmt;
+    MYSQL_BIND in[2]={{0}};
+    int okay=0;
+    if(!db||!appointment_id||!contact_id)return 0;
+    stmt=mysql_stmt_init(db);
+    if(!stmt)return 0;
+    in[0].buffer_type=MYSQL_TYPE_LONGLONG;
+    in[0].buffer=&appointment_id;in[0].is_unsigned=1;
+    in[1].buffer_type=MYSQL_TYPE_LONGLONG;
+    in[1].buffer=&contact_id;in[1].is_unsigned=1;
+    if(!mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql))&&
+       !mysql_stmt_bind_param(stmt,in)&&!mysql_stmt_execute(stmt)&&
+       mysql_stmt_affected_rows(stmt)==1ULL)okay=1;
+    if(!okay)fprintf(stderr,
+       "[MARIADB] guest participant insert failed: sql_errno=%u (values withheld)\n",
+       mysql_stmt_errno(stmt));
+    mysql_stmt_close(stmt);
+    return okay;
+}
