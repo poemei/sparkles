@@ -215,6 +215,17 @@ done:
     mysql_stmt_close(st);
     return ok;
 }
+static int valid_name(const char *name)
+{
+    size_t i,n;
+    if(!name || (n=strlen(name))>48U)return 0;
+    for(i=0U;i<n;++i) {
+        unsigned char c=(unsigned char)name[i];
+        if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||
+             c=='-'||c=='\''))return 0;
+    }
+    return 1;
+}
 int sparkles_mariadb_contact_identify(MYSQL *db,
     const sparkles_contact_request_t *req,sparkles_contact_reply_t *out)
 {
@@ -226,7 +237,8 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
     int found,ok=0;
     if(!db||!req||!out||!uuid_account(req->account) ||
        !memchr(req->avatar_name,0,sizeof req->avatar_name) ||
-       !memchr(req->first_name,0,sizeof req->first_name))
+       !memchr(req->first_name,0,sizeof req->first_name) ||
+       !valid_name(req->first_name))
         return 0;
     memset(out,0,sizeof *out);
     if(!load_columns(db,&s)) {
