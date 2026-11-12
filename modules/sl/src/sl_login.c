@@ -129,6 +129,7 @@ static int make_request(const sparkles_sl_login_config_t *config,
          xmlTextWriterEndElement(w) >= 0 &&
          xmlTextWriterEndElement(w) >= 0 &&
          xmlTextWriterEndElement(w) >= 0 &&
+         xmlTextWriterEndElement(w) >= 0 &&
          xmlTextWriterEndDocument(w) >= 0;
     xmlFreeTextWriter(w);
     return ok;
@@ -141,7 +142,7 @@ static size_t write_response(char *data, size_t size, size_t count, void *ptr)
     if (count && size > SIZE_MAX / count) return 0;
     bytes = size * count;
     if (bytes > SL_LOGIN_RESPONSE_MAX - out->length) return 0;
-    if (bytes > out->capacity - out->length - 1U) {
+    if (!out->data || bytes > out->capacity - out->length - 1U) {
         size_t needed = out->length + bytes + 1U;
         resized = realloc(out->data, needed);
         if (!resized) return 0;
