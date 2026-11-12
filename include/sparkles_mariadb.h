@@ -15,7 +15,6 @@ typedef struct {
     unsigned int tables_found;
 } sparkles_mariadb_status_t;
 
-/* Date-only inclusive start and exclusive end; both YYYY-MM-DD. */
 /* Caller supplies a server-verified account; MariaDB applies its allowlist.
  * Date-only inclusive start and exclusive end; both YYYY-MM-DD. */
 typedef struct {
