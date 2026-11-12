@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 1U
+#define OLLAMA_VERSION_PATCH 2U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -49,7 +49,7 @@ static int timed_commitment(const char *text)
 static int calendar_request(const char *text)
 {
     static const char *const terms[]={
-        "schedule","schdule","calendar","appointment","meeting","availability","conflict"
+        "schedule","schdule","shedule","calendar","appointment","meeting","availability","conflict"
     };
     char lower[701];
     size_t i,j,n;
@@ -107,6 +107,7 @@ static int schedule_lookup_intent(const char *text)
     lower[n]='\0';
     return strstr(lower,"what is my schedule")!=NULL ||
         strstr(lower,"my schdule")!=NULL ||
+        strstr(lower,"my shedule")!=NULL ||
         strstr(lower,"schdule for")!=NULL ||
         strstr(lower,"what's my schedule")!=NULL ||
         strstr(lower,"my schedule today")!=NULL ||
@@ -125,7 +126,8 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
     sparkles_mariadb_appointments_reply_t result={0};
     struct tm day;
     time_t now=time(NULL);
-    char lower[701], message[512];
+    char lower[701], message[512], now_time[20]={0};
+    int remaining=0;
     size_t used=0U,i,n;
     stnlabz_module_result_t rc;
     if(!schedule_lookup_intent(command->arguments))return 0;
@@ -136,6 +138,14 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
         lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
     }
     lower[n]='\0';
+    remaining=strstr(lower,"rest of the day")!=NULL ||
+              strstr(lower,"rest of today")!=NULL;
+    if(remaining) {
+        struct tm current;
+        if(!localtime_r(&now,&current) ||
+           !strftime(now_time,sizeof now_time,"%Y-%m-%d %H:%M:%S",&current))
+            return reply(ctx,"Schedule time unavailable.");
+    }
     {
         char explicit_date[11];
         if(sparkles_schedule_find_date(command->arguments,explicit_date)) {
@@ -148,7 +158,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
             memcpy(request.from_date,explicit_date,11U);
         } else {
             if(!strstr(lower,"today") && !strstr(lower,"tomorrow") &&
-               !strstr(lower,"tommorrow"))
+               !strstr(lower,"tommorrow") && !remaining)
                 return reply(ctx,"Which date? Please give YYYY-MM-DD or MM/DD/YYYY.");
             if(!localtime_r(&now,&day))
                 return reply(ctx,"Schedule date unavailable.");
@@ -191,18 +201,23 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
     /* Reply through the originating Core transport. Second Life dispatch
      * supports one bounded response per private IM, never IRC delivery. */
     if(!result.count)
-        return reply(ctx,"No scheduled appointments stored for the requested date.");
+        return reply(ctx,remaining?"No appointments remaining today.":
+                         "No scheduled appointments stored for the requested date.");
     {
         size_t written=0U;
-        unsigned int shown=0U;
+        unsigned int shown=0U,eligible=0U;
         int header=snprintf(message,sizeof message,
-                            "Schedule for %s:",request.from_date);
+                            remaining?"Remaining schedule for %s:":"Schedule for %s:",
+                            request.from_date);
         if(header<0||(size_t)header>=sizeof message)
             return reply(ctx,"Schedule date unavailable.");
         written=(size_t)header;
         for(i=0U;i<result.count;++i) {
             const sparkles_mariadb_appointment_t *e=&result.records[i];
-            int length=snprintf(message+written,sizeof message-written,
+            int length;
+            if(remaining && strcmp(e->end_time,now_time)<=0)continue;
+            ++eligible;
+            length=snprintf(message+written,sizeof message-written,
                 "\n\n- %.5s - %.5s  %s",
                 e->start_time+11U,e->end_time+11U,e->title);
             if(length<0)return reply(ctx,"Schedule record invalid.");
@@ -214,8 +229,9 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
             ++shown;
         }
         if(!shown)
-            return reply(ctx,"Schedule records exceed message delivery limit.");
-        if(shown<result.count || result.has_more) {
+            return reply(ctx,eligible?"Schedule records exceed message delivery limit.":
+                             "No appointments remaining today.");
+        if(shown<eligible || result.has_more) {
             const char *note=" (More appointments exist; narrow the date range.)";
             size_t note_len=strlen(note);
             if(written+note_len<sizeof message)
@@ -1660,6 +1676,8 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
    {"what is my schedule for tomorrow?",1},
    {"what is my schedule for 2026-11-12",1},
    {"what is my schdule for tommorrow?",1},
+   {"Sparkles bish what is my shedule for the rest of the day?",1},
+   {"what is my shedule for the rest of today?",1},
    {"what's on my calendar today?",1},
    {"schedule a meeting at 14:00",0},
    {"I have a show today at 20:00",0},
