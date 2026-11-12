@@ -47,7 +47,7 @@ int sparkles_mariadb_memory_valid(
 int sparkles_mariadb_memory_selftests(
     unsigned int *executed,unsigned int *passed)
 {
-    sparkles_memory_exchange_request_t req={{0}};
+    sparkles_memory_exchange_request_t req={0};
     unsigned int e=0,p=0;
 #define CHECK(condition) do{++e;if(condition)++p;}while(0)
     memcpy(req.account,"PoeMei",7U);
