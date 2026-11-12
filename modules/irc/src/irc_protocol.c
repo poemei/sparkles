@@ -96,6 +96,33 @@ static int schedule_phrase(const char *text,const char *phrase)
         if(strlen(p)>=n && ascii_equal_nocase(p,phrase,n))return 1;
     return 0;
 }
+static int schedule_time_token(const char *text)
+{
+    const char *p=text;
+    while(p&&*p) {
+        const char *q=p;
+        size_t digits=0;
+        if(p!=text && isalnum((unsigned char)p[-1])) {++p;continue;}
+        while(digits<2U && isdigit((unsigned char)*q)) {++q;++digits;}
+        if(digits && *q==':') {
+            ++q;
+            if(isdigit((unsigned char)q[0]) &&
+               isdigit((unsigned char)q[1])) {
+                q+=2;
+                if(!isalnum((unsigned char)*q) ||
+                   ((q[0]=='a'||q[0]=='A'||q[0]=='p'||q[0]=='P') &&
+                    (q[1]=='m'||q[1]=='M') &&
+                    !isalnum((unsigned char)q[2])))return 1;
+            }
+        }
+        if(digits && (q[0]=='a'||q[0]=='A'||q[0]=='p'||q[0]=='P') &&
+           (q[1]=='m'||q[1]=='M') && !isalnum((unsigned char)q[2]))
+            return 1;
+        ++p;
+    }
+    return 0;
+}
+
 int sparkles_irc_schedule_intent(const char *text)
 {
     int scheduling,action,lookup;
@@ -149,9 +176,12 @@ int sparkles_irc_schedule_intent(const char *text)
         schedule_word(text,"a")||schedule_word(text,"next")||
         schedule_word(text,"upcoming")))return 1;
     if(lookup)return 1;
-    /* A continuing scheduling turn should not be handled in a channel. */
+    /* No channel follow-up can confirm or change an IM-created proposal. */
     if(schedule_word(text,"confirm")||schedule_word(text,"confirmed")||
-       schedule_word(text,"cancel"))return 1;
+       schedule_word(text,"cancel")||
+       schedule_phrase(text,"yes") && strlen(text)==3U ||
+       schedule_phrase(text,"no") && strlen(text)==2U)return 1;
+    if(schedule_time_token(text))return 1;
     if(strlen(text)==5U && isdigit((unsigned char)text[0]) &&
        isdigit((unsigned char)text[1]) && text[2]==':' &&
        isdigit((unsigned char)text[3]) &&
@@ -357,6 +387,11 @@ int sparkles_irc_run_selftests(unsigned int *executed, unsigned int *passed,
     expect(sparkles_irc_schedule_intent("what do I have tomorrow?"),&e,&p);
     expect(sparkles_irc_schedule_intent("confirm"),&e,&p);
     expect(sparkles_irc_schedule_intent("17:00"),&e,&p);
+    expect(sparkles_irc_schedule_intent("yes"),&e,&p);
+    expect(sparkles_irc_schedule_intent("no"),&e,&p);
+    expect(sparkles_irc_schedule_intent("4:30pm"),&e,&p);
+    expect(sparkles_irc_schedule_intent("5pm"),&e,&p);
+    expect(sparkles_irc_schedule_intent("at 4:30pm with management"),&e,&p);
     expect(!sparkles_irc_schedule_intent("hello sparkles"),&e,&p);
     expect(!sparkles_irc_schedule_intent("how is the weather?"),&e,&p);
     expect(!sparkles_irc_schedule_intent("tell digicat hello"),&e,&p);
