@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 0U
+#define OLLAMA_VERSION_PATCH 1U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1373,14 +1373,17 @@ static int memory_exchange(const stnlabz_module_command_t *command,
     memcpy(req.utterance,command->arguments,length+1U);
     /* Store volunteered contact facts even when short. These are speaker
      * claims, not verified identity or authorization evidence. */
-    req.record=length>=24U || strstr(command->arguments,"my name is ") ||
+    /* SL IMs were persisted by the transport before Core dispatch.
+     * This call is for recall only; prevent duplicate rows. */
+    req.record=strncmp(command->account,"sl:",3U)!=0 &&
+               (length>=24U || strstr(command->arguments,"my name is ") ||
                strstr(command->arguments,"My name is ") ||
                strstr(command->arguments,"call me ") ||
                strstr(command->arguments,"Call me ") ||
                strstr(command->arguments,"my email ") ||
                strstr(command->arguments,"My email ") ||
                strstr(command->arguments,"my phone ") ||
-               strstr(command->arguments,"My phone ") ? 1U : 0U;
+               strstr(command->arguments,"My phone ")) ? 1U : 0U;
     memset(memory,0,sizeof *memory);
     rc=owner->invoke_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,
                              &req,sizeof req,memory,sizeof *memory,&used);
