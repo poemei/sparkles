@@ -603,6 +603,8 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
     (void)pthread_mutex_unlock(&mutations_lock);
     if(slot<0) {
         if(!calendar_mutation_intent(text))return 0;
+        /* A new mutation supersedes any earlier creation proposal. */
+        pending_clear(command->account,command->sender);
         memset(&state,0,sizeof state);
         memcpy(state.account,command->account,strlen(command->account)+1U);
         memcpy(state.sender,command->sender,strlen(command->sender)+1U);
@@ -943,6 +945,7 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
         "DATE is YYYY-MM-DD for explicit ISO or MM/DD/YYYY dates, "
         "otherwise UNKNOWN. START is 24-hour HH:MM. "
         "END is 24-hour HH:MM or UNKNOWN when no end time is given. "
+        "Read four-digit clock times such as 1630 PST as 16:30. "
         "Never invent dates, times, venues or people. "
         "Do not add prose or formatting. Human: %s",text);
     if(n<=0||(size_t)n>=sizeof prompt)return 0;
