@@ -169,7 +169,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
     {
         size_t written=0U;
         unsigned int shown=0U;
-        message[0]='\\0';
+        message[0]='\0';
         for(i=0U;i<result.count;++i) {
             const sparkles_mariadb_appointment_t *e=&result.records[i];
             int length=snprintf(message+written,sizeof message-written,
@@ -177,7 +177,7 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
                 e->start_time,e->end_time,e->title);
             if(length<0)return reply(ctx,"Schedule record invalid.");
             if((size_t)length>=sizeof message-written) {
-                message[written]='\\0';
+                message[written]='\0';
                 break;
             }
             written+=(size_t)length;
