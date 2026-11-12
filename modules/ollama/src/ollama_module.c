@@ -376,7 +376,10 @@ static int calendar_mutation_intent(const char *text)
         strstr(lower,"change ")!=NULL ||
         strstr(lower,"update ")!=NULL ||
         strstr(lower,"delete ")!=NULL ||
-        strstr(lower,"remove ")!=NULL;
+        strstr(lower,"remove ")!=NULL ||
+        strstr(lower,"edit ")!=NULL ||
+        strstr(lower,"rename ")!=NULL ||
+        strstr(lower,"postpone ")!=NULL;
     subject=strstr(lower,"appointment")!=NULL ||
         strstr(lower,"meeting")!=NULL ||
         strstr(lower,"schedule")!=NULL ||
@@ -603,8 +606,20 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
         memset(&state,0,sizeof state);
         memcpy(state.account,command->account,strlen(command->account)+1U);
         memcpy(state.sender,command->sender,strlen(command->sender)+1U);
-        state.operation=(strstr(text,"cancel")||strstr(text,"Cancel"))?
-            SPARKLES_MARIADB_MUTATE_CANCEL:SPARKLES_MARIADB_MUTATE_UPDATE;
+        {
+            char lower[701];
+            size_t i,n=strlen(text);
+            if(n>=sizeof lower)return schedule_reply(reply,ctx,"Request too long.");
+            for(i=0U;i<n;++i){
+                unsigned char c=(unsigned char)text[i];
+                lower[i]=(c>='A'&&c<='Z')?(char)(c+32):(char)c;
+            }
+            lower[n]='\0';
+            state.operation=strstr(lower,"cancel")!=NULL||
+                strstr(lower,"delete ")!=NULL||
+                strstr(lower,"remove ")!=NULL?
+                SPARKLES_MARIADB_MUTATE_CANCEL:SPARKLES_MARIADB_MUTATE_UPDATE;
+        }
         state.request.operation=state.operation;
         memcpy(state.request.account,state.account,strlen(state.account)+1U);
         if(!date_from_human(text,state.day)) {
