@@ -265,7 +265,9 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             out->saved=1U;
         }
         if(!get_first(db,&s,&id,out->first_name) ||
-           !valid_name(out->first_name))goto done;
+           !valid_name(out->first_name) ||
+           (req->first_name[0] &&
+            strcmp(out->first_name,req->first_name)))goto done;
     } else {
         if(!req->first_name[0]) {
             /* Unknown avatar is not a verified human contact.
@@ -308,8 +310,11 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             bind_string(&four[3],(char *)req->avatar_name,&avatar_len);
             if(!prepared_execute(db,sql,four,NULL))goto done;
         } else if(!prepared_execute(db,sql,params,NULL))goto done;
+        /* Read back the committed candidate name in this transaction;
+         * never report an input value that SQL truncated or transformed. */
+        if(!get_first(db,&s,&id,out->first_name) ||
+           strcmp(out->first_name,req->first_name))goto done;
         out->found=out->saved=1U;
-        memcpy(out->first_name,req->first_name,strlen(req->first_name)+1U);
     }
     ok=1;
 done:
