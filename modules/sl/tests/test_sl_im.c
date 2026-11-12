@@ -84,6 +84,40 @@ int main(void)
                                  "MsSparkles Resident","",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,1U,
                                  "MsSparkles Resident","Hi",packet,10U,&used));
-    puts("SL private IM codec regression: PASS");
+    /* ChatFromSimulator Low 139: one audible avatar statement. */
+    {
+        unsigned char chat_data[128]={0};
+        size_t chat_len=60U;
+        chat_data[0]=4U;
+        memcpy(chat_data+1U,"Poe",4U);
+        memcpy(chat_data+5U,sender,16U);
+        chat_data[37U]=1U; /* Agent source, not object/system. */
+        chat_data[38U]=1U; /* Normal chat. */
+        chat_data[39U]=1U; /* Fully audible. */
+        chat_data[52U]=6U;
+        memcpy(chat_data+54U,"Hello",6U);
+        assert(sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        assert(im.ambient==1U && !strcmp(im.name,"Poe") &&
+               !strcmp(im.text,"Hello") &&
+               !memcmp(im.sender,sender,16U));
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len-1U,own,&im));
+        chat_data[37U]=2U; /* Object speech excluded. */
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        chat_data[37U]=1U;
+        chat_data[38U]=4U; /* Typing notification excluded. */
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        chat_data[38U]=1U;
+        chat_data[39U]=0U; /* Not fully audible. */
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        chat_data[39U]=1U;
+        memcpy(chat_data+5U,own,16U); /* Own speech excluded. */
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        memcpy(chat_data+5U,sender,16U);
+        chat_data[55U]=0U; /* Embedded NUL excluded. */
+        assert(!sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+        chat_data[55U]='e';
+        assert(sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
+    }
+    puts("SL private IM and nearby chat codec regression: PASS");
     return 0;
 }
