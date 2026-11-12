@@ -16,11 +16,28 @@ typedef struct {
     char text[SPARKLES_SL_IM_TEXT_MAX];
 } sparkles_sl_private_im_t;
 
+typedef enum {
+    SPARKLES_SL_IM_VALID=0,
+    SPARKLES_SL_IM_TOO_SHORT,
+    SPARKLES_SL_IM_WRONG_RECIPIENT,
+    SPARKLES_SL_IM_UNSUPPORTED_DIALOG,
+    SPARKLES_SL_IM_INVALID_SENDER,
+    SPARKLES_SL_IM_INVALID_NAME,
+    SPARKLES_SL_IM_INVALID_TEXT,
+    SPARKLES_SL_IM_INVALID_BUCKET,
+    SPARKLES_SL_IM_TRAILING_DATA
+} sparkles_sl_im_validation_t;
+const char *sparkles_sl_im_validation_name(sparkles_sl_im_validation_t result);
+
 /* Parse untrusted simulator-originated body; returns 1 for a valid personal IM.
  * A caller must only use it on packets from the authenticated simulator circuit. */
 int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im);
+/* Same validator with classification for content-free safe diagnostics. */
+sparkles_sl_im_validation_t sparkles_sl_im_validate(
+    const unsigned char *payload,size_t length,
+    const unsigned char own_agent[16], sparkles_sl_private_im_t *im);
 
 /* Build reliable outbound private IM, in bounded unzerocoded UDP format.
  * Includes original session/conversation ID for a direct reply. */
