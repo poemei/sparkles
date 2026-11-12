@@ -71,7 +71,8 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
     if (used) *used=0U;
     if (!session || !recipient || !conversation || !message || !out ||
         !used || !sequence || !nonzero_uuid(recipient)) return 0;
-    textlen=strnlen(message,SPARKLES_SL_IM_TEXT_MAX);
+    for (textlen=0U; textlen<SPARKLES_SL_IM_TEXT_MAX && message[textlen];
+         ++textlen) { /* bounded native C11 length */ }
     if (!textlen || textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
     /* Header(6) + Low ID(4) + fixed fields(103) + name(1) +
      * message size(2) + message NUL(1) + bucket size(2). */
