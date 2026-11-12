@@ -320,9 +320,10 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
 done:
     if(ok && mysql_query(db,"COMMIT"))ok=0;
     if(!ok) {
+        unsigned int error_code=mysql_errno(db);
         (void)mysql_query(db,"ROLLBACK");
         memset(out,0,sizeof *out);
-        fprintf(stderr,"[MARIADB] contact identity transaction failed (details withheld)\n");
+        fprintf(stderr,"[MARIADB] contact identity transaction failed: sql_errno=%u (values withheld)\n",error_code);
     }
     return ok;
 }
