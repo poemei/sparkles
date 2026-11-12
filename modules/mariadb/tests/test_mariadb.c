@@ -30,6 +30,18 @@ static int auth_tests(unsigned int *e, unsigned int *p)
     CHECK(!sparkles_mariadb_identity_parts(NULL,&platform,&id));
     CHECK(!sparkles_mariadb_identity_parts("PoeMei",NULL,&id));
     CHECK(!sparkles_mariadb_contact_calendar_allowed(NULL,"PoeMei"));
+    {
+        unsigned long long contact_id=123ULL;
+        CHECK(!sparkles_mariadb_contact_id(NULL,
+             "sl:12345678-1234-1234-1234-123456789abc",&contact_id) &&
+             contact_id==0ULL);
+        CHECK(!sparkles_mariadb_contact_id(NULL,"001",&contact_id));
+        CHECK(!sparkles_mariadb_contact_id(NULL,"001",NULL));
+        CHECK(!sparkles_mariadb_participants_supported(NULL));
+        CHECK(!sparkles_mariadb_participant_add(NULL,1ULL,1ULL));
+        CHECK(!sparkles_mariadb_participant_add(NULL,0ULL,1ULL));
+        CHECK(!sparkles_mariadb_participant_add(NULL,1ULL,0ULL));
+    }
 #undef CHECK
     *e=checks; *p=passed;
     return checks==passed;
