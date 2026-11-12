@@ -1,8 +1,28 @@
 #ifndef SPARKLES_SL_GRID_H
 #define SPARKLES_SL_GRID_H
 #include <stdatomic.h>
+#include "sl_im.h"
 
-/* Blocking native-C grid worker. Returns only after stop was requested.
- * Establishing avatar presence does not yet provide IM/group transport. */
-void sparkles_sl_grid_run(atomic_int *stop);
+typedef struct {
+    unsigned char recipient[16];
+    unsigned char conversation[16];
+    char text[512];
+} sparkles_sl_im_reply_t;
+
+/* Called by the networking worker; must be nonblocking and bounded. */
+typedef int (*sparkles_sl_im_ingress_fn)(
+    const sparkles_sl_private_im_t *im, void *context);
+/* Called by networking worker to take a response from a separate Core
+ * dispatch thread; returns 0 when no reply is ready. */
+typedef int (*sparkles_sl_im_dequeue_fn)(
+    sparkles_sl_im_reply_t *reply, void *context);
+typedef void (*sparkles_sl_im_reset_fn)(void *context);
+
+/* Native-C grid loop. Socket belongs ONLY to this network thread.
+ * Core inference is invoked by the owning module's separate dispatcher. */
+void sparkles_sl_grid_run(atomic_int *stop,
+                          sparkles_sl_im_ingress_fn ingress,
+                          sparkles_sl_im_dequeue_fn dequeue,
+                          sparkles_sl_im_reset_fn reset,
+                          void *context);
 #endif
