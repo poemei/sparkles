@@ -161,6 +161,9 @@ static int prepared_execute(MYSQL *db,const char *sql, MYSQL_BIND *params,
     if(ok && mysql_stmt_bind_param(st,params))ok=0;
     if(ok && mysql_stmt_execute(st))ok=0;
     if(ok && inserted_id)*inserted_id=mysql_stmt_insert_id(st);
+    if(!ok && st)fprintf(stderr,
+       "[MARIADB] contact prepared statement failed: sql_errno=%u (values withheld)\n",
+       mysql_stmt_errno(st));
     if(st)mysql_stmt_close(st);
     return ok;
 }
