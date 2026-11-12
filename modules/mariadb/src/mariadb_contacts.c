@@ -267,6 +267,40 @@ static int valid_name(const char *name)
     }
     return 1;
 }
+/* A named meeting guest is a contact reference, not an authenticated account.
+ * Require exactly one matching contact; never choose the first duplicate. */
+int sparkles_mariadb_guest_id(MYSQL *db,const char *name,
+                             unsigned long long *contact_id)
+{
+    contact_schema_t schema;
+    char sql[192];
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND param={{0}},out={{0}};
+    unsigned long len=0U;
+    unsigned long long id=0ULL;
+    int found=0;
+    if(contact_id)*contact_id=0ULL;
+    if(!db||!contact_id||!name||!name[0]||!valid_name(name)||
+       !load_columns(db,&schema))return 0;
+    if(snprintf(sql,sizeof sql,"SELECT `%s` FROM contacts WHERE `%s`=? LIMIT 2",
+                schema.id,schema.first)>=(int)sizeof sql)return 0;
+    stmt=mysql_stmt_init(db);
+    if(!stmt)return 0;
+    bind_string(&param,(char *)name,&len);
+    out.buffer_type=MYSQL_TYPE_LONGLONG;
+    out.buffer=&id;
+    out.is_unsigned=1;
+    if(!mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql))&&
+       !mysql_stmt_bind_param(stmt,&param)&&!mysql_stmt_execute(stmt)&&
+       !mysql_stmt_bind_result(stmt,&out)&&!mysql_stmt_store_result(stmt)&&
+       mysql_stmt_num_rows(stmt)==1ULL&&mysql_stmt_fetch(stmt)==0&&id) {
+        *contact_id=id;
+        found=1;
+    }
+    mysql_stmt_close(stmt);
+    return found;
+}
+
 int sparkles_mariadb_contact_identify(MYSQL *db,
     const sparkles_contact_request_t *req,sparkles_contact_reply_t *out)
 {
