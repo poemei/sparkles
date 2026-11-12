@@ -23,6 +23,7 @@ typedef struct {
     char account[128];
     char from_date[11];
     char until_date[11];
+    char from_time[20]; /* Optional YYYY-MM-DD HH:MM:SS lower bound. */
 } sparkles_mariadb_appointments_request_t;
 
 typedef struct {
