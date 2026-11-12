@@ -15,8 +15,8 @@
 #include "ollama_internal.h"
 
 #define OLLAMA_VERSION_MAJOR 1U
-#define OLLAMA_VERSION_MINOR 1U
-#define OLLAMA_VERSION_PATCH 0U
+#define OLLAMA_VERSION_MINOR 0U
+#define OLLAMA_VERSION_PATCH 18U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -62,6 +62,106 @@ static int calendar_request(const char *text)
     for(j=0;j<sizeof terms/sizeof terms[0];++j)
         if(strstr(lower,terms[j]))return 1;
     return 0;
+}
+
+
+/* Schedule retrieval is not appointment creation. Protect the private record
+ * path with MariaDB's existing verified-account authorization. */
+static int schedule_lookup_intent(const char *text)
+{
+    char lower[701];
+    size_t i,n;
+    if(!text || (n=strlen(text))>=sizeof lower)return 0;
+    for(i=0;i<n;++i) {
+        unsigned char c=(unsigned char)text[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
+    }
+    lower[n]='\0';
+    return strstr(lower,"what is my schedule")!=NULL ||
+        strstr(lower,"what's my schedule")!=NULL ||
+        strstr(lower,"my schedule today")!=NULL ||
+        strstr(lower,"schedule for today")!=NULL ||
+        strstr(lower,"show my schedule")!=NULL ||
+        strstr(lower,"check my schedule")!=NULL ||
+        strstr(lower,"what is on my calendar")!=NULL ||
+        strstr(lower,"what's on my calendar")!=NULL ||
+        strstr(lower,"my appointments today")!=NULL ||
+        strstr(lower,"appointments do i have")!=NULL;
+}
+static int schedule_lookup_today(const stnlabz_module_command_t *command,
+    stnlabz_module_command_reply_fn reply,void *ctx)
+{
+    sparkles_mariadb_appointments_request_t request={{0}};
+    sparkles_mariadb_appointments_reply_t result={0};
+    struct tm day;
+    time_t now=time(NULL);
+    char lower[701], message[512];
+    size_t used=0U,i,n;
+    stnlabz_module_result_t rc;
+    if(!schedule_lookup_intent(command->arguments))return 0;
+    n=strlen(command->arguments);
+    if(n>=sizeof lower)return reply(ctx,"Schedule question too long.");
+    for(i=0;i<n;++i) {
+        unsigned char c=(unsigned char)command->arguments[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
+    }
+    lower[n]='\0';
+    if(!strstr(lower,"today"))
+        return reply(ctx,"Which date? Please ask for today's schedule or use /schedule YYYY-MM-DD YYYY-MM-DD.");
+    if(!command->account[0] || !command->sender[0])
+        return reply(ctx,"Schedule access requires a verified IRC account.");
+    if(!owner || !owner->invoke_service || !owner->send_private_message)
+        return reply(ctx,"Schedule lookup unavailable.");
+    /* The runtime's configured local timezone determines today's date. */
+    if(!localtime_r(&now,&day) ||
+       !strftime(request.from_date,sizeof request.from_date,"%Y-%m-%d",&day))
+        return reply(ctx,"Schedule date unavailable.");
+    day.tm_mday+=1;
+    day.tm_isdst=-1;
+    if(mktime(&day)==(time_t)-1 ||
+       !strftime(request.until_date,sizeof request.until_date,"%Y-%m-%d",&day))
+        return reply(ctx,"Schedule date unavailable.");
+    memcpy(request.account,command->account,strlen(command->account)+1U);
+    rc=owner->invoke_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,
+        &request,sizeof request,&result,sizeof result,&used);
+    if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED)
+        return reply(ctx,"Schedule access denied.");
+    if(rc!=STNLABZ_MODULE_OK || used!=sizeof result ||
+       result.count>SPARKLES_MARIADB_APPOINTMENTS_MAX)
+        return reply(ctx,"Schedule lookup unavailable.");
+    /* Validate the entire response before delivering any appointment. */
+    for(i=0;i<result.count;++i) {
+        const sparkles_mariadb_appointment_t *e=&result.records[i];
+        const unsigned char *p=(const unsigned char *)e->title;
+        int length;
+        if(!memchr(e->title,0,sizeof e->title) ||
+           !memchr(e->start_time,0,sizeof e->start_time) ||
+           !memchr(e->end_time,0,sizeof e->end_time))
+            return reply(ctx,"Schedule record invalid.");
+        for(;*p;++p) if(*p<0x20U || *p==0x7fU)
+            return reply(ctx,"Schedule record invalid.");
+        length=snprintf(message,sizeof message,"%s to %s: %s",
+            e->start_time,e->end_time,e->title);
+        if(length<0 || (size_t)length>=sizeof message)
+            return reply(ctx,"Schedule record too large.");
+    }
+    if(!result.count) {
+        if(!owner->send_private_message(command->sender,
+            "No scheduled appointments stored for today."))
+            return reply(ctx,"Private schedule delivery failed.");
+    } else for(i=0;i<result.count;++i) {
+        const sparkles_mariadb_appointment_t *e=&result.records[i];
+        int length=snprintf(message,sizeof message,"%s to %s: %s",
+            e->start_time,e->end_time,e->title);
+        if(length<0 || (size_t)length>=sizeof message ||
+           !owner->send_private_message(command->sender,message))
+            return reply(ctx,"Private schedule delivery failed.");
+    }
+    if(result.has_more &&
+       !owner->send_private_message(command->sender,
+            "More appointments exist; narrow the date range."))
+        return reply(ctx,"Private schedule delivery incomplete.");
+    return reply(ctx,"I sent today's schedule privately.");
 }
 
 
@@ -697,6 +797,7 @@ static stnlabz_module_result_t chat_controller(
    return STNLABZ_MODULE_ERR_INVALID_STATE;
  }
 
+ if(schedule_lookup_today(command,reply,reply_context))return STNLABZ_MODULE_OK;
  if(schedule_conversation(command,reply,reply_context))return STNLABZ_MODULE_OK;
  len=strlen(command->arguments);
  if(!len||len>=sizeof in.prompt)
