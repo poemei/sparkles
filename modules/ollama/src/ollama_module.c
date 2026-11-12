@@ -175,6 +175,8 @@ static int schedule_lookup_today(const stnlabz_module_command_t *command,
             return reply(ctx,"Schedule date unavailable.");
     }
     memcpy(request.account,command->account,strlen(command->account)+1U);
+    if(remaining && !memcmp(request.from_date,now_time,10U))
+        memcpy(request.from_time,now_time,sizeof request.from_time);
     rc=owner->invoke_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,
         &request,sizeof request,&result,sizeof result,&used);
     if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED)
