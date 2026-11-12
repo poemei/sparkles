@@ -199,7 +199,7 @@ static int parse_login(const unsigned char *buffer, size_t length,
     if (!doc) return 0;
     structure = get_struct(doc);
     if (!get_field(structure,"login",login,sizeof login) ||
-        strcmp(login,"true") ||
+        (strcmp(login,"true") && strcmp(login,"1")) ||
         !get_field(structure,"agent_id",agent,sizeof agent) ||
         !get_field(structure,"session_id",session,sizeof session) ||
         !get_field(structure,"sim_ip",candidate.sim_ip,sizeof candidate.sim_ip) ||
@@ -238,18 +238,35 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
     response_buf_t response = {0};
     int ok = 0;
     if (!config || !reply || !config->first[0] || !config->last[0] ||
-        !config->password[0] ||
-        !config->start[0]) return 0;
+        !config->password[0] || !config->start[0]) {
+        fprintf(stderr,"[SL] login request rejected: missing required configuration fields\n");
+        return 0;
+    }
     memset(reply,0,sizeof *reply);
-    if (strlen(config->password) >= sizeof secret) goto done;
+    if (strlen(config->password) >= sizeof secret) {
+        fprintf(stderr,"[SL] login request rejected: password exceeds limit\n");
+        goto done;
+    }
     memcpy(secret, config->password, strlen(config->password) + 1U);
-    if (!password_digest(secret,hashed)) goto done;
+    if (!password_digest(secret,hashed)) {
+        fprintf(stderr,"[SL] login request failed: password digest unavailable\n");
+        goto done;
+    }
     request=xmlBufferCreate();
-    if (!request || !make_request(config,hashed,request)) goto done;
+    if (!request || !make_request(config,hashed,request)) {
+        fprintf(stderr,"[SL] login request failed: XML-RPC serialization\n");
+        goto done;
+    }
     curl=curl_easy_init();
-    if (!curl) goto done;
+    if (!curl) {
+        fprintf(stderr,"[SL] login request failed: HTTP client initialization\n");
+        goto done;
+    }
     headers=curl_slist_append(NULL,"Content-Type: text/xml");
-    if (!headers) goto done;
+    if (!headers) {
+        fprintf(stderr,"[SL] login request failed: HTTP header initialization\n");
+        goto done;
+    }
     if (curl_easy_setopt(curl,CURLOPT_URL,SL_LOGIN_URL)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_POST,1L)!=CURLE_OK ||
@@ -262,11 +279,30 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
         curl_easy_setopt(curl,CURLOPT_TIMEOUT,30L)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_SSL_VERIFYPEER,1L)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_SSL_VERIFYHOST,2L)!=CURLE_OK)
+    {
+        fprintf(stderr,"[SL] login request failed: HTTP client configuration\n");
         goto done;
+    }
     code=curl_easy_perform(curl);
-    if (code != CURLE_OK || curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status)
-        != CURLE_OK || status != 200L || !response.data) goto done;
+    if (code != CURLE_OK) {
+        fprintf(stderr,"[SL] login transport failed: curl_code=%d\n",(int)code);
+        goto done;
+    }
+    if (curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status)!=CURLE_OK) {
+        fprintf(stderr,"[SL] login transport failed: no HTTP status\n");
+        goto done;
+    }
+    if (status != 200L) {
+        fprintf(stderr,"[SL] login HTTP rejected: status=%ld\n",status);
+        goto done;
+    }
+    if (!response.data || !response.length) {
+        fprintf(stderr,"[SL] login HTTP response empty\n");
+        goto done;
+    }
     ok=parse_login(response.data,response.length,reply);
+    if (!ok)
+        fprintf(stderr,"[SL] login XML-RPC result rejected or unrecognized (response withheld)\n");
 done:
     OPENSSL_cleanse(secret,sizeof secret);
     OPENSSL_cleanse(hashed,sizeof hashed);
@@ -281,8 +317,11 @@ int sparkles_sl_login_from_file(sparkles_sl_login_reply_t *reply)
 {
     sparkles_sl_login_config_t config = {0};
     int ok;
-    if (!sparkles_sl_config_load(SPARKLES_SL_CONF_PATH, &config))
+    if (!sparkles_sl_config_load(SPARKLES_SL_CONF_PATH, &config)) {
+        fprintf(stderr,"[SL] login config unreadable or invalid: %s (no secrets logged)\n",
+                SPARKLES_SL_CONF_PATH);
         return 0;
+    }
     ok = sparkles_sl_login(&config, reply);
     sparkles_sl_config_clear(&config);
     return ok;
