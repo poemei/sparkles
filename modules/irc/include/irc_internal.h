@@ -26,6 +26,8 @@ void sparkles_irc_config_clear(sparkles_irc_config_t *config);
 int sparkles_irc_line_command(const char *line, char *command, size_t command_size,
                             const char **params_out);
 int sparkles_irc_word_present(const char *text, const char *word);
+/* Scheduling requests in channels are redirected before Core dispatch. */
+int sparkles_irc_schedule_intent(const char *text);
 int sparkles_irc_build_plain(const char *account, const char *password,
                            char *output, size_t output_size);
 /* Extract trusted IRCv3 server account-tag from an already TLS-verified line.
