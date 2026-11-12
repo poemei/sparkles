@@ -160,9 +160,12 @@ int sparkles_mariadb_participant_add(MYSQL *db,
                                     unsigned long long appointment_id,
                                     unsigned long long contact_id)
 {
+    /* The creating contact explicitly confirmed this appointment.
+     * Their own participant association is accepted, not pending. */
     static const char sql[]=
-        "INSERT INTO appointment_participants (appointment_id,contact_id) "
-        "VALUES (?,?)";
+        "INSERT INTO appointment_participants "
+        "(appointment_id,contact_id,response_status) "
+        "VALUES (?,?,'accepted')";
     MYSQL_STMT *stmt;
     MYSQL_BIND in[2]={{0}};
     int okay=0;
