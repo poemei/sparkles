@@ -64,19 +64,23 @@ int sparkles_sl_im_decode(const unsigned char *p, size_t n,
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
-                         uint32_t sequence, const char *message,
+                         uint32_t sequence, const char *sender_name,
+                         const char *message,
                          unsigned char *out, size_t cap, size_t *used)
 {
-    size_t textlen, offset=10U, total;
+    size_t textlen, namelen, offset=10U, total;
     if (used) *used=0U;
-    if (!session || !recipient || !conversation || !message || !out ||
-        !used || !sequence || !nonzero_uuid(recipient)) return 0;
+    if (!session || !recipient || !conversation || !sender_name ||
+        !message || !out || !used || !sequence ||
+        !nonzero_uuid(recipient)) return 0;
+    for (namelen=0U; namelen<255U && sender_name[namelen]; ++namelen) {}
+    if (!namelen || namelen>=255U) return 0;
     for (textlen=0U; textlen<SPARKLES_SL_IM_TEXT_MAX && message[textlen];
          ++textlen) { /* bounded native C11 length */ }
     if (!textlen || textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
     /* Header(6) + Low ID(4) + fixed fields(103) + name(1) +
      * message size(2) + message NUL(1) + bucket size(2). */
-    total=10U+103U+1U+2U+textlen+1U+2U;
+    total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U;
     if (total>cap || total>SPARKLES_SL_PACKET_MAX) return 0;
     memset(out,0,total);
     out[0]=SPARKLES_SL_FLAG_RELIABLE;
@@ -90,7 +94,9 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
      * Offline=0; Dialog=0; ID=original private conversation identifier. */
     memcpy(out+offset+83U,conversation,16U);
     offset+=103U;
-    out[offset++]=0U; /* empty FromAgentName (simulator supplies identity) */
+    out[offset++]=(unsigned char)(namelen+1U);
+    memcpy(out+offset,sender_name,namelen);
+    offset+=namelen+1U;
     u16le(out+offset,(unsigned int)textlen+1U);
     offset+=2U;
     memcpy(out+offset,message,textlen);
