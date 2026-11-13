@@ -1512,7 +1512,8 @@ static int group_opening_deictic_error(const char *human,const char *opening)
         find_uncased(human,"from me") &&
         (find_uncased(opening,"from me") ||
          find_uncased(opening,"on my behalf") ||
-         find_uncased(opening,"I send my greetings"));
+         find_uncased(opening,"I send my greetings") ||
+         find_uncased(opening,"I'm sending my greetings"));
 }
 static int sl_group_conversation(const stnlabz_module_command_t *command,
                                 stnlabz_module_command_reply_fn reply,
