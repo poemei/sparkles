@@ -1,3 +1,48 @@
+**v1.10.0 — Persistent show coordination (GitHub source only):**
+New optional schema `modules/mariadb/sql/20261112_show_coordination.sql`
+adds an explicit `show_events` registry linked to existing appointments
+and a unique `show_delivery_attempts` ledger. Three typed services
+provide atomic due-action claim, owner-only confirmation/cancellation, and
+attempt-status recording. Notices target database-driven eligible groups
+across the owning avatar's linked active businesses. The SQL only considers
+scheduled appointments with an authenticated Second Life contact identity
+linked through `appointment_participants`.
+
+The existing seven core table readiness check is untouched: the new schema
+is additive. With no show tables or database privileges the show claims fail
+closed and no notices go out. Times use MariaDB `NOW()` in the configured
+database local timezone, not a guessed region timezone.
+
+**Register an existing show** after verifying the saved appointment and
+avatar identity (never guess an appointment ID):
+
+```sql
+SELECT id,title,start_time,end_time,status
+FROM appointments
+WHERE start_time='2026-11-13 20:00:00';
+
+-- Only after inspecting the correct row and owner UUID:
+INSERT INTO show_events (appointment_id,owner_avatar_uuid,venue,dj_name)
+VALUES (<verified_appointment_id>,'<verified-avatar-uuid>',
+        'The River','Manon');
+
+-- Review intended groups and their two notice gates:
+SELECT b.id,b.business_name,b.sl_owner_uuid,g.id AS group_id,
+       g.group_name,g.group_uuid,g.is_active,g.notices_enabled,
+       g.entertainment_enabled,bg.notices_enabled AS link_notices
+FROM businesses b
+JOIN business_groups bg ON bg.business_id=b.id
+JOIN sl_groups g ON g.id=bg.group_id
+ORDER BY b.id,g.id;
+
+SELECT NOW(),@@session.time_zone,@@global.time_zone;
+```
+
+The registry does not auto-publish all calendar appointments. A rescheduled
+show with an already-claimed attempt requires manual ledger review before
+new announcements; automation does not reset claims and risk duplicate
+group notices. No live SQL or Second Life acceptance yet.
+
 **v1.9.7 — SL group registry resolver (source only):** New read-only typed
 `sparkles.mariadb.sl_groups.resolve` service resolves a requested Second Life
 group name to its UUID by joining the existing operator-created
