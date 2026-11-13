@@ -277,7 +277,7 @@ static void respond(int fd,const char *op,const char *body)
      !form_get(body,"object_uuid",object,sizeof object)||
      strcmp(owner,state.auth.operator_uuid)||
      strcmp(object,state.auth.object_uuid)||
-     strncmp(location,"https://maps.secondlife.com/secondlife/",40U)) {
+     strncmp(location,"https://maps.secondlife.com/secondlife/",39U)) {
    send_json(fd,400,"{\"error\":\"invalid request fields\"}");return;
   }
   pthread_mutex_lock(&state.lock);
