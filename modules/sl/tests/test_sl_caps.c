@@ -47,7 +47,22 @@ int main(void)
     atomic_init(&worker.session_stop,0);
     state.worker=&worker;
     assert(sparkles_sl_uuid_parse("12345678-1234-1234-1234-123456789abc",session));
-    note_joined(&state,session);
+    memcpy(worker.group_chat,session,16U);
+    {
+        static const char start_event[]=
+          "<llsd><map><key>id</key><integer>40</integer>"
+          "<key>events</key><array><map>"
+          "<key>message</key><string>ChatterBoxSessionStartReply</string>"
+          "<key>body</key><map>"
+          "<key>session_id</key><uuid>12345678-1234-1234-1234-123456789abc</uuid>"
+          "<key>success</key><boolean>1</boolean>"
+          "</map></map></array></map></llsd>";
+        memcpy(response->bytes,start_event,sizeof start_event);
+        response->length=sizeof start_event-1U;
+        assert(consume_events(&state,response));
+        assert(joined(&state,session));
+        assert(state.ack==40);
+    }
     memcpy(response->bytes,event,sizeof event);
     response->length=sizeof event-1U;
     assert(consume_events(&state,response));
@@ -64,6 +79,19 @@ int main(void)
     response->length=sizeof invalid-1U;
     assert(!consume_events(&state,response));
     assert(state.ack==42);
+    {
+        static const char close_event[]=
+          "<llsd><map><key>id</key><integer>43</integer>"
+          "<key>events</key><array><map>"
+          "<key>message</key><string>ForceCloseChatterBoxSession</string>"
+          "<key>body</key><map>"
+          "<key>session_id</key><uuid>12345678-1234-1234-1234-123456789abc</uuid>"
+          "</map></map></array></map></llsd>";
+        memcpy(response->bytes,close_event,sizeof close_event);
+        response->length=sizeof close_event-1U;
+        assert(consume_events(&state,response));
+        assert(!joined(&state,session));
+    }
     assert(valid_cap_url("https://sim.example.com/cap/abc"));
     assert(!valid_cap_url("http://sim.example.com/cap/abc"));
     assert(!valid_cap_url("file:///etc/passwd"));
