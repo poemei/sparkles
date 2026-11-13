@@ -270,8 +270,10 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
     if (curl_easy_setopt(curl,CURLOPT_URL,SL_LOGIN_URL)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_POST,1L)!=CURLE_OK ||
-        curl_easy_setopt(curl,CURLOPT_POSTFIELDS,request->content)!=CURLE_OK ||
-        curl_easy_setopt(curl,CURLOPT_POSTFIELDSIZE,(long)request->use)!=CURLE_OK ||
+        curl_easy_setopt(curl,CURLOPT_POSTFIELDS,
+                         (const char *)xmlBufferContent(request))!=CURLE_OK ||
+        curl_easy_setopt(curl,CURLOPT_POSTFIELDSIZE,
+                         (long)xmlBufferLength(request))!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,write_response)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_WRITEDATA,&response)!=CURLE_OK ||
         curl_easy_setopt(curl,CURLOPT_FOLLOWLOCATION,0L)!=CURLE_OK ||
