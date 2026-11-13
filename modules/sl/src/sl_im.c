@@ -162,6 +162,35 @@ int sparkles_sl_im_decode(const unsigned char *p, size_t n,
 {
     return sparkles_sl_im_validate(p,n,own_agent,im)==SPARKLES_SL_IM_VALID;
 }
+/* Second Life ChatFromViewer Low 80, reliable, channel 0, normal speech.
+ * The simulator authenticates the agent/session on the established circuit. */
+int sparkles_sl_nearby_encode(const sparkles_sl_session_t *session,
+                             uint32_t sequence,const char *message,
+                             unsigned char *out,size_t cap,size_t *used)
+{
+    size_t len,total,pos;
+    if(used)*used=0U;
+    if(!session||!message||!out||!used||!sequence)return 0;
+    len=strlen(message);
+    if(!len||len>=SPARKLES_SL_IM_TEXT_MAX||len>512U)return 0;
+    total=10U+32U+2U+len+1U+1U+4U;
+    if(total>cap||total>SPARKLES_SL_PACKET_MAX)return 0;
+    memset(out,0,total);
+    out[0]=SPARKLES_SL_FLAG_RELIABLE;
+    u32be(out+1U,sequence);
+    out[6U]=0xffU;out[7U]=0xffU;out[8U]=0U;
+    out[9U]=SPARKLES_SL_CHAT_SEND_MESSAGE_ID;
+    memcpy(out+10U,session->agent,16U);
+    memcpy(out+26U,session->session,16U);
+    pos=42U;
+    u16le(out+pos,(unsigned int)(len+1U));pos+=2U;
+    memcpy(out+pos,message,len);pos+=len+1U;
+    out[pos++]=1U; /* Normal speech, not whisper or shout. */
+    pos+=4U; /* S32 channel zero. */
+    *used=pos;
+    return 1;
+}
+
 static int im_encode_dialog(const sparkles_sl_session_t *session,
                             const unsigned char recipient[16],
                             const unsigned char conversation[16],
