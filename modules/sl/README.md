@@ -1,3 +1,40 @@
+## v0.3.9 — Show confirmation and official Second Life group notices (GitHub source only)
+
+Sparkles' dedicated show timer checks the MariaDB `sparkles.mariadb.shows.claim`
+service every three seconds **only after simulator-confirmed avatar presence**.
+The MariaDB scheduler selects registered public shows at **T−60 minutes**
+(for a private owner check-in) and **T−30 minutes** (for **real** group notices,
+not group-chat IMs). It uses one-minute due windows; if Sparkles is offline
+for an entire window, the task is missed rather than sent misleadingly late.
+
+The owner check-in is sent as a private dialog-0 IM. Reply exactly
+`show yes` to record confirmation or `show cancel` to suppress further
+automatic notices for this show. Cancellation in this workflow does not
+cancel the original calendar appointment. If no answer arrives, a scheduled
+show's notices proceed unless the show is explicitly cancelled.
+
+Notices use `ImprovedInstantMessage` dialog 32, the group UUID as the
+recipient, a null IM conversation ID, the `subject|message` format, and
+a one-byte empty attachment bucket. The encoder enforces the combined
+510-byte limit and rejects unescaped `|` in notice input. Only groups
+selected through **active** business/group links, `entertainment_enabled`,
+`notices_enabled`, and the matching SL owner UUID are targeted.
+Sparkles still needs group membership and the Send Notices role permission.
+
+A unique MariaDB claim records *one outbound attempt* per registered show,
+stage and group. The attempt state `queued` does **not** establish delivery.
+UDP ACKs do not establish publication, group notice archival, or reception.
+Failed or unverified sends are not silently re-sent because notices cannot
+be deleted. Operators must reconcile uncertain delivery manually.
+
+The show scheduler is **inactive until the operator runs** the migration
+`modules/mariadb/sql/20261112_show_coordination.sql` and explicitly maps
+public shows into `show_events`. Ordinary appointment records are never
+assumed to be public shows. Existing group chat, private IM and normal
+calendar appointments remain separate. Database timezone must match the
+intended Second Life show timezone. No migration, install, live grid
+qualification or delivery has been performed by this source commit.
+
 ## v0.3.8 — Database-driven Second Life groups (GitHub source)
 
 Group UUIDs, names and operator identity are no longer read from
