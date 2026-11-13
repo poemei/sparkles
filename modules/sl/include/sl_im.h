@@ -8,6 +8,7 @@
  * session messages. Control, inventory and notices are not chat. */
 #define SPARKLES_SL_IM_MESSAGE_ID 254U
 #define SPARKLES_SL_SESSION_SEND_DIALOG 17U
+#define SPARKLES_SL_GROUP_START_DIALOG 15U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
 
@@ -51,6 +52,13 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
 /* Build reliable outbound private IM, in bounded unzerocoded UDP format.
  * Includes original session/conversation ID for a direct reply. */
 /* Dialog 17 replies are addressed to the session, not to the speaker. */
+/* An operator-selected group can be joined by sending dialog 15.
+ * The simulator checks group membership; this packet grants no rights. */
+int sparkles_sl_group_start_encode(const sparkles_sl_session_t *session,
+                                  const unsigned char group[16],
+                                  uint32_t sequence,const char *sender_name,
+                                  unsigned char *output,size_t capacity,
+                                  size_t *used);
 int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              const unsigned char conversation[16],
                              uint32_t sequence,const char *sender_name,
