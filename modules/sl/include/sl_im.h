@@ -11,6 +11,7 @@
 #define SPARKLES_SL_GROUP_START_DIALOG 15U
 #define SPARKLES_SL_GROUP_NOTICE_DIALOG 32U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
+#define SPARKLES_SL_CHAT_SEND_MESSAGE_ID 80U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
 
 typedef struct {
@@ -73,6 +74,11 @@ int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              uint32_t sequence,const char *sender_name,
                              const char *message,unsigned char *output,
                              size_t capacity,size_t *used);
+/* Send actual channel-zero local avatar chat (ChatFromViewer Low 80).
+ * This is not a private IM, session message, or authority-bearing action. */
+int sparkles_sl_nearby_encode(const sparkles_sl_session_t *session,
+                             uint32_t sequence,const char *message,
+                             unsigned char *output,size_t capacity,size_t *used);
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
