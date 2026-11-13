@@ -6,6 +6,7 @@
 #include <string.h>
 #include <strings.h>
 #include "sparkles_contacts.h"
+#include "sparkles_sl_group.h"
 #include <time.h>
 #include <pthread.h>
 #include "stnlabz_abi/module.h"
@@ -18,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 3U
+#define OLLAMA_VERSION_PATCH 4U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1460,6 +1461,93 @@ static int sl_know_question(const char *text)
         !strncasecmp(text,"what is my name",15U);
 }
 
+/* Interpret a private IM into a *typed proposal*. The model never chooses
+ * an arbitrary UUID or executes transport operations. The transport resolves
+ * a human-configured alias and independently checks the actual SL speaker. */
+static const char *find_uncased(const char *text,const char *needle)
+{
+ const char *p;
+ size_t n;
+ if(!text||!needle||!needle[0])return NULL;
+ n=strlen(needle);
+ for(p=text;*p;++p)
+  if(!strncasecmp(p,needle,n))return p;
+ return NULL;
+}
+static int group_action_intent(const char *text)
+{
+ if(!text || !find_uncased(text,"group"))return 0;
+ return find_uncased(text,"open") || find_uncased(text,"start") ||
+        find_uncased(text,"launch") || find_uncased(text,"initiate");
+}
+static int parse_group_action(const char *text,const char *original,
+                              sparkles_sl_group_start_request_t *request)
+{
+ const char *sep,*value;
+ size_t n,m;
+ if(!text || strncmp(text,"GROUP=",6U) ||
+    !(sep=strstr(text,"\nMESSAGE=")))return 0;
+ n=(size_t)(sep-(text+6U));
+ value=sep+9U;
+ m=strlen(value);
+ if(!n||n>=sizeof request->group||!m||
+    m>=sizeof request->opening || strchr(value,'\n') ||
+    strchr(value,'\r') || strchr(text+6U,'\r'))return 0;
+ memcpy(request->group,text+6U,n);
+ request->group[n]=0;
+ memcpy(request->opening,value,m+1U);
+ /* The chosen group must appear in the human's actual instruction,
+  * not merely in generated prose or historical context. */
+ return find_uncased(original,request->group)!=NULL;
+}
+static int sl_group_conversation(const stnlabz_module_command_t *command,
+                                stnlabz_module_command_reply_fn reply,
+                                void *reply_context)
+{
+ sparkles_llm_request_t in={{0}};
+ sparkles_llm_response_t out={{0}};
+ sparkles_sl_group_start_request_t action={{0}};
+ sparkles_sl_group_start_reply_t result={{0}};
+ size_t used=0U,action_used=0U;
+ stnlabz_module_result_t status;
+ int n;
+ if(strncmp(command->account,"sl:",3U) ||
+    !group_action_intent(command->arguments))return 0;
+ n=snprintf(in.prompt,sizeof in.prompt,
+   "You extract an authorized Second Life group-chat initiation proposal. "
+   "Return exactly TWO plain lines (no markdown or extra words): "
+   "GROUP=<group name as written by human>\\n"
+   "MESSAGE=<exact words to say to the group, as natural text>. "
+   "Only extract the group explicitly named in the message. "
+   "If unclear return GROUP=UNKNOWN and MESSAGE=UNKNOWN. "
+   "Do not invent a group or add a claim of completion. "
+   "Human private IM: %s",command->arguments);
+ if(n<0||(size_t)n>=sizeof in.prompt)return -1;
+ status=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
+ if(status!=STNLABZ_MODULE_OK || used!=sizeof out ||
+    !parse_group_action(out.text,command->arguments,&action)) {
+  (void)reply(reply_context,
+       "I couldn't determine the group and opening message. "
+       "Please name the group and what you'd like me to say.");
+  return 1;
+ }
+ memcpy(action.account,command->account,strlen(command->account)+1U);
+ if(!owner || !owner->invoke_service)status=STNLABZ_MODULE_ERR_INVALID_STATE;
+ else status=owner->invoke_service(SPARKLES_SL_GROUP_START_SERVICE,
+           &action,sizeof action,&result,sizeof result,&action_used);
+ if(status!=STNLABZ_MODULE_OK || action_used!=sizeof result ||
+    !result.queued) {
+  (void)reply(reply_context,
+    "I couldn't queue that group conversation. Check the authorized "
+    "operator and configured group names, or try again later.");
+  return 1;
+ }
+ (void)reply(reply_context,
+    "I've queued the group chat opening. I'll only send it after "
+    "Second Life confirms the group session; delivery isn't confirmed yet.");
+ return 1;
+}
+
 /* Ollama owns the default conversational controller; Core only dispatches. */
 static stnlabz_module_result_t chat_controller(
  const stnlabz_module_command_t *command,
@@ -1482,6 +1570,12 @@ static stnlabz_module_result_t chat_controller(
     !memchr(command->arguments,0,sizeof command->arguments)||
     !memchr(command->account,0,sizeof command->account))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+
+ if(!strncmp(command->account,"sl:",3U)) {
+  int group_handled=sl_group_conversation(command,reply,reply_context);
+  if(group_handled>0)return STNLABZ_MODULE_OK;
+  if(group_handled<0)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+ }
 
  /* Session-only speech must never run a participant's private calendar,
   * contacts, commitments or memory lookups. The SL transport has already
