@@ -358,9 +358,13 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         break;
                     }
                 }
-                if (!sparkles_sl_im_encode(&login->circuit,response.recipient,
-                      response.conversation,next,login->avatar_name,response.text,
-                      slot->bytes,sizeof slot->bytes,&used)) {
+                if (!(response.session_chat ?
+                      sparkles_sl_session_encode(&login->circuit,
+                          response.conversation,next,login->avatar_name,
+                          response.text,slot->bytes,sizeof slot->bytes,&used) :
+                      sparkles_sl_im_encode(&login->circuit,response.recipient,
+                          response.conversation,next,login->avatar_name,
+                          response.text,slot->bytes,sizeof slot->bytes,&used))) {
                     report("private IM outbound encoding rejected");
                     continue;
                 }
