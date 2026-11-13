@@ -11,11 +11,6 @@ typedef struct {
     char last[64];
     char password[256];
     char start[128];
-    char group_chat[37]; /* Optional operator-selected group UUID. */
-    char group_name[64]; /* Optional human-readable alias for group_chat. */
-    char group_chat_2[37];
-    char group_name_2[64];
-    char operator_uuid[37]; /* Explicit authorized private IM sender. */
 } sparkles_sl_login_config_t;
 
 typedef struct {
@@ -24,11 +19,6 @@ typedef struct {
     char sim_ip[64];
     unsigned short sim_port;
     char seed_capability[2048];
-    unsigned char group_chat[16]; /* Zero when no group session selected. */
-    unsigned char group_chat_2[16];
-    unsigned char operator_uuid[16];
-    char group_name[64];
-    char group_name_2[64];
 } sparkles_sl_login_reply_t;
 
 /* Returns 1 only on a syntactically valid successful grid login response.
