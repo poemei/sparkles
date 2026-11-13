@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 4U
+#define OLLAMA_VERSION_PATCH 5U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1504,6 +1504,16 @@ static int parse_group_action(const char *text,const char *original,
   * not merely in generated prose or historical context. */
  return find_uncased(original,request->group)!=NULL;
 }
+/* A forwarded greeting cannot use the assistant as the referent of
+ * the human's "me". Retry inference rather than invent a scripted message. */
+static int group_opening_deictic_error(const char *human,const char *opening)
+{
+ return human && opening &&
+        find_uncased(human,"from me") &&
+        (find_uncased(opening,"from me") ||
+         find_uncased(opening,"on my behalf") ||
+         find_uncased(opening,"I send my greetings"));
+}
 static int sl_group_conversation(const stnlabz_module_command_t *command,
                                 stnlabz_module_command_reply_fn reply,
                                 void *reply_context)
@@ -1514,25 +1524,51 @@ static int sl_group_conversation(const stnlabz_module_command_t *command,
  sparkles_sl_group_start_reply_t result={0};
  size_t used=0U,action_used=0U;
  stnlabz_module_result_t status;
- int n;
+ int n,attempt;
+ int valid=0;
  if(strncmp(command->account,"sl:",3U) ||
     !group_action_intent(command->arguments))return 0;
- n=snprintf(in.prompt,sizeof in.prompt,
-   "You extract an authorized Second Life group-chat initiation proposal. "
-   "Return exactly TWO plain lines (no markdown or extra words): "
-   "GROUP=<group name as written by human>\n"
-   "MESSAGE=<exact words to say to the group, as natural text>. "
-   "Only extract the group explicitly named in the message. "
-   "If unclear return GROUP=UNKNOWN and MESSAGE=UNKNOWN. "
-   "Do not invent a group or add a claim of completion. "
-   "Human private IM: %s",command->arguments);
- if(n<0||(size_t)n>=sizeof in.prompt)return -1;
- status=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
- if(status!=STNLABZ_MODULE_OK || used!=sizeof out ||
-    !parse_group_action(out.text,command->arguments,&action)) {
+ for(attempt=0;attempt<2;++attempt) {
+  memset(&in,0,sizeof in);
+  memset(&out,0,sizeof out);
+  memset(&action,0,sizeof action);
+  used=0U;
+  n=snprintf(in.prompt,sizeof in.prompt,
+    "You are preparing a natural opening message for Sparkles to post in "
+    "a Second Life group chat at the request of a private IM sender. "
+    "Interpret the speaker's intention, not just the literal words. "
+    "Write a brief, friendly group-facing message in Sparkles' voice. "
+    "The private IM sender's avatar display name is '%s'. "
+    "When the sender says 'from me', it refers to THAT human sender, "
+    "not Sparkles: attribute the greeting to the sender, using the "
+    "sender's name if appropriate, rather than saying 'from me'. "
+    "When the human explicitly names a different source (for example "
+    "'from STN 6'), preserve that source exactly. "
+    "If asked to initiate a discussion, introduce the requested topic "
+    "and invite participation without inventing details. "
+    "Do not invent group names, speaker identities, meetings, dates, "
+    "times, permissions, promises, or completed actions. "
+    "Output exactly two plain lines, without Markdown or explanations:\n"
+    "GROUP=<the group name literally named in the request>\n"
+    "MESSAGE=<your complete, naturally worded message for the group>\n"
+    "%s"
+    "Private IM instruction: %s",
+    command->sender,
+    attempt?"Your previous composition was ambiguous about the speaker. "
+            "Correct attribution and try again. ":"",
+    command->arguments);
+  if(n<0||(size_t)n>=sizeof in.prompt)return -1;
+  status=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
+  if(status!=STNLABZ_MODULE_OK || used!=sizeof out)break;
+  valid=parse_group_action(out.text,command->arguments,&action);
+  if(valid && !group_opening_deictic_error(command->arguments,action.opening))
+   break;
+  valid=0;
+ }
+ if(!valid) {
   (void)reply(reply_context,
-       "I couldn't determine the group and opening message. "
-       "Please name the group and what you'd like me to say.");
+       "I couldn't confidently compose and attribute the group opening. "
+       "Please name the group and clarify what you'd like me to say.");
   return 1;
  }
  memcpy(action.account,command->account,strlen(command->account)+1U);
