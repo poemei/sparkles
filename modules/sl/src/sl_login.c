@@ -301,6 +301,9 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
         goto done;
     }
     ok=parse_login(response.data,response.length,reply);
+    if (ok && config->group_chat[0] &&
+        !sparkles_sl_uuid_parse(config->group_chat,reply->group_chat))
+        ok=0;
     if (ok) {
         int n=snprintf(reply->avatar_name,sizeof reply->avatar_name,
                        "%s %s",config->first,config->last);
