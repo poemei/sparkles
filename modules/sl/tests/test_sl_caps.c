@@ -93,6 +93,22 @@ int main(void)
         assert(consume_events(&state,response));
         assert(!joined(&state,session));
     }
+    {
+        static const char rejected[]=
+          "<llsd><map><key>id</key><integer>44</integer>"
+          "<key>events</key><array><map>"
+          "<key>message</key><string>ChatterBoxSessionEventReply</string>"
+          "<key>body</key><map>"
+          "<key>session_id</key><uuid>12345678-1234-1234-1234-123456789abc</uuid>"
+          "<key>success</key><boolean>0</boolean>"
+          "<key>event</key><string>send</string>"
+          "<key>error</key><string>not_in_session</string>"
+          "</map></map></array></map></llsd>";
+        memcpy(response->bytes,rejected,sizeof rejected);
+        response->length=sizeof rejected-1U;
+        assert(consume_events(&state,response));
+        assert(state.ack==44);
+    }
     assert(valid_cap_url("https://sim.example.com/cap/abc"));
     assert(!valid_cap_url("http://sim.example.com/cap/abc"));
     assert(!valid_cap_url("file:///etc/passwd"));
