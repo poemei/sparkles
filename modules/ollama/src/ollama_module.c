@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 5U
+#define OLLAMA_VERSION_PATCH 6U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1579,8 +1579,8 @@ static int sl_group_conversation(const stnlabz_module_command_t *command,
  if(status!=STNLABZ_MODULE_OK || action_used!=sizeof result ||
     !result.queued) {
   (void)reply(reply_context,
-    "I couldn't queue that group conversation. Check the authorized "
-    "operator and configured group names, or try again later.");
+    "I couldn't queue that group conversation. Check that the group "
+    "is active and linked to a business you own in MariaDB.");
   return 1;
  }
  (void)reply(reply_context,
