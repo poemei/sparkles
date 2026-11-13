@@ -4,6 +4,7 @@
 #include "sparkles_route.h"
 #include "sparkles_memory.h"
 #include "sparkles_sl_group.h"
+#include "sparkles_sl_group_db.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #include <strings.h>
@@ -18,7 +19,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 7U
+#define SL_PATCH 8U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -33,21 +34,28 @@ static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
 static uint64_t epoch;
 static int worker_started, dispatcher_started;
 static const stnlabz_module_host_t *module_host;
-static sparkles_sl_group_config_t group_config;
 static char active_private[128];
 static int group_service_registered;
 
 /* A simulator-authenticated private IM is dispatched synchronously by
  * this worker. IRC and group speakers cannot impersonate this context. */
+/* Only the actual SL dispatcher handling a simulator-authenticated private
+ * IM can call this service. MariaDB independently resolves the destination
+ * from a linked active business owned by the sender. No sl.conf groups,
+ * fixed slots, or inferred group UUIDs. */
 static stnlabz_module_result_t group_start_service(
     const void *request,size_t request_size,void *response,
     size_t response_size,size_t *response_used,void *unused)
 {
     const sparkles_sl_group_start_request_t *in=request;
     sparkles_sl_group_start_reply_t *out=response;
+    sparkles_sl_group_resolve_request_t lookup={0};
+    sparkles_sl_group_resolve_reply_t found={0};
     sparkles_sl_im_reply_t action={0};
-    char operator_account[40];
-    int index=-1,i,accepted=0;
+    size_t found_used=0U;
+    stnlabz_module_result_t status;
+    uint64_t generation;
+    int permitted,accepted=0;
     (void)unused;
     if(response_used)*response_used=0U;
     if(!in||!out||request_size!=sizeof *in||
@@ -59,52 +67,41 @@ static stnlabz_module_result_t group_start_service(
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
     pthread_mutex_lock(&qlock);
-    if(!atomic_load(&stopping) && dispatcher_started &&
+    permitted=!atomic_load(&stopping) && dispatcher_started &&
        pthread_equal(pthread_self(),dispatcher) &&
+       active_private[0] && !strcmp(active_private,in->account);
+    generation=epoch;
+    pthread_mutex_unlock(&qlock);
+    if(!permitted || !module_host || !module_host->invoke_service)
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    memcpy(lookup.account,in->account,strlen(in->account)+1U);
+    memcpy(lookup.group_name,in->group,strlen(in->group)+1U);
+    status=module_host->invoke_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,
+                  &lookup,sizeof lookup,&found,sizeof found,&found_used);
+    if(status!=STNLABZ_MODULE_OK ||
+       found_used!=sizeof found || !found.matched ||
+       !sparkles_sl_uuid_parse(found.group_uuid,action.conversation))
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    memcpy(action.recipient,action.conversation,16U);
+    memcpy(action.text,in->opening,sizeof action.text);
+    action.session_chat=1U;
+    action.start_group=1U;
+    pthread_mutex_lock(&qlock);
+    if(!atomic_load(&stopping) && generation==epoch &&
+       dispatcher_started && pthread_equal(pthread_self(),dispatcher) &&
        active_private[0] && !strcmp(active_private,in->account) &&
-       memcmp(group_config.operator_uuid,(unsigned char[16]){0},16U)!=0) {
-        char id[37];
-        sparkles_sl_uuid_format(group_config.operator_uuid,id);
-        if(snprintf(operator_account,sizeof operator_account,
-                    "sl:%s",id)<(int)sizeof operator_account &&
-           !strcmp(in->account,operator_account)) {
-            for(i=0;i<2;++i)
-                if(group_config.name[i][0] &&
-                   !strcasecmp(in->group,group_config.name[i]) &&
-                   memcmp(group_config.group[i],
-                          (unsigned char[16]){0},16U)!=0) {
-                    index=i;
-                    break;
-                }
-            if(index>=0 && out_count<SL_OUTBOUND_CAP) {
-                memcpy(action.conversation,group_config.group[index],16U);
-                memcpy(action.recipient,group_config.group[index],16U);
-                memcpy(action.text,in->opening,sizeof action.text);
-                action.session_chat=1U;
-                action.start_group=1U;
-                outbound[out_tail]=action;
-                out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
-                ++out_count;
-                accepted=1;
-            }
-        }
+       out_count<SL_OUTBOUND_CAP) {
+        outbound[out_tail]=action;
+        out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+        ++out_count;
+        accepted=1;
     }
     pthread_mutex_unlock(&qlock);
-    if(!accepted)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    if(!accepted)return STNLABZ_MODULE_ERR_INVALID_STATE;
     out->queued=1;
     if(response_used)*response_used=sizeof *out;
     return STNLABZ_MODULE_OK;
 }
-static void configure_groups(const sparkles_sl_group_config_t *cfg,
-                             void *unused)
-{
-    (void)unused;
-    pthread_mutex_lock(&qlock);
-    memset(&group_config,0,sizeof group_config);
-    if(cfg)group_config=*cfg;
-    pthread_mutex_unlock(&qlock);
-}
-
 
 /* Session chat is shared. Only an explicit address to Sparkles triggers
  * inference; all other session lines are recorded without replies. */
@@ -167,7 +164,6 @@ static void reset_queues(void *unused)
     memset(inbound,0,sizeof inbound);
     memset(outbound,0,sizeof outbound);
     memset(active_private,0,sizeof active_private);
-    memset(&group_config,0,sizeof group_config);
     in_head=in_tail=in_count=0U;
     out_head=out_tail=out_count=0U;
     pthread_mutex_unlock(&qlock);
@@ -306,7 +302,7 @@ static void *grid_worker(void *unused)
 {
     (void)unused;
     sparkles_sl_grid_run(&stopping,enqueue_private,
-                         dequeue_reply,reset_queues,configure_groups,NULL);
+                         dequeue_reply,reset_queues,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
