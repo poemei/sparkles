@@ -294,6 +294,19 @@ int sparkles_ollama_run_selftests(unsigned int *executed,
            strstr(request, "back\\\\slash"), &e, &p);
     expect(!sparkles_ollama_extract_response(
            "{\"response\":\"\"}", response, sizeof response), &e, &p);
+    expect(sparkles_ollama_build_intent_request(
+           SPARKLES_OLLAMA_MODEL,
+           "move my show to 4pm with DJ Meowgi",
+           request,sizeof request) &&
+           strstr(request,"\"model\":\"" SPARKLES_OLLAMA_MODEL "\"") &&
+           strstr(request,"strictly structured application proposals") &&
+           strstr(request,"\"temperature\":0") &&
+           strstr(request,"move my show to 4pm with DJ Meowgi"),
+           &e,&p);
+    expect(sparkles_ollama_build_intent_request(
+           "test-model","she said \"cancel\"",
+           request,sizeof request) &&
+           strstr(request,"she said \\\"cancel\\\""),&e,&p);
     expect(sparkles_ollama_build_schedule_request(
            "test-model","hosting at the River from 2pm to 4pm",
            request,sizeof request) &&
