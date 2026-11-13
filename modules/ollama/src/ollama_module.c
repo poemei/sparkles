@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 6U
+#define OLLAMA_VERSION_PATCH 7U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -88,6 +88,28 @@ static int schedule_guest(const char *text,char name[64])
         if(!j || (p[j] && p[j]!=' ' && p[j]!=',' && p[j]!='.' &&
                    p[j]!='!' && p[j]!='?'))return -1;
         name[j]=0;
+        /* "with Manon as my DJ" describes event staffing, not an
+         * appointment invitation. Keep the role in event text; do not
+         * require a guest contact/participant relationship. */
+        if(p[j]==' ') {
+            const char *role=p+j+1U;
+            static const char *const roles[]={
+                "as my dj","as the dj","as our dj",
+                "as my host","as the host","as our host",
+                "as my performer","as the performer","as our performer",
+                "as my singer","as the singer","as our singer"
+            };
+            size_t k;
+            for(k=0U;k<sizeof roles/sizeof roles[0];++k) {
+                size_t length=strlen(roles[k]);
+                if(!strncasecmp(role,roles[k],length) &&
+                   (!role[length] || role[length]==' ' ||
+                    role[length]==',' || role[length]=='.')) {
+                    name[0]=0;
+                    return 0;
+                }
+            }
+        }
         if(p[j]==' ' && !strncasecmp(p+j+1U,"and ",4U))return -1;
         return 1;
     }
@@ -405,9 +427,18 @@ static int check_schedule_plan(const sparkles_schedule_plan_t *plan,
         memcpy(req.guest_name,plan->guest_name,strlen(plan->guest_name)+1U);
         rc=owner->invoke_service(SPARKLES_MARIADB_CHECK_SERVICE,
             &req,sizeof req,&out,sizeof out,&used);
-        if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return -2;
+        if(rc!=STNLABZ_MODULE_OK||used!=sizeof out) {
+            fprintf(stderr,"[OLLAMA] calendar check service failed rc=%d used=%zu\n",
+                    (int)rc,used);
+            return -2;
+        }
         if(out.status==SPARKLES_MARIADB_CHECK_CONFLICT)return -1;
-        if(out.status!=SPARKLES_MARIADB_CHECK_FREE)return -2;
+        if(out.status==SPARKLES_MARIADB_CHECK_DENIED)return -3;
+        if(out.status!=SPARKLES_MARIADB_CHECK_FREE) {
+            fprintf(stderr,"[OLLAMA] calendar check rejected status=%u\n",
+                    out.status);
+            return -2;
+        }
     }
     return 1;
 }
@@ -1002,7 +1033,8 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
                     pending_clear(account,sender);
                     if(!schedule_private_reply(reply,ctx,
                         check==-1?"The proposed time conflicts with your calendar; nothing saved.":
-                                  "Calendar conflict check unavailable; nothing saved."))
+                                  check==-3?"Your Second Life identity is not linked to an authorized calendar contact; nothing saved.":
+                                  "Calendar or guest verification failed; nothing saved."))
                         return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                     return 1; /* Already replied in DM. */
                 }
@@ -1117,7 +1149,8 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             if(check!=1) {
                 if(!schedule_private_reply(reply,ctx,
                     check==-1?"The proposed time conflicts with your calendar; nothing saved.":
-                              "Calendar conflict check unavailable; nothing saved."))
+                              check==-3?"Your Second Life identity is not linked to an authorized calendar contact; nothing saved.":
+                                  "Calendar or guest verification failed; nothing saved."))
                     return schedule_reply(reply,ctx,"Private scheduling unavailable.");
                 return 1; /* Already replied in DM. */
             }
@@ -1808,6 +1841,19 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  e+=se;p+=sp;
  ok=dialogue_selftest(&de,&dp)&&ok;
  e+=de;p+=dp;
+ /* Named entertainment staff are event details, not invitations. */
+ {
+  char guest[64]={0};
+  ++e;
+  if(schedule_guest("I have to host at The River with Manon as my DJ Friday 2026-11-13 at 20:00 to 22:00",guest)==0 &&
+     !guest[0])++p;else ok=0;
+  ++e;
+  if(schedule_guest("Meeting with Manon Friday at 20:00",guest)==1 &&
+     !strcmp(guest,"Manon"))++p;else ok=0;
+  ++e;
+  if(schedule_guest("Hosting with Manon as the DJ",guest)==0 &&
+     !guest[0])++p;else ok=0;
+ }
  /* DM group requests must yield exact, literal group aliases and
   * bounded messages; model hallucinations cannot choose another group. */
  {
