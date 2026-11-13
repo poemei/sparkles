@@ -270,7 +270,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                                    view.payload_size,login->circuit.agent,&im);
                     if (status==SPARKLES_SL_IM_VALID) {
                         if (ingress(&im,context))
-                            report("private IM accepted into Core dispatch queue");
+                            report(im.ambient==2U?
+                                   "session chat accepted into Core dispatch queue":
+                                   "private IM accepted into Core dispatch queue");
                     } else {
                         fprintf(stderr,"[SL] IM packet rejected: reason=%s length=%zu dialog=%u\n",
                                 sparkles_sl_im_validation_name(status),
