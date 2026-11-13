@@ -1,3 +1,17 @@
+**v1.9.7 — SL group registry resolver (source only):** New read-only typed
+\`sparkles.mariadb.sl_groups.resolve\` service resolves a requested Second Life
+group name to its UUID by joining the existing operator-created
+\`sl_groups\`, \`business_groups\` and \`businesses\` tables. Requires an
+authenticated \`sl:<avatar UUID>\` caller matching \`businesses.sl_owner_uuid\`
+on a linked active business and an active chat-enabled group. Absent owner
+UUID, ambiguous name, unavailable schema/service and missing membership
+relationship fail closed. Prepared SQL, bounded results, UUID validation and
+connection locking are used; no group credentials or UUID mappings reside in
+\`sl.conf\`. The SQL assumes those three tables have the columns specified
+in the operator's earlier schema; live schema and owner records have not
+been verified here. No SQL writes, show scheduler or notices in this step.
+
+
 **v1.9.6 (GitHub source only):** `conversation_context.category='group_chat'` is assigned to simulator-confirmed session speech (ambient source 2), with `source='SL'`, `visibility='SHARED'`, `context_type='OBSERVATION'`, and speaker UUID account attribution. Group records are observations, not verified facts or instructions. The conversation table is unchanged and no schema migration is required.
 
 **v1.9.5 remainder-of-day and context capture correction (2026-11-12, source only):** A validated optional `from_time` bound is applied by the person-scoped appointment-read SQL before the nine-row limit, preventing earlier appointments from hiding later ones. `conversation_context` storage no longer depends on a successful history recall query; failed writes log SQL error numbers without message content. Verify actual SL v0.3.3 and MariaDB v1.9.5 installation before attributing missing rows to source logic. No live build, database readback, or acceptance confirmed.
