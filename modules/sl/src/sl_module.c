@@ -5,6 +5,7 @@
 #include "sparkles_memory.h"
 #include <stdatomic.h>
 #include <stdio.h>
+#include <strings.h>
 #include <string.h>
 #include "stnlabz_abi/module.h"
 #include "sl_wire.h"
@@ -16,7 +17,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 3U
+#define SL_PATCH 4U
 
 #define SL_INBOUND_CAP 8U
 #define SL_OUTBOUND_CAP 8U
@@ -31,6 +32,23 @@ static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
 static uint64_t epoch;
 static int worker_started, dispatcher_started;
 static const stnlabz_module_host_t *module_host;
+
+/* Session chat is shared. Only an explicit address to Sparkles triggers
+ * inference; all other session lines are recorded without replies. */
+static int session_addressed(const char *text)
+{
+    const char *p;
+    if(!text)return 0;
+    for(p=text;*p;++p) {
+        if((p==text || !((* (p-1)>='A' && *(p-1)<='Z') ||
+                         (*(p-1)>='a' && *(p-1)<='z'))) &&
+           !strncasecmp(p,"sparkles",8U) &&
+           (p[8U]==0 || !((p[8U]>='A'&&p[8U]<='Z') ||
+                          (p[8U]>='a'&&p[8U]<='z'))))
+            return 1;
+    }
+    return 0;
+}
 
 static int enqueue_private(const sparkles_sl_private_im_t *im, void *unused)
 {
@@ -116,6 +134,13 @@ static void *dispatch_worker(void *unused)
                    strlen(request.account)+1U);
         }
         memcpy(request.text,im.text,sizeof request.text);
+        if(im.ambient==2U) {
+            char session_id[37];
+            sparkles_sl_uuid_format(im.conversation,session_id);
+            if(snprintf(request.account,sizeof request.account,
+                        "slg-%s",session_id)>=(int)sizeof request.account)
+                continue;
+        }
         /* Both IM and local chat reach durable context before any optional
          * conversational response. Identity answers, scheduling paths, and
          * brief messages must not bypass the observation write. */
@@ -132,7 +157,7 @@ static void *dispatch_worker(void *unused)
             } else {
                 memcpy(observation.utterance,im.text,text_length+1U);
                 observation.record=1U;
-                observation.ambient=im.ambient?1U:0U;
+                observation.ambient=im.ambient;
                 memory_result=module_host->invoke_service(
                     SPARKLES_MEMORY_EXCHANGE_SERVICE,
                     &observation,sizeof observation,
@@ -142,7 +167,7 @@ static void *dispatch_worker(void *unused)
                     fprintf(stderr,
                         "[SL] context observation NOT saved: result=%d used=%zu saved=%u channel=%s\n",
                         (int)memory_result,memory_used,receipt.saved,
-                        im.ambient?"nearby":"private");
+                        im.ambient==2U?"session":im.ambient?"nearby":"private");
                 else
                     fprintf(stderr,"[SL] context observation saved: channel=%s\n",
                             im.ambient?"nearby":"private");
@@ -150,7 +175,8 @@ static void *dispatch_worker(void *unused)
         }
         /* Ambient local chat informs context but is not addressed to the
          * assistant; never dispatch it as a conversational command. */
-        if(im.ambient)continue;
+        if(im.ambient==1U ||
+           (im.ambient==2U && !session_addressed(im.text)))continue;
         result=module_host->invoke_service(
             SPARKLES_ROUTER_DISPATCH_SERVICE,
             &request,sizeof request,&response,sizeof response,&used);
@@ -161,8 +187,12 @@ static void *dispatch_worker(void *unused)
             fprintf(stderr,"[SL] private IM Core dispatch returned no reply\n");
             continue;
         }
-        memcpy(reply.recipient,im.sender,16U);
+        if(im.ambient==2U)
+            memcpy(reply.recipient,im.conversation,16U);
+        else
+            memcpy(reply.recipient,im.sender,16U);
         memcpy(reply.conversation,im.conversation,16U);
+        reply.session_chat=im.ambient==2U;
         memcpy(reply.text,response.text,sizeof reply.text);
         pthread_mutex_lock(&qlock);
         if (!atomic_load(&stopping) && generation==epoch &&
