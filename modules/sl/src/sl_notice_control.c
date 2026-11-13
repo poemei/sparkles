@@ -14,6 +14,7 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -38,6 +39,14 @@ typedef struct {
 } notice_state_t;
 static notice_state_t state={.lock=PTHREAD_MUTEX_INITIALIZER};
 
+static char *find_header(char *buffer,const char *needle)
+{
+ size_t size=strlen(needle);
+ char *p;
+ for(p=buffer;*p;++p)
+  if(!strncasecmp(p,needle,size))return p;
+ return NULL;
+}
 static int uuid_ok(const char *s)
 {
  size_t i;
@@ -322,6 +331,11 @@ static void respond(int fd,const char *op,const char *body)
   pthread_mutex_unlock(&state.lock);
   ok=group_allowed(&action) &&
      state.control->publish(&action,state.control->publish_ctx);
+  if(!ok) {
+   pthread_mutex_lock(&state.lock);
+   if(state.phase==NOTICE_QUEUED)state.phase=NOTICE_FAILED;
+   pthread_mutex_unlock(&state.lock);
+  }
   send_json(fd,ok?200:503,ok?
    "{\"status\":\"queued\",\"publication_confirmed\":false}":
    "{\"status\":\"failed\",\"publication_confirmed\":false}");
@@ -351,7 +365,7 @@ static void handle_client(int fd)
   end=strstr(raw,"\r\n\r\n");
   if(end) {
    header_len=(size_t)(end+4U-raw);
-   line=strcasestr(raw,"\nContent-Length:");
+   line=find_header(raw,"\nContent-Length:");
    if(!line||line>=end)break;
    content_len=strtoul(line+16U,NULL,10);
    if(content_len>1900U||!content_len)break;
@@ -365,7 +379,7 @@ static void handle_client(int fd)
  if(!body||strncmp(raw,"POST /notice HTTP/1.1\r\n",23U)) {
   send_json(fd,400,"{\"error\":\"invalid HTTP request\"}");return;
  }
- line=strcasestr(raw,"\nX-Sparkles-Object-Token:");
+ line=find_header(raw,"\nX-Sparkles-Object-Token:");
  if(!line||line>=end) {
   send_json(fd,401,"{\"error\":\"unauthorized\"}");return;
  }
