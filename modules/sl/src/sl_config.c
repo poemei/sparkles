@@ -17,7 +17,8 @@ static int add_value(sparkles_sl_login_config_t *cfg,
         {"first", cfg->first, sizeof cfg->first},
         {"last", cfg->last, sizeof cfg->last},
         {"password", cfg->password, sizeof cfg->password},
-        {"start", cfg->start, sizeof cfg->start}
+        {"start", cfg->start, sizeof cfg->start},
+        {"group_chat", cfg->group_chat, sizeof cfg->group_chat}
     };
     size_t i, length = strlen(value);
     if (!length || strchr(value, '\r') || strchr(value, '\n')) return 0;
@@ -68,7 +69,11 @@ int sparkles_sl_config_load(const char *path, sparkles_sl_login_config_t *out)
         while (end > value && (end[-1] == ' ' || end[-1] == '\t')) *--end = '\0';
         if (!add_value(&candidate, key, value, &found)) goto done;
     }
-    if (ferror(stream) || found != 0x0fU) goto done;
+    if (ferror(stream) || (found & 0x0fU) != 0x0fU) goto done;
+    if (candidate.group_chat[0]) {
+        unsigned char uuid[16];
+        if (!sparkles_sl_uuid_parse(candidate.group_chat,uuid)) goto done;
+    }
     *out = candidate;
     success = 1;
 done:
