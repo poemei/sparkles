@@ -63,6 +63,20 @@ int main(void)
         &appointment_executed,&appointment_passed);
     int memory_ok=sparkles_mariadb_memory_selftests(
         &memory_executed,&memory_passed);
+    /* The show scheduler never claims or mutates with a missing DB
+     * connection; these are regression guards, not live SQL tests. */
+    {
+        sparkles_show_claim_reply_t claimed={0};
+        sparkles_show_response_request_t answer={0};
+        sparkles_show_response_reply_t acknowledged={0};
+        sparkles_show_attempt_request_t attempt={0};
+        ++executed;
+        if(!sparkles_mariadb_show_claim(NULL,&claimed))++passed;
+        ++executed;
+        if(!sparkles_mariadb_show_respond(NULL,&answer,&acknowledged))++passed;
+        ++executed;
+        if(!sparkles_mariadb_show_attempt(NULL,&attempt))++passed;
+    }
     {
         char name[64]={0};
         ++executed;if(sparkles_contact_name_parse("my name is Poe",name) &&
