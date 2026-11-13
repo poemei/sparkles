@@ -314,7 +314,12 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
 done:
     OPENSSL_cleanse(secret,sizeof secret);
     OPENSSL_cleanse(hashed,sizeof hashed);
-    if (request) { OPENSSL_cleanse(request->content,request->use); xmlBufferFree(request); }
+    if (request) {
+        xmlChar *bytes=xmlBufferContent(request);
+        size_t length=xmlBufferLength(request);
+        if(bytes && length)OPENSSL_cleanse(bytes,length);
+        xmlBufferFree(request);
+    }
     if (headers) curl_slist_free_all(headers);
     if (curl) curl_easy_cleanup(curl);
     free(response.data);
