@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 10U
+#define OLLAMA_VERSION_PATCH 11U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -27,6 +27,7 @@ static int service_registered;
 static int command_registered;
 static stnlabz_module_result_t generate(const void *,size_t,void *,size_t,size_t *,void *);
 static const int schedule_extraction_mode=1;
+static const int intent_extraction_mode=2;
 static int timed_commitment(const char *text)
 {
     const unsigned char *p=(const unsigned char *)text;
@@ -539,7 +540,7 @@ static unsigned int mutation_intent(const char *human)
         "Reply with EXACTLY one word: UPDATE, CANCEL, or NONE. "
         "Do not provide an explanation. Human message: %s",human);
     if(n<0||(size_t)n>=sizeof in.prompt)return 0U;
-    if(generate(&in,sizeof in,&out,sizeof out,&used,NULL)!=STNLABZ_MODULE_OK ||
+    if(generate(&in,sizeof in,&out,sizeof out,&used,(void *)&intent_extraction_mode)!=STNLABZ_MODULE_OK ||
        used!=sizeof out)return 0U;
     if(!strcmp(out.text,"UPDATE"))return SPARKLES_MARIADB_MUTATE_UPDATE;
     if(!strcmp(out.text,"CANCEL"))return SPARKLES_MARIADB_MUTATE_CANCEL;
@@ -577,7 +578,7 @@ static unsigned int mutation_model_choice(const char *human,
         if(n<0||(size_t)n>=sizeof in.prompt-offset)return 0U;
         offset+=(size_t)n;
     }
-    if(generate(&in,sizeof in,&out,sizeof out,&used,NULL)!=STNLABZ_MODULE_OK ||
+    if(generate(&in,sizeof in,&out,sizeof out,&used,(void *)&intent_extraction_mode)!=STNLABZ_MODULE_OK ||
        used!=sizeof out)return 0U;
     if(sscanf(out.text,"%u %c",&chosen,&tail)!=1 ||
        !chosen || chosen>found->count)return 0U;
@@ -614,7 +615,7 @@ static int mutation_model_proposal(const char *human,
         request->previous_title,request->previous_start,
         request->previous_end,human);
     if(n<0||(size_t)n>=sizeof in.prompt)return 0;
-    if(generate(&in,sizeof in,&out,sizeof out,&used,NULL)!=STNLABZ_MODULE_OK||
+    if(generate(&in,sizeof in,&out,sizeof out,&used,(void *)&intent_extraction_mode)!=STNLABZ_MODULE_OK||
        used!=sizeof out)return 0;
     if(strncmp(out.text,"START=",6U))return 0;
     line1=strchr(out.text,'\n');
@@ -720,39 +721,6 @@ static int date_from_human(const char *text,char date[11])
     if(mktime(&day)==(time_t)-1)return 0;
     return strftime(date,11U,"%Y-%m-%d",&day)==10U;
 }
-static int mutation_hour_hint(const char *text,char timepart[6])
-{
-    size_t i,n;
-    if(!text)return 0;
-    n=strlen(text);
-    for(i=0U;i<n;++i){
-        unsigned hh,mm;
-        if(i>0U && text[i-1]>='0' && text[i-1]<='9')continue;
-        if(i+4U<=n && text[i]>='0'&&text[i]<='2' &&
-           text[i+1]>='0'&&text[i+1]<='9' &&
-           text[i+2]>='0'&&text[i+2]<='5' &&
-           text[i+3]>='0'&&text[i+3]<='9' &&
-           (i+4U==n || text[i+4U]<'0'||text[i+4U]>'9') &&
-           (i+4U==n || (text[i+4U]!='-' && text[i+4U]!='/')) &&
-           (i==0U || (text[i-1]!='-' && text[i-1]!='/'))){
-            hh=(unsigned)(text[i]-'0')*10U+(unsigned)(text[i+1]-'0');
-            mm=(unsigned)(text[i+2]-'0')*10U+(unsigned)(text[i+3]-'0');
-            if(hh<24U && snprintf(timepart,6U,"%02u:%02u",hh,mm)==5)return 1;
-        }
-        if(i+5U<=n && text[i]>='0'&&text[i]<='2' &&
-           text[i+1]>='0'&&text[i+1]<='9' && text[i+2]==':' &&
-           text[i+3]>='0'&&text[i+3]<='5' &&
-           text[i+4]>='0'&&text[i+4]<='9'){
-            hh=(unsigned)(text[i]-'0')*10U+(unsigned)(text[i+1]-'0');
-            if(hh<24U){
-                memcpy(timepart,text+i,5U);
-                timepart[5]='\0';
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
 static int mutation_fetch(pending_mutation_t *state)
 {
     sparkles_mariadb_appointments_request_t req={{0}};
@@ -787,16 +755,16 @@ static int mutation_offer_selection(pending_mutation_t *state,
     unsigned int i,matched=0,choice=0,model_choice=0;
     int n;
     size_t used;
-    if(state->found.count>1U)
-        model_choice=mutation_model_choice(initial,state->found.count?&state->found:NULL);
-    if(model_choice){matched=1U;choice=model_choice-1U;}
-    else if(state->found.count==1U){matched=1U;choice=0U;}
     for(i=0U;i<state->found.count;++i) {
         const sparkles_mariadb_appointment_t *e=&state->found.records[i];
         if(!memchr(e->title,0,sizeof e->title) ||
            !memchr(e->start_time,0,sizeof e->start_time) ||
            !memchr(e->end_time,0,sizeof e->end_time))return 0;
     }
+    if(state->found.count>1U)
+        model_choice=mutation_model_choice(initial,&state->found);
+    if(model_choice){matched=1U;choice=model_choice-1U;}
+    else if(state->found.count==1U){matched=1U;choice=0U;}
     if(!state->found.count) {
         /* A relative day can be wrong when server and user have different
          * local calendars. Never conclude the appointment does not exist. */
@@ -987,47 +955,10 @@ static int mutation_conversation(const stnlabz_module_command_t *command,
                 (void)schedule_private_reply(reply,ctx,message);
             return 1;
         }
-        char date[11],start[6],end[6];
-        int offset=0;
-        const char *new_title;
-        size_t title_length;
-        if(sscanf(text,"%10s %5s %5s %n",date,start,end,&offset)!=3 ||
-           !sparkles_schedule_date(date,date) ||
-           !sparkles_schedule_end_time(end,start,state.request.next_end)) {
-            (void)schedule_private_reply(reply,ctx,
-                "Please reply YYYY-MM-DD HH:MM HH:MM (end later than start).");
-            return 1;
-        }
-        n=snprintf(state.request.next_start,sizeof state.request.next_start,
-                   "%s %s:00",date,start);
-        if(n!=19) return schedule_reply(reply,ctx,"Invalid replacement time.");
-        n=snprintf(state.request.next_end,sizeof state.request.next_end,
-                   "%s %s:00",date,end);
-        if(n!=19) return schedule_reply(reply,ctx,"Invalid replacement time.");
-        /* A title may follow the new interval; otherwise preserve it. */
-        new_title=text+offset;
-        while(*new_title==' '||*new_title=='\t')++new_title;
-        if(!*new_title)new_title=state.request.previous_title;
-        title_length=strlen(new_title);
-        if(!title_length || title_length>=sizeof state.request.next_title ||
-           strchr(new_title,'|') || strchr(new_title,'\r') ||
-           strchr(new_title,'\n')) {
-            (void)schedule_private_reply(reply,ctx,
-                "The new title is invalid or too long. Please provide a shorter title.");
-            return 1;
-        }
-        memcpy(state.request.next_title,new_title,title_length+1U);
-        state.stage=4U;
-        if(!mutation_store(&state))
-            return schedule_reply(reply,ctx,"Scheduling proposal unavailable.");
-        n=snprintf(message,sizeof message,
-            "Move #%llu from %s–%s to %s–%s? "
-            "Reply 'confirm' to update or 'cancel'.",
-            state.request.id,state.request.previous_start,
-            state.request.previous_end,state.request.next_start,
-            state.request.next_end);
-        if(n>0&&(size_t)n<sizeof message)
-            (void)schedule_private_reply(reply,ctx,message);
+        (void)schedule_private_reply(reply,ctx,
+            "I have the original appointment, but couldn't confidently "
+            "interpret the replacement. Tell me the changes you'd like "
+            "to make, including anything that wasn't clear.");
         return 1;
     }
     if(state.stage==4U) {
@@ -1407,6 +1338,9 @@ static stnlabz_module_result_t generate(const void *request,size_t request_size,
  memset(out,0,sizeof(*out));
  if(!(ctx==&schedule_extraction_mode ?
       sparkles_ollama_build_schedule_request(SPARKLES_OLLAMA_MODEL,in->prompt,
+                                           body,sizeof body) :
+      ctx==&intent_extraction_mode ?
+      sparkles_ollama_build_intent_request(SPARKLES_OLLAMA_MODEL,in->prompt,
                                            body,sizeof body) :
       sparkles_ollama_build_request(SPARKLES_OLLAMA_MODEL,in->prompt,
                                    body,sizeof body)))
@@ -2109,19 +2043,6 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
    int passed=schedule_lookup_intent(cases[i].text)==cases[i].expected;
    ++e;if(passed)++p;else ok=0;
   }
- }
- {
-  /* Intent is inferred by Ollama at runtime, not tested as a word list. */
-  ++e;++p;
- }
- {
-    char hint[6]={0},date[11]={0};
-    ++e;if(mutation_hour_hint("cancel 1630 tomorrow at River",hint) &&
-           !strcmp(hint,"16:30"))++p;else ok=0;
-    ++e;if(!mutation_hour_hint("cancel 2026-11-12 meeting",hint))++p;else ok=0;
-    ++e;if(date_from_human("tomorrow 11/12/2026 at River",date) &&
-           !strcmp(date,"2026-11-12"))++p;else ok=0;
-
  }
  {
   static const struct {const char *input;int expected;} checks[]={
