@@ -175,9 +175,20 @@ static int joined(const caps_state_t *state,const unsigned char uuid[16])
 static void note_joined(caps_state_t *state,const unsigned char uuid[16])
 {
     if(joined(state,uuid))return;
-    if(state->joined_count<CAPS_SESSION_MAX)
+    if(state->joined_count<CAPS_SESSION_MAX) {
         memcpy(state->joined[state->joined_count++],uuid,16U);
-    else caps_log("session tracking capacity reached");
+        if(state->worker->group_lock && state->worker->shared_joined &&
+           state->worker->shared_joined_count) {
+            unsigned int count;
+            pthread_mutex_lock(state->worker->group_lock);
+            count=*state->worker->shared_joined_count;
+            if(count<CAPS_SESSION_MAX) {
+                memcpy(state->worker->shared_joined[count],uuid,16U);
+                *state->worker->shared_joined_count=count+1U;
+            }
+            pthread_mutex_unlock(state->worker->group_lock);
+        }
+    } else caps_log("session tracking capacity reached");
 }
 static int accept_invitation(caps_state_t *state,const unsigned char uuid[16])
 {
@@ -306,6 +317,21 @@ static void session_closed_event(caps_state_t *state,xmlNodePtr body)
         if(!memcmp(state->joined[i],session,16U)) {
             --state->joined_count;
             memcpy(state->joined[i],state->joined[state->joined_count],16U);
+            if(state->worker->group_lock && state->worker->shared_joined &&
+               state->worker->shared_joined_count) {
+                unsigned int j,count;
+                pthread_mutex_lock(state->worker->group_lock);
+                count=*state->worker->shared_joined_count;
+                for(j=0U;j<count;++j) {
+                    if(!memcmp(state->worker->shared_joined[j],session,16U)) {
+                        memcpy(state->worker->shared_joined[j],
+                               state->worker->shared_joined[count-1U],16U);
+                        *state->worker->shared_joined_count=count-1U;
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(state->worker->group_lock);
+            }
             caps_log("chat session closed by simulator");
             break;
         }
