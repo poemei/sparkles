@@ -1066,6 +1066,21 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
                                  sizeof response,&used,NULL);
         if(rc==STNLABZ_MODULE_ERR_INVALID_STATE && used==0U &&
            !response.matched){++p;++np;} else ok=0;
+        request.notice=2U;
+        used=9U;
+        ++e;++ne;
+        rc=group_resolve_service(&request,sizeof request,&response,
+                                 sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U &&
+           !response.matched){++p;++np;} else ok=0;
+        request.notice=1U;
+        used=9U;
+        ++e;++ne;
+        rc=group_resolve_service(&request,sizeof request,&response,
+                                 sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_STATE && used==0U &&
+           !response.matched){++p;++np;} else ok=0;
+        request.notice=0U;
         memcpy(request.account,"irc:unverified",15U);
         used=9U;
         ++e;++ne;
