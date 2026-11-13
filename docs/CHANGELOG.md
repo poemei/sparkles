@@ -1,5 +1,15 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — SL group event capability and primary-group start (source only)
+
+- SL 0.3.5: Native C HTTPS LLSD seed negotiation for EventQueueGet and ChatSessionRequest, independent cancellable long-poll worker, invitation acceptance, session-start/forced-close lifecycle tracking and group session message ingress.
+- Optional `group_chat` UUID setting in SL restricted credential configuration starts an operator-selected group chat (dialog 15) after simulator-confirmed presence; the grid still verifies membership.
+- Extended native regressions for LLSD event queue, group start/close, group-start packet and optional configuration field.
+- Existing SL group-chat speaker attribution, Core routing, inference-only session namespace and MariaDB observations remain in place.
+- **Not yet established:** live simulator acceptance, complete group-member roster or history, all event variants, group notice posting, module installation, operator acceptance and native build on the target machine. No rollout performed.
+
+
+
 ## 2026-11-12 — SL session group/conference message increment (GitHub source only)
 
 - SL v0.3.4: recognize dialog 17 group/conference session messages and preserve session ID, sender UUID, and destination; encode group replies to the session rather than private IM.
