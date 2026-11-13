@@ -175,10 +175,10 @@ static void *dispatch_worker(void *unused)
                     fprintf(stderr,
                         "[SL] context observation NOT saved: result=%d used=%zu saved=%u channel=%s\n",
                         (int)memory_result,memory_used,receipt.saved,
-                        im.ambient==2U?"session":im.ambient==2U?"session":im.ambient?"nearby":"private");
+                        im.ambient==2U?"session":im.ambient?"nearby":"private");
                 else
                     fprintf(stderr,"[SL] context observation saved: channel=%s\n",
-                            im.ambient?"nearby":"private");
+                            im.ambient==2U?"session":im.ambient?"nearby":"private");
             }
         }
         /* Ambient local chat informs context but is not addressed to the
@@ -213,7 +213,8 @@ static void *dispatch_worker(void *unused)
             out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
             ++out_count;
         } else {
-            fprintf(stderr,"[SL] private IM response discarded (disconnect or full queue)\n");
+            fprintf(stderr,"[SL] %s response discarded (disconnect or full queue)\n",
+                    im.ambient==2U?"session chat":"private IM");
         }
         pthread_mutex_unlock(&qlock);
     }
