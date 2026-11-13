@@ -21,8 +21,8 @@ $(BUILD)/%.o: src/%.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -MMD -MP -c $< -o $@
 
-$(TARGET): $(OBJS)
-	$(CC) -shared $(LDFLAGS) -o $@ $^ $(LDLIBS)
+$(TARGET): $(OBJS) $(ROOT)/include/sparkles_sl_group_db.h
+	$(CC) -shared $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
 $(TEST): tests/test_mariadb.c src/mariadb_config.c src/mariadb_dates.c src/mariadb_auth.c src/mariadb_appointment_input.c src/mariadb_memory_validate.c src/mariadb_contacts.c
 	@mkdir -p $(BUILD)
