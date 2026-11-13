@@ -195,7 +195,8 @@ static void *dispatch_worker(void *unused)
             !response.replied ||
             !memchr(response.text,0,sizeof response.text) ||
             !response.text[0]) {
-            fprintf(stderr,"[SL] private IM Core dispatch returned no reply\n");
+            fprintf(stderr,"[SL] %s Core dispatch returned no reply\n",
+                    im.ambient==2U?"session chat":"private IM");
             continue;
         }
         if(im.ambient==2U)
