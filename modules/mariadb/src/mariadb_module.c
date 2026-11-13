@@ -931,6 +931,35 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
     ok = sparkles_mariadb_memory_selftests(&memory_e,&memory_p) && ok;
     e += memory_e;
     p += memory_p;
+    /* No live database needed to validate fail-closed group service
+     * boundaries. Live SQL joins require a separate operator test. */
+    {
+        sparkles_sl_group_resolve_request_t request={0};
+        sparkles_sl_group_resolve_reply_t response={0};
+        size_t used=9U;
+        stnlabz_module_result_t rc;
+        ++e;++ne;
+        rc=group_resolve_service(&request,sizeof request,&response,
+                                 sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U)
+            {++p;++np;} else ok=0;
+        memcpy(request.account,
+               "sl:12345678-1234-1234-1234-123456789abc",40U);
+        memcpy(request.group_name,"STN-Labz",9U);
+        used=9U;
+        ++e;++ne;
+        rc=group_resolve_service(&request,sizeof request,&response,
+                                 sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_STATE && used==0U &&
+           !response.matched){++p;++np;} else ok=0;
+        memcpy(request.account,"irc:unverified",15U);
+        used=9U;
+        ++e;++ne;
+        rc=group_resolve_service(&request,sizeof request,&response,
+                                 sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
+           !response.matched){++p;++np;} else ok=0;
+    }
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
