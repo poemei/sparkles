@@ -1520,7 +1520,7 @@ static int sl_group_conversation(const stnlabz_module_command_t *command,
  n=snprintf(in.prompt,sizeof in.prompt,
    "You extract an authorized Second Life group-chat initiation proposal. "
    "Return exactly TWO plain lines (no markdown or extra words): "
-   "GROUP=<group name as written by human>\\n"
+   "GROUP=<group name as written by human>\n"
    "MESSAGE=<exact words to say to the group, as natural text>. "
    "Only extract the group explicitly named in the message. "
    "If unclear return GROUP=UNKNOWN and MESSAGE=UNKNOWN. "
