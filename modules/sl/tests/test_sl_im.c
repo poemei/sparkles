@@ -50,6 +50,11 @@ int main(void)
     assert(im.ambient==2U && !memcmp(im.conversation,conversation,16U));
     input[32U]=1U;
     assert(sparkles_sl_im_decode(input,size,own,&im));
+    memcpy(input+33U,conversation,16U);
+    assert(sparkles_sl_im_decode(input,size,own,&im));
+    input[33U]^=1U; /* Arbitrary session destination rejected. */
+    assert(!sparkles_sl_im_decode(input,size,own,&im));
+    memcpy(input+33U,own,16U);
     input[32U]=0U;
     input[82U]=13U; /* Session invitation control is not chat. */
     assert(!sparkles_sl_im_decode(input,size,own,&im));
