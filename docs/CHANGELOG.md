@@ -1,5 +1,14 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — DB-driven group registry for Second Life (source only)
+
+- SL v0.3.8 replaces its fixed configured group/operator records with a read-only MariaDB group resolution service. Secure SL config now accepts only its original four login fields; group slots and configuration-driven auto-start are removed.
+- MariaDB v1.9.7 registers \`sparkles.mariadb.sl_groups.resolve\`: prepared name lookup through \`sl_groups\` → \`business_groups\` → \`businesses\` gated by the simulator-verified human's avatar UUID matching the linked business's \`sl_owner_uuid\`; group and business must both be active and the group chat-enabled.
+- Existing inbound group session invitations, ordinary group response encoding and authorization of private IM dispatch remain. Startup auto-join for a single configured primary group is no longer automatic; group starts are on demand or invitation-based.
+- Only repository source changed; no database row edits, installation, source compilation, real SQL query or live SL acceptance was executed.
+
+
+
 ## 2026-11-12 — Ollama 1.2.5 group opening speaker perspective correction
 
 - After operator-confirmed successful group delivery, revise the group-action generation prompt to compose a natural group-facing opening in Sparkles' voice, attribute `from me` to the verified private IM speaker, and preserve explicitly named sources such as `STN 6`.
