@@ -237,6 +237,45 @@ static void invitation_event(caps_state_t *state,xmlNodePtr body)
        !state->worker->ingress(&im,state->worker->context))
         caps_log("session event dropped: Core queue full");
 }
+static void session_start_event(caps_state_t *state,xmlNodePtr body)
+{
+    char id[48]={0};
+    unsigned char session[16]={0};
+    xmlNodePtr result=map_get(body,"success");
+    xmlChar *status;
+    int success=0;
+    if(!result || xmlStrcmp(result->name,BAD_CAST "boolean"))return;
+    status=xmlNodeGetContent(result);
+    if(!status)return;
+    success=!xmlStrcmp(status,BAD_CAST "1") ||
+            !xmlStrcmp(status,BAD_CAST "true");
+    xmlFree(status);
+    if(!map_text(body,"session_id",id,sizeof id) ||
+       !sparkles_sl_uuid_parse(id,session))return;
+    if(memcmp(session,state->worker->group_chat,16U)!=0)return;
+    if(success) {
+        note_joined(state,session);
+        caps_log("configured group chat session start confirmed by simulator");
+    } else {
+        caps_log("configured group chat session start rejected by simulator");
+    }
+}
+static void session_closed_event(caps_state_t *state,xmlNodePtr body)
+{
+    char id[48]={0};
+    unsigned char session[16]={0};
+    unsigned int i;
+    if(!map_text(body,"session_id",id,sizeof id) ||
+       !sparkles_sl_uuid_parse(id,session))return;
+    for(i=0U;i<state->joined_count;++i) {
+        if(!memcmp(state->joined[i],session,16U)) {
+            --state->joined_count;
+            memcpy(state->joined[i],state->joined[state->joined_count],16U);
+            caps_log("chat session closed by simulator");
+            break;
+        }
+    }
+}
 static int consume_events(caps_state_t *state,caps_body_t *response)
 {
     xmlDocPtr doc=NULL;
@@ -263,6 +302,10 @@ static int consume_events(caps_state_t *state,caps_body_t *response)
            !body||xmlStrcmp(body->name,BAD_CAST "map"))goto done;
         if(!strcmp(event_name,"ChatterBoxInvitation"))
             invitation_event(state,body);
+        else if(!strcmp(event_name,"ChatterBoxSessionStartReply"))
+            session_start_event(state,body);
+        else if(!strcmp(event_name,"ForceCloseChatterBoxSession"))
+            session_closed_event(state,body);
     }
     state->ack=next_ack;
     state->has_ack=1;
