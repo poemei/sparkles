@@ -17,12 +17,7 @@ static int add_value(sparkles_sl_login_config_t *cfg,
         {"first", cfg->first, sizeof cfg->first},
         {"last", cfg->last, sizeof cfg->last},
         {"password", cfg->password, sizeof cfg->password},
-        {"start", cfg->start, sizeof cfg->start},
-        {"group_chat", cfg->group_chat, sizeof cfg->group_chat},
-        {"group_name", cfg->group_name, sizeof cfg->group_name},
-        {"group_chat_2", cfg->group_chat_2, sizeof cfg->group_chat_2},
-        {"group_name_2", cfg->group_name_2, sizeof cfg->group_name_2},
-        {"operator_uuid", cfg->operator_uuid, sizeof cfg->operator_uuid}
+        {"start", cfg->start, sizeof cfg->start}
     };
     size_t i, length = strlen(value);
     if (!length || strchr(value, '\r') || strchr(value, '\n')) return 0;
@@ -74,18 +69,6 @@ int sparkles_sl_config_load(const char *path, sparkles_sl_login_config_t *out)
         if (!add_value(&candidate, key, value, &found)) goto done;
     }
     if (ferror(stream) || (found & 0x0fU) != 0x0fU) goto done;
-    if (candidate.group_chat[0]) {
-        unsigned char uuid[16];
-        if (!sparkles_sl_uuid_parse(candidate.group_chat,uuid)) goto done;
-    }
-    if ((candidate.group_name[0] && !candidate.group_chat[0]) ||
-        (candidate.group_name_2[0] && !candidate.group_chat_2[0]) ||
-        (candidate.group_chat_2[0] && !candidate.group_name_2[0]) ||
-        (candidate.operator_uuid[0] &&
-         !sparkles_sl_uuid_parse(candidate.operator_uuid,(unsigned char[16]){0})) ||
-        (candidate.group_chat_2[0] &&
-         !sparkles_sl_uuid_parse(candidate.group_chat_2,(unsigned char[16]){0})))
-        goto done;
     *out = candidate;
     success = 1;
 done:
