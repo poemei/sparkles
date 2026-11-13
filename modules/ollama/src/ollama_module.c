@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 13U
+#define OLLAMA_VERSION_PATCH 14U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1776,6 +1776,17 @@ static int notice_parse(const char *result,const char *human,
  memcpy(a->body,body,bl);a->body[bl]=0;
  return find_uncased(human,a->group)!=NULL;
 }
+static int explicit_notice_request(const char *human)
+{
+ /* The notice command is an operational intent, not a model opinion.
+  * The model still decides the wording and literal destination. */
+ if(!human)return 0;
+ return (find_uncased(human,"group notice") ||
+         find_uncased(human,"send a notice") ||
+         find_uncased(human,"publish a notice") ||
+         find_uncased(human,"post a notice") ||
+         find_uncased(human,"send notice")) != NULL;
+}
 static int notice_conversation(const stnlabz_module_command_t *command,
                                stnlabz_module_command_reply_fn reply,
                                void *context)
@@ -1793,7 +1804,8 @@ static int notice_conversation(const stnlabz_module_command_t *command,
     !memchr(command->sender,0,sizeof command->sender))return 0;
  pthread_mutex_lock(&notice_lock);
  slot=notice_index(command->account,command->sender,time(NULL));
- if(slot>=0) {
+ if(slot>=0 && (!strcasecmp(command->arguments,"cancel notice") ||
+                !strcasecmp(command->arguments,"confirm notice"))) {
   a=notice_pending[slot].action;
   memset(&notice_pending[slot],0,sizeof notice_pending[slot]);
  }
@@ -1812,7 +1824,11 @@ static int notice_conversation(const stnlabz_module_command_t *command,
     return reply(context,"Application authorization for this group notice was denied; nothing was queued.");
    return reply(context,"Notice could not be queued. Publication was not attempted.");
   }
+  /* Keep a previously proposed notice for the operator's later approval.
+   * Other conversational turns must not erase the pending action. */
+  if(!explicit_notice_request(command->arguments))return 0;
  }
+ if(!explicit_notice_request(command->arguments))return 0;
  n=snprintf(in.prompt,sizeof in.prompt,
    "Interpret the human's private Second Life message. If the human is "
    "asking Sparkles to PUBLISH an official group NOTICE or announcement, "
@@ -1826,11 +1842,14 @@ static int notice_conversation(const stnlabz_module_command_t *command,
    "SUBJECT=<title, at most 60 characters>\n"
    "BODY=<announcement, at most 290 characters>\n"
    "Human: %.800s",command->arguments);
- if(n<0||(size_t)n>=sizeof in.prompt)return 0;
- rc=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
- if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return 0;
- if(!strcmp(out.text,"NONE"))return 0;
- if(strncmp(out.text,"GROUP=",6U))return 0;
+ if(n<0||(size_t)n>=sizeof in.prompt)
+  return reply(context,"Notice request too long; nothing was queued.");
+ rc=generate(&in,sizeof in,&out,sizeof out,&used,
+             (void *)&intent_extraction_mode);
+ if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)
+  return reply(context,"Notice drafting is unavailable. Nothing was queued.");
+ if(!strcmp(out.text,"NONE") || strncmp(out.text,"GROUP=",6U))
+  return reply(context,"I understood the notice request but could not produce a valid draft. Nothing was queued.");
  if(!notice_parse(out.text,command->arguments,&a)) {
   (void)reply(context,"I could not prepare a valid notice. Please name the group and the announcement.");
   return 1;
