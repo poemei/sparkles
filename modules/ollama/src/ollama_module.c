@@ -1824,6 +1824,22 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   if(parse_group_action("GROUP=STN-Labz\nMESSAGE=Hello there!\n",human,&a) &&
      !strcmp(a.opening,"Hello there!"))++p;else ok=0;
   ++e;
+  if(group_opening_deictic_error(
+       "Sparkles, open STN-Labz group chat and say hello from me",
+       "Hello from me"))++p;else ok=0;
+  ++e;
+  if(!group_opening_deictic_error(
+       "Sparkles, open STN-Labz group chat and say hello from STN 6",
+       "Hello everyone! Greetings from STN 6."))++p;else ok=0;
+  ++e;
+  if(!group_opening_deictic_error(
+       "Sparkles, open STN-Labz group chat and say hello from me",
+       "Hello everyone! PoeMei sends her greetings."))++p;else ok=0;
+  ++e;
+  if(group_opening_deictic_error(
+       "Sparkles, open STN-Labz group chat and say hello from me",
+       "I'm sending my greetings to everyone"))++p;else ok=0;
+  ++e;
   if(!parse_group_action("GROUP=UnknownGroup\nMESSAGE=Hi",human,&a))++p;
   else ok=0;
   ++e;
