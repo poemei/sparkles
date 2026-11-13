@@ -52,7 +52,7 @@ int main(void)
     assert(sparkles_sl_im_decode(input,size,own,&im));
     memcpy(input+33U,conversation,16U);
     assert(sparkles_sl_im_decode(input,size,own,&im));
-    input[33U]^=1U; /* Arbitrary session destination rejected. */
+    input[33U]^=4U; /* Neither own UUID nor session UUID: reject. */
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     memcpy(input+33U,own,16U);
     input[32U]=0U;
