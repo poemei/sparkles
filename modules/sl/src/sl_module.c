@@ -14,6 +14,7 @@
 #include "stnlabz_abi/module.h"
 #include "sl_wire.h"
 #include "sl_grid.h"
+#include "sl_notice_control.h"
 
 /* Native C in-process Second Life grid transport. Core controls lifecycle.
  * A module start means only that the worker started; grid login and avatar
@@ -21,12 +22,12 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 11U
+#define SL_PATCH 12U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
 
-static pthread_t worker, dispatcher, show_timer;
+static pthread_t worker, dispatcher, show_timer, notice_listener;
 static atomic_int stopping=ATOMIC_VAR_INIT(0);
 static pthread_mutex_t qlock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t ready=PTHREAD_COND_INITIALIZER;
@@ -34,12 +35,13 @@ static sparkles_sl_private_im_t inbound[SL_INBOUND_CAP];
 static sparkles_sl_im_reply_t outbound[SL_OUTBOUND_CAP];
 static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
 static uint64_t epoch;
-static int worker_started, dispatcher_started, show_timer_started;
+static int worker_started, dispatcher_started, show_timer_started, notice_listener_started;
 static atomic_int sl_present=ATOMIC_VAR_INIT(0);
 static const stnlabz_module_host_t *module_host;
 static char active_private[128];
 static int group_service_registered;
 static int notice_service_registered;
+static sparkles_notice_control_t notice_control;
 
 /* A simulator-authenticated private IM is dispatched synchronously by
  * this worker. IRC and group speakers cannot impersonate this context. */
@@ -620,6 +622,62 @@ static stnlabz_module_result_t sl_qualify(
     return count>=STNLABZ_MODULE_MIN_TESTS && count==passed ?
            STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_QUALIFICATION;
 }
+/* Called only by the local authenticated notice intake, after the
+ * database has authorized this exact group for the configured operator.
+ * Never claim publication based on successfully adding to this queue. */
+static int notice_control_enqueue(
+    const sparkles_sl_notice_send_request_t *in,void *unused)
+{
+    sparkles_sl_im_reply_t action={0};
+    uint64_t generation;
+    size_t subject_len,body_len;
+    int accepted=0;
+    (void)unused;
+    if(!in||!memchr(in->group,0,sizeof in->group)||
+       !memchr(in->subject,0,sizeof in->subject)||
+       !memchr(in->body,0,sizeof in->body)||
+       !in->group[0]||!in->subject[0]||!in->body[0])return 0;
+    subject_len=strlen(in->subject);
+    body_len=strlen(in->body);
+    if(subject_len+body_len+1U>510U)return 0;
+    /* Resolve once again just before publishing, rather than relying
+     * solely on authorization during the asynchronous drafting stage. */
+    {
+        sparkles_sl_group_resolve_request_t request={0};
+        sparkles_sl_group_resolve_reply_t result={0};
+        size_t used=0U;
+        if(!module_host||!module_host->invoke_service)return 0;
+        memcpy(request.account,in->account,strlen(in->account)+1U);
+        memcpy(request.group_name,in->group,strlen(in->group)+1U);
+        request.notice=1U;
+        if(module_host->invoke_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,
+             &request,sizeof request,&result,sizeof result,&used)!=
+             STNLABZ_MODULE_OK || used!=sizeof result||!result.matched||
+             !sparkles_sl_uuid_parse(result.group_uuid,action.recipient))
+             return 0;
+    }
+    memcpy(action.conversation,action.recipient,16U);
+    memcpy(action.subject,in->subject,subject_len+1U);
+    memcpy(action.text,in->body,body_len+1U);
+    action.notice=1U;
+    pthread_mutex_lock(&qlock);
+    generation=epoch;
+    if(!atomic_load(&stopping) && atomic_load(&sl_present) &&
+       generation==epoch && out_count<SL_OUTBOUND_CAP) {
+        outbound[out_tail]=action;
+        out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+        ++out_count;
+        accepted=1;
+    }
+    pthread_mutex_unlock(&qlock);
+    return accepted;
+}
+static void *notice_control_worker(void *unused)
+{
+    (void)unused;
+    (void)sparkles_notice_control_run(&notice_control);
+    return NULL;
+}
 static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
 {
     if (!host || !host->invoke_service || worker_started ||
@@ -683,6 +741,14 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     show_timer_started=1;
+    memset(&notice_control,0,sizeof notice_control);
+    notice_control.stop=&stopping;
+    notice_control.host=host;
+    notice_control.publish=notice_control_enqueue;
+    if(pthread_create(&notice_listener,NULL,notice_control_worker,NULL)==0)
+        notice_listener_started=1;
+    else
+        fprintf(stderr,"[SL NOTICE] control listener thread could not start\\n");
     fprintf(stderr,"[SL] native C grid/IM workers started; avatar presence not yet established\n");
     return STNLABZ_MODULE_OK;
 }
@@ -698,6 +764,8 @@ static stnlabz_module_result_t sl_stop(void)
     if (pthread_join(worker,NULL)!=0) ok=0;
     if (pthread_join(dispatcher,NULL)!=0) ok=0;
     if (pthread_join(show_timer,NULL)!=0) ok=0;
+    if (notice_listener_started && pthread_join(notice_listener,NULL)!=0)ok=0;
+    notice_listener_started=0;
     if (!ok) return STNLABZ_MODULE_ERR_STOP_FAILED;
     worker_started=dispatcher_started=show_timer_started=0;
     atomic_store(&sl_present,0);
