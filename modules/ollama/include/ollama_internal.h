@@ -9,6 +9,8 @@
 
 int sparkles_ollama_build_request(const char *model, const char *prompt,
                                 char *output, size_t output_size);
+int sparkles_ollama_build_intent_request(
+    const char *model,const char *human,char *output,size_t output_size);
 int sparkles_ollama_build_schedule_request(
     const char *model,const char *human,char *output,size_t output_size);
 int sparkles_ollama_extract_response(const char *json,
