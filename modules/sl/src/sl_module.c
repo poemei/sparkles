@@ -384,7 +384,7 @@ static stnlabz_module_result_t sl_qualify(
     /* A typed operation outside an authenticated private IM must fail
      * closed even if its account text resembles an SL avatar UUID. */
     {
-        sparkles_sl_group_start_request_t req={{0}};
+        sparkles_sl_group_start_request_t req={0};
         sparkles_sl_group_start_reply_t receipt={0};
         size_t receipt_used=9U;
         memcpy(req.account,"sl:12345678-1234-1234-1234-123456789abc",40U);
