@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot updated: 2026-11-12 (America/Los_Angeles); original handoff 2026-11-10
+Snapshot updated: 2026-11-12 23:22 PST (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -677,5 +677,186 @@ payment implementation, Second Life rollout, schedule writes, roadmap
 revisions, training, model changes, or updates to other repositories.
 Read current repository documents and obtain direction before future
 development. Preserve the precise scope, and do not redirect to Work.
+
+======================================================================
+18. 2026-11-12 — SECOND LIFE GROUP REGISTRY AND BUSINESS RELATIONSHIPS
+======================================================================
+SOURCE: Operator conversation and GitHub source edits during 2026-11-12.
+This section supplements the older snapshot; prior sections' historical
+"CURRENT AUTHORIZATION" statements describe their original turns, NOT
+a restriction on work explicitly authorized by the operator afterward.
+
+OPERATOR-CONFIRMED MARIA DB REGISTRY:
+- The operator created sl_groups, businesses and business_groups in
+  MariaDB and explicitly confirmed that all three tables are linked.
+- In the businesses table, ID 1 = STN-Labz and ID 2 = Sparkles
+  Entertainment. These are BUSINESS IDs; do not mistake them for
+  sl_groups.id values or invent group UUIDs.
+- The business_groups join table associates businesses with SL groups.
+  Names, UUIDs, eligibility and associations belong in MariaDB, not in
+  a two-group configuration slot or source-code constant.
+- The operator removed ALL group-related settings from
+  /opt/sparkles/auth/sl/sl.conf. That secret file is now intended to
+  contain only first, last, password and start.
+- The operator emphasized actual official Second Life group NOTICES,
+  not substitutes posted as group-chat lines. The operator reported
+  that relevant bot accounts had Send Notices role ability enabled;
+  actual runtime authorization, group membership and posting success
+  must still be verified through live SL testing.
+
+GITHUB-ONLY SOURCE INCREMENT:
+- SL v0.3.8 removed legacy group/operator fields from login configuration,
+  the two fixed group slots, and config-driven auto-start of the former
+  primary group. Incoming invitations and existing session-chat replies
+  were preserved in source.
+- MariaDB v1.9.7 registered a typed read-only group resolver joining
+  sl_groups -> business_groups -> businesses. A DM-directed start requires
+  the simulator-verified SL sender UUID to match an active linked
+  business's sl_owner_uuid; the group must be active and chat_enabled.
+  No row, missing sl_owner_uuid, duplicate result, missing service or
+  database error must fail closed. A name is not proof of authority.
+- Ollama v1.2.6 adjusted group-action failure wording to the registry.
+- The operator demonstrated a native SL build failure in
+  tests/test_sl_caps.c:57 referencing deleted worker.group_chat, plus
+  a struct initialization warning and deprecated libxml2 field warnings.
+  Follow-up GitHub patches removed the stale fixture assignment,
+  corrected the initializer and used libxml2 buffer accessors.
+  The operator then pasted identical old build output; the developer
+  explained that a local git pull was required. NO subsequent successful
+  native build output for this correction was supplied in that exchange.
+- Relevant GitHub source revision for these corrections:
+  4c626bdb486f78bc766ecc23d36ac0284b137926.
+  Do not equate GitHub readback checks with compilation/installation.
+
+======================================================================
+19. 2026-11-12 — LIVE RIVER SHOW CALENDAR TEST
+======================================================================
+The operator's Friday show:
+  Date: Friday, 2026-11-13 (Pacific / SLT interpretation as supplied)
+  Time: 20:00 to 22:00
+  Venue: The River
+  DJ: Manon
+  Human commitment: operator hosting the show
+
+FIRST OBSERVED ATTEMPT (20:29):
+  Operator: "Sparkles, I have to host at The River with Manon as my
+  DJ Friday 2026-11-13 at 20:00 to 22:00"
+  Sparkles: "Calendar conflict check unavailable; nothing saved."
+Source inspection found the old scheduling guest parser interpreted
+"with Manon" as an invited calendar participant. This was a plausible
+cause, NOT proof of the precise live failure; authorization, contact
+mapping and database/service errors also shared that error wording.
+Ollama v1.2.7 committed explicit staff-role handling ("as my DJ", etc.),
+preserving performer information without requiring an invited guest
+contact row, and distinguished denied account mapping from service
+failure. Source-level qualification cases were added.
+
+OPERATOR-OBSERVED SUCCESS AFTER THE FIX (20:46-20:47):
+  Operator: "Sparkles, I have to host at The River with Manon as my DJ
+  Friday 2026-11-13 at 20:00 to 22:00"
+  Sparkles: "Please confirm these appointments: 2026-11-13
+  20:00-22:00 The River - DJ Manon. Reply 'confirm' to save,
+  or 'cancel'."
+  Operator: "confirm"
+  Sparkles: "Your confirmed appointments were saved in the calendar."
+
+This verifies an actual end-to-end conversational flow as OBSERVED
+by the human: extraction, correct venue/DJ/date/time interpretation,
+private confirmation and a reported successful calendar write.
+It is NOT an independently observed SQL SELECT of the saved row.
+Do not claim independent database verification or universal calendar
+acceptance from that transcript alone.
+
+======================================================================
+20. 2026-11-12 — SHOW MANAGER AND NOTICES: SOURCE-ONLY CONTINUATION
+======================================================================
+With the successful calendar interaction, the operator directed
+"continue". The intended automation remains:
+- T−60 minutes: Sparkles sends the owner a PRIVATE Second Life IM asking
+  whether the show is still going ahead. Explicit commands in the source
+  are "show yes" and "show cancel".
+- T−30 minutes: Sparkles sends REAL OFFICIAL Second Life group notices,
+  selected from eligible database-linked groups (not group chat messages).
+- The current SOURCE policy when no response arrives is to continue
+  with scheduled notices unless the show was explicitly cancelled.
+  This operational behavior has NOT been proven live or separately
+  accepted as a general preference for all future shows.
+- A cancellation of notice automation is separate from cancelling the
+  owner's calendar appointment.
+
+SOURCE IMPLEMENTATION, NOT DEPLOYMENT OR ACCEPTANCE:
+- New migration:
+  modules/mariadb/sql/20261112_show_coordination.sql
+  creates show_events (explicit public show attached to an existing
+  appointment, owner avatar UUID, venue and DJ) and
+  show_delivery_attempts (at-most-once claim for show/stage/group).
+  Neither the migration nor show backfill was run in the conversation.
+- MariaDB v1.10.0/1.10.1 implements typed claim/response/attempt services,
+  time-window queries, notice-group selection through linked businesses
+  and flags, and optional transactional registration of a public show
+  with its new calendar appointment.
+- SL v0.3.9 adds a presence-gated timer thread, explicit private show
+  responses, and an encoder intended to send genuine SL dialog-32
+  group notices. The new notice encoding has source-level tests.
+- Ollama v1.2.8 preserves explicitly parsed DJ-hosting venue and
+  performer information through human confirmation to MariaDB.
+  Its current public-show parser is deliberately narrow and detects
+  the form "host at VENUE with PERSON as my DJ". An ordinary meeting
+  must not be made publicly announceable merely because it has a time.
+- The three relevant changed module contracts must be rebuilt together.
+  Repository source readback reported 24/24 STRUCTURAL checks, not an
+  actual compiler run, database transaction, simulator ACK or posted
+  in-world notice. No new show manager module was live-tested here.
+- Final known source revision documenting this increment:
+  613853c3ba07fd06bf50f7bd1ef75737df26e740.
+  Later source commits may supersede it; inspect current main.
+
+OPERATOR SETUP AND TEST GATES:
+- The 2026-11-13 20:00 River/Manon appointment was saved BEFORE automatic
+  show registration existed. The operator must verify its real
+  appointments.id and owner avatar UUID before creating the linked
+  show_events row. Do not guess IDs or write a duplicate calendar event.
+- The actual MariaDB schema must be migrated and permissions checked;
+  active/notices_enabled/entertainment_enabled group flags and
+  business_groups.notices_enabled need inspection. Both intended group
+  destinations are STN-Labz and Sparkles Entertainment, but actual group
+  primary keys and UUIDs were not provided here.
+- Check database/server timezone against Pacific/SLT and the show's
+  exact scheduled start; a date/hour offset may suppress both timed
+  actions. Source queries use NOW() and one-minute due windows.
+- Test build: make -C modules/mariadb clean all test;
+  make -C modules/sl clean all test;
+  make -C modules/ollama clean all test. Builds/installs and real SL
+  delivery are not proven by GitHub commits.
+- Delivery attempt "queued" means only queued in-process, NOT sent,
+  acknowledged, published or read by group members. A UDP ACK is also
+  insufficient evidence of actual notice publication. Duplicate
+  prevention means failed/uncertain sends may be missed and require
+  human inspection rather than blind retries.
+- The operator said, "we will see what she does"; this is a decision
+  to evaluate actual behavior, NOT live acceptance or proof of
+  successful automated posting. Never promise that reminder/notice
+  delivery occurred without observing the result.
+
+Other previously discussed capabilities (ordinary appointment T−15
+reminders, shift briefings, modeling representation, paid subscriptions)
+remain distinct and must not be silently treated as implemented by
+this show-specific change.
+
+======================================================================
+21. CURRENT HANDOFF / AUTHORIZATION — 2026-11-12 23:22 PST
+======================================================================
+AUTHORIZED IN THIS TURN: Update only poemei/sparkles/context.txt on
+GitHub main to preserve today's work, human decisions, transcript
+evidence, source revisions, constraints and outstanding verification.
+NOT AUTHORIZED BY THIS TURN: source edits, database migrations or data
+changes, installation, deployment, restarting Sparkles, notices,
+calendar writes, GitHub branches, or changes to other repositories.
+
+Keep the hierarchy clear: this continuity file is informational,
+never controlled policy. A conversation or source commit is not an
+operator's final acceptance. For future requested engineering, inspect
+AGENTS.md and actual source before changing anything. Retain the
+GitHub-only workflow and human development authority.
 
 END OF SPARKLES CONTEXT — 2026-11-12 (America/Los_Angeles)
