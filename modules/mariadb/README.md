@@ -1,13 +1,13 @@
 **v1.9.7 — SL group registry resolver (source only):** New read-only typed
-\`sparkles.mariadb.sl_groups.resolve\` service resolves a requested Second Life
+`sparkles.mariadb.sl_groups.resolve` service resolves a requested Second Life
 group name to its UUID by joining the existing operator-created
-\`sl_groups\`, \`business_groups\` and \`businesses\` tables. Requires an
-authenticated \`sl:<avatar UUID>\` caller matching \`businesses.sl_owner_uuid\`
+`sl_groups`, `business_groups` and `businesses` tables. Requires an
+authenticated `sl:<avatar UUID>` caller matching `businesses.sl_owner_uuid`
 on a linked active business and an active chat-enabled group. Absent owner
 UUID, ambiguous name, unavailable schema/service and missing membership
 relationship fail closed. Prepared SQL, bounded results, UUID validation and
 connection locking are used; no group credentials or UUID mappings reside in
-\`sl.conf\`. The SQL assumes those three tables have the columns specified
+`sl.conf`. The SQL assumes those three tables have the columns specified
 in the operator's earlier schema; live schema and owner records have not
 been verified here. No SQL writes, show scheduler or notices in this step.
 
