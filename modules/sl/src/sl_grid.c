@@ -229,6 +229,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     int pending_active=0, group_event_status=0;
     uint64_t action_started_at=0U;
     unsigned char group_event_uuid[16]={0};
+    unsigned char active_groups[64][16]={{0}};
+    unsigned int active_group_count=0U;
     pthread_mutex_t group_lock=PTHREAD_MUTEX_INITIALIZER;
     reliable_t outbound[SL_OUTSTANDING_IM]={0};
     uint32_t next=1U, recently_seen[128]={0};
@@ -363,6 +365,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         caps.group_lock=&group_lock;
                         caps.group_confirm_uuid=group_event_uuid;
                         caps.group_confirm_status=&group_event_status;
+                        caps.shared_joined=active_groups;
+                        caps.shared_joined_count=&active_group_count;
                         atomic_init(&caps.session_stop,0);
                         if(pthread_create(&caps_thread,NULL,sparkles_sl_caps_run,&caps)==0)
                             caps_started=1;
@@ -437,7 +441,19 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     response.start_group=0U;
                 } else if(!dequeue(&response,context))break;
                 if(response.start_group==1U) {
-                    size_t start_size=0U;
+                    size_t start_size=0U,k;
+                    int already_joined=0;
+                    pthread_mutex_lock(&group_lock);
+                    for(k=0U;k<active_group_count;++k)
+                        if(!memcmp(active_groups[k],response.conversation,16U)) {
+                            already_joined=1;
+                            break;
+                        }
+                    pthread_mutex_unlock(&group_lock);
+                    if(already_joined) {
+                        response.start_group=0U;
+                        report("DM-directed group session already joined; posting opening");
+                    } else {
                     if(pending_active || action_start.pending) {
                         report("group start already in progress; requested opening not sent");
                         continue;
@@ -460,6 +476,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     action_started_at=now;
                     report("DM-directed group start requested; awaiting session acceptance before opening");
                     continue;
+                    }
                 }
                 slot=&outbound[j];
                 if (slot->pending) {
