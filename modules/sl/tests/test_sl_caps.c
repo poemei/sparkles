@@ -54,7 +54,6 @@ int main(void)
     atomic_init(&worker.session_stop,0);
     state.worker=&worker;
     assert(sparkles_sl_uuid_parse("12345678-1234-1234-1234-123456789abc",session));
-    memcpy(worker.group_chat,session,16U);
     {
         static const char start_event[]=
           "<llsd><map><key>id</key><integer>40</integer>"
