@@ -1476,7 +1476,8 @@ static const char *find_uncased(const char *text,const char *needle)
 }
 static int group_action_intent(const char *text)
 {
- if(!text || !find_uncased(text,"group"))return 0;
+ if(!text || (!find_uncased(text,"group chat") &&
+             !find_uncased(text,"group conversation")))return 0;
  return find_uncased(text,"open") || find_uncased(text,"start") ||
         find_uncased(text,"launch") || find_uncased(text,"initiate");
 }
@@ -1490,12 +1491,15 @@ static int parse_group_action(const char *text,const char *original,
  n=(size_t)(sep-(text+6U));
  value=sep+9U;
  m=strlen(value);
+ if(m && value[m-1U]=='\n')--m;
+ if(m && value[m-1U]=='\r')--m;
  if(!n||n>=sizeof request->group||!m||
-    m>=sizeof request->opening || strchr(value,'\n') ||
-    strchr(value,'\r') || strchr(text+6U,'\r'))return 0;
+    m>=sizeof request->opening || memchr(value,'\n',m) ||
+    memchr(value,'\r',m) || strchr(text+6U,'\r') && sep>strchr(text+6U,'\r'))return 0;
  memcpy(request->group,text+6U,n);
  request->group[n]=0;
- memcpy(request->opening,value,m+1U);
+ memcpy(request->opening,value,m);
+ request->opening[m]=0;
  /* The chosen group must appear in the human's actual instruction,
   * not merely in generated prose or historical context. */
  return find_uncased(original,request->group)!=NULL;
