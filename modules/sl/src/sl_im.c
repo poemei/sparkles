@@ -169,6 +169,9 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
                             unsigned char *out, size_t cap, size_t *used)
 {
     size_t textlen, namelen, offset=10U, total;
+    /* Viewer group/session packet uses the one-byte empty binary bucket.
+     * The previous encoder sent a zero-length bucket for every dialog. */
+    const unsigned int bucketlen=dialog==0U?0U:1U;
     if (used) *used=0U;
     if (!session || !recipient || !conversation || !sender_name ||
         !message || !out || !used || !sequence ||
@@ -184,7 +187,8 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
         textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
     /* Header(6) + Low ID(4) + fixed fields(103) + name(1) +
      * message size(2) + message NUL(1) + bucket size(2). */
-    total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U+5U;
+    total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U+
+          bucketlen+5U;
     if (total>cap || total>SPARKLES_SL_PACKET_MAX) return 0;
     memset(out,0,total);
     out[0]=SPARKLES_SL_FLAG_RELIABLE;
@@ -207,8 +211,8 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
     offset+=2U;
     memcpy(out+offset,message,textlen);
     offset+=textlen+1U;
-    u16le(out+offset,0U);
-    offset+=2U;
+    u16le(out+offset,bucketlen);
+    offset+=2U+bucketlen; /* NUL binary bucket is already zero-filled. */
     /* New template: EstateBlock.EstateID (4 bytes zero),
      * MetaData block count (1 byte zero). Already zero-filled. */
     offset+=5U;
