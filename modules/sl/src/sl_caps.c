@@ -225,7 +225,8 @@ static void invitation_event(caps_state_t *state,xmlNodePtr body)
     if(!joined(state,session))return;
     if(!map_text(map,"from_id",from,sizeof from) ||
        !sparkles_sl_uuid_parse(from,speaker) ||
-       !memcmp(speaker,state->worker->agent,16U))return;
+       !memcmp(speaker,state->worker->agent,16U) ||
+       !memcmp(speaker,session,16U))return; /* Session is not a person. */
     if(!map_text(map,"from_name",name,sizeof name) ||
        !map_text(map,"message",message,sizeof message))return;
     memcpy(im.sender,speaker,16U);
