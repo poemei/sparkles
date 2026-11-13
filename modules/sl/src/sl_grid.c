@@ -220,6 +220,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         atomic_int *stop,
                         sparkles_sl_im_ingress_fn ingress,
                         sparkles_sl_im_dequeue_fn dequeue,
+                        sparkles_sl_presence_fn presence,
                         void *context)
 {
     struct sockaddr_in sim = {0};
@@ -339,6 +340,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     circuit.pending=0;
                     movement.pending=0;
                     present=1;
+                    if(presence)presence(1,context);
                     report("simulator confirmed AgentMovementComplete; avatar presence observed");
                     if(strlen(login->seed_capability)<sizeof caps.seed_url) {
                         memcpy(caps.seed_url,login->seed_capability,
@@ -475,18 +477,27 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         break;
                     }
                 }
-                if (!(response.session_chat ?
+                if (!(response.notice ?
+                      sparkles_sl_notice_encode(&login->circuit,
+                          response.recipient,next,login->avatar_name,
+                          response.subject,response.text,
+                          slot->bytes,sizeof slot->bytes,&used) :
+                      response.session_chat ?
                       sparkles_sl_session_encode(&login->circuit,
                           response.conversation,next,login->avatar_name,
                           response.text,slot->bytes,sizeof slot->bytes,&used) :
                       sparkles_sl_im_encode(&login->circuit,response.recipient,
                           response.conversation,next,login->avatar_name,
                           response.text,slot->bytes,sizeof slot->bytes,&used))) {
-                    report(response.session_chat?"group session reply encoding rejected":"private IM reply encoding rejected");
+                    report(response.notice?"group notice encoding rejected":
+                          response.session_chat?"group session reply encoding rejected":
+                                                "private IM reply encoding rejected");
                     continue;
                 }
                 if (!send_packet(fd,slot->bytes,used)) {
-                    report(response.session_chat?"group session reply UDP send failed":"private IM reply UDP send failed");
+                    report(response.notice?"group notice UDP send failed":
+                           response.session_chat?"group session reply UDP send failed":
+                                                 "private IM reply UDP send failed");
                     break;
                 }
                 slot->length=used;
@@ -495,7 +506,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 slot->sent_at=now;
                 slot->pending=1;
                 slot->session_chat=response.session_chat;
-                report(response.session_chat?
+                report(response.notice?
+                    "official group notice sent via UDP dialog 32; delivery NOT confirmed":
+                    response.session_chat?
                     "group session reply sent via UDP dialog 17; awaiting simulator acknowledgment":
                     "private IM reply sent via UDP dialog 0; awaiting simulator acknowledgment");
             }
@@ -524,6 +537,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     if(caps_started)(void)pthread_join(caps_thread,NULL);
     pthread_mutex_destroy(&group_lock);
     close(fd);
+    if (presence)presence(0,context);
     if (present) report("simulator circuit closed; avatar presence lost");
     return present;
 }
@@ -531,16 +545,18 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_ingress_fn ingress,
                           sparkles_sl_im_dequeue_fn dequeue,
                           sparkles_sl_im_reset_fn reset,
+                          sparkles_sl_presence_fn presence,
                           void *context)
 {
     while (!atomic_load(stop)) {
         sparkles_sl_login_reply_t login={0};
+        if (presence)presence(0,context);
         if (reset) reset(context);
         if (!sparkles_sl_login_from_file(&login)) {
             report("grid login failed (credentials, protocol, or network); no avatar presence");
         } else {
             report("grid login response accepted; attempting simulator circuit");
-            (void)grid_session(&login,stop,ingress,dequeue,context);
+            (void)grid_session(&login,stop,ingress,dequeue,presence,context);
         }
         memset(&login,0,sizeof login);
         if (!atomic_load(stop)) pause_stop(stop,10000U);
