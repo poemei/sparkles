@@ -1830,6 +1830,7 @@ static int notice_conversation(const stnlabz_module_command_t *command,
  rc=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
  if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return 0;
  if(!strcmp(out.text,"NONE"))return 0;
+ if(strncmp(out.text,"GROUP=",6U))return 0;
  if(!notice_parse(out.text,command->arguments,&a)) {
   (void)reply(context,"I could not prepare a valid notice. Please name the group and the announcement.");
   return 1;
@@ -2194,6 +2195,30 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   ++e;
   if(!parse_group_action("GROUP=STN-Labz\nMESSAGE=Hi\nMORE=bad",human,&a))++p;
   else ok=0;
+ }
+ /* Notice content is model-proposed, never directly executed; reject
+  * a group absent from the human request or malformed notice fields. */
+ {
+  sparkles_sl_notice_send_request_t draft={0};
+  const char *human="send a notice to Sparkles Entertainment "
+                    "announcing you are joining as Executive";
+  ++e;
+  if(notice_parse("GROUP=Sparkles Entertainment\n"
+                  "SUBJECT=Executive announcement\n"
+                  "BODY=I am joining as Executive.",human,&draft)&&
+     !strcmp(draft.group,"Sparkles Entertainment"))++p;else ok=0;
+  ++e;
+  if(!notice_parse("GROUP=STN-Labz\n"
+                   "SUBJECT=Executive announcement\n"
+                   "BODY=I am joining.",human,&draft))++p;else ok=0;
+  ++e;
+  if(!notice_parse("GROUP=Sparkles Entertainment\n"
+                   "SUBJECT=Bad|Subject\n"
+                   "BODY=I am joining.",human,&draft))++p;else ok=0;
+  ++e;
+  if(!notice_parse("GROUP=Sparkles Entertainment\n"
+                   "SUBJECT=Good\n"
+                   "BODY=First line\nSecond line",human,&draft))++p;else ok=0;
  }
  /* Explicit guest parsing is generic and rejects multiple named people. */
  {
