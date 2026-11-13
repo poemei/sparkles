@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 12U
+#define OLLAMA_VERSION_PATCH 13U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1704,6 +1704,153 @@ static int sl_group_conversation(const stnlabz_module_command_t *command,
  return 1;
 }
 
+/* Approved, private-IM-only official notice. Drafts are ephemeral; no
+ * model result is authority to transmit without a second human message. */
+#define NOTICE_PENDING_CAP 8U
+typedef struct {
+ char account[128],sender[128];
+ sparkles_sl_notice_send_request_t action;
+ time_t expires;
+} notice_pending_t;
+static notice_pending_t notice_pending[NOTICE_PENDING_CAP];
+static pthread_mutex_t notice_lock=PTHREAD_MUTEX_INITIALIZER;
+static void notice_clear(void)
+{
+ pthread_mutex_lock(&notice_lock);
+ memset(notice_pending,0,sizeof notice_pending);
+ pthread_mutex_unlock(&notice_lock);
+}
+static int notice_index(const char *account,const char *sender,time_t now)
+{
+ size_t i;
+ for(i=0U;i<NOTICE_PENDING_CAP;++i) {
+  if(notice_pending[i].account[0] && notice_pending[i].expires<=now)
+   memset(&notice_pending[i],0,sizeof notice_pending[i]);
+  if(notice_pending[i].account[0] &&
+     !strcmp(notice_pending[i].account,account) &&
+     !strcmp(notice_pending[i].sender,sender))return (int)i;
+ }
+ return -1;
+}
+static int notice_save(const stnlabz_module_command_t *cmd,
+                       const sparkles_sl_notice_send_request_t *a)
+{
+ size_t i;
+ int slot;
+ pthread_mutex_lock(&notice_lock);
+ slot=notice_index(cmd->account,cmd->sender,time(NULL));
+ if(slot<0)for(i=0U;i<NOTICE_PENDING_CAP;++i)
+  if(!notice_pending[i].account[0]){slot=(int)i;break;}
+ if(slot>=0) {
+  notice_pending[slot].action=*a;
+  memcpy(notice_pending[slot].account,cmd->account,strlen(cmd->account)+1U);
+  memcpy(notice_pending[slot].sender,cmd->sender,strlen(cmd->sender)+1U);
+  notice_pending[slot].expires=time(NULL)+600;
+ }
+ pthread_mutex_unlock(&notice_lock);
+ return slot>=0;
+}
+static int notice_parse(const char *result,const char *human,
+                        sparkles_sl_notice_send_request_t *a)
+{
+ const char *sub,*body;
+ size_t gl,sl,bl,i;
+ if(!result||!human||!a||strncmp(result,"GROUP=",6U))return 0;
+ sub=strstr(result,"\nSUBJECT=");
+ body=strstr(result,"\nBODY=");
+ if(!sub||!body||body<=sub)return 0;
+ gl=(size_t)(sub-(result+6U));
+ sub+=9U;
+ sl=(size_t)(body-sub);
+ body+=6U;
+ bl=strlen(body);
+ if(bl && body[bl-1U]=='\n')--bl;
+ if(!gl||gl>=sizeof a->group||!sl||sl>60U||
+    !bl||bl>290U||sl+bl+1U>510U ||
+    memchr(result+6U,'\r',gl)||memchr(sub,'\r',sl)||
+    memchr(body,'\n',bl)||memchr(body,'\r',bl))return 0;
+ for(i=0U;i<sl;++i)if(sub[i]=='|'||(unsigned char)sub[i]<32U)return 0;
+ for(i=0U;i<bl;++i)if(body[i]=='|'||(unsigned char)body[i]<32U)return 0;
+ memcpy(a->group,result+6U,gl);a->group[gl]=0;
+ memcpy(a->subject,sub,sl);a->subject[sl]=0;
+ memcpy(a->body,body,bl);a->body[bl]=0;
+ return find_uncased(human,a->group)!=NULL;
+}
+static int notice_conversation(const stnlabz_module_command_t *command,
+                               stnlabz_module_command_reply_fn reply,
+                               void *context)
+{
+ sparkles_sl_notice_send_request_t a={0};
+ sparkles_sl_notice_send_reply_t receipt={0};
+ sparkles_llm_request_t in={{0}};
+ sparkles_llm_response_t out={{0}};
+ char preview[512];
+ size_t used=0U;
+ int slot,n;
+ stnlabz_module_result_t rc;
+ if(strncmp(command->account,"sl:",3U)||
+    !command->sender[0]||
+    !memchr(command->sender,0,sizeof command->sender))return 0;
+ pthread_mutex_lock(&notice_lock);
+ slot=notice_index(command->account,command->sender,time(NULL));
+ if(slot>=0) {
+  a=notice_pending[slot].action;
+  memset(&notice_pending[slot],0,sizeof notice_pending[slot]);
+ }
+ pthread_mutex_unlock(&notice_lock);
+ if(slot>=0) {
+  if(!strcasecmp(command->arguments,"cancel notice"))
+   return reply(context,"Notice cancelled; nothing was queued.");
+  if(!strcasecmp(command->arguments,"confirm notice")) {
+   if(!owner||!owner->invoke_service)
+    return reply(context,"Notice service unavailable. Nothing was queued.");
+   rc=owner->invoke_service(SPARKLES_SL_NOTICE_SEND_SERVICE,&a,sizeof a,
+                            &receipt,sizeof receipt,&used);
+   if(rc==STNLABZ_MODULE_OK&&used==sizeof receipt&&receipt.queued)
+    return reply(context,"Notice queued for Second Life. Publication is not confirmed.");
+   if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED)
+    return reply(context,"Application authorization for this group notice was denied; nothing was queued.");
+   return reply(context,"Notice could not be queued. Publication was not attempted.");
+  }
+ }
+ n=snprintf(in.prompt,sizeof in.prompt,
+   "Interpret the human's private Second Life message. If the human is "
+   "asking Sparkles to PUBLISH an official group NOTICE or announcement, "
+   "draft a short subject and announcement. Otherwise reply exactly NONE. "
+   "Distinguish a notice from a group chat message or an informational "
+   "question. Infer intent, not keywords. "
+   "Do not invent group names, affiliations or events. "
+   "When the human says 'you', it means Sparkles. "
+   "Use exactly three lines when drafting:\n"
+   "GROUP=<group name literally present in the human request>\n"
+   "SUBJECT=<title, at most 60 characters>\n"
+   "BODY=<announcement, at most 290 characters>\n"
+   "Human: %.800s",command->arguments);
+ if(n<0||(size_t)n>=sizeof in.prompt)return 0;
+ rc=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
+ if(rc!=STNLABZ_MODULE_OK||used!=sizeof out)return 0;
+ if(!strcmp(out.text,"NONE"))return 0;
+ if(!notice_parse(out.text,command->arguments,&a)) {
+  (void)reply(context,"I could not prepare a valid notice. Please name the group and the announcement.");
+  return 1;
+ }
+ memcpy(a.account,command->account,strlen(command->account)+1U);
+ n=snprintf(preview,sizeof preview,
+   "Proposed notice to %s\nSubject: %s\n%s\n"
+   "Reply 'confirm notice' to queue or 'cancel notice' to discard.",
+   a.group,a.subject,a.body);
+ if(n<0||(size_t)n>=sizeof preview) {
+  (void)reply(context,"Notice preview too long. Nothing was queued.");
+  return 1;
+ }
+ if(!notice_save(command,&a)) {
+  (void)reply(context,"The notice approval queue is full. Nothing was queued.");
+  return 1;
+ }
+ (void)reply(context,preview);
+ return 1;
+}
+
 /* Ollama owns the default conversational controller; Core only dispatches. */
 static stnlabz_module_result_t chat_controller(
  const stnlabz_module_command_t *command,
@@ -1728,6 +1875,8 @@ static stnlabz_module_result_t chat_controller(
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
 
  if(!strncmp(command->account,"sl:",3U)) {
+  int notice_handled=notice_conversation(command,reply,reply_context);
+  if(notice_handled>0)return STNLABZ_MODULE_OK;
   int group_handled=sl_group_conversation(command,reply,reply_context);
   if(group_handled>0)return STNLABZ_MODULE_OK;
   if(group_handled<0)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
@@ -2162,7 +2311,7 @@ static stnlabz_module_result_t stop(void)
  command_registered=0;
  if(service_registered&&owner)
   (void)owner->unregister_service(SPARKLES_LLM_GENERATE_SERVICE,NULL);
- service_registered=0;owner=NULL;dialogue_clear();curl_global_cleanup();
+ service_registered=0;owner=NULL;dialogue_clear();notice_clear();curl_global_cleanup();
  return STNLABZ_MODULE_OK;
 }
 
