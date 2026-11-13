@@ -121,6 +121,26 @@ int main(void)
     assert(view.payload[124U]==1U && view.payload[125U]==0U);
     assert(view.payload[127U]==1U && view.payload[128U]==0U);
     assert(view.payload[129U]==0U); /* Group start bucket. */
+    /* Official group notice is dialog 32, not a group chat message.
+     * Viewer requires null IM ID and subject|body plus an empty bucket. */
+    assert(sparkles_sl_notice_encode(&session,conversation,50U,
+           "MsSparkles Resident","Show starts soon","The River at 20:00",
+           packet,sizeof packet,&used));
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(view.payload[82U]==SPARKLES_SL_GROUP_NOTICE_DIALOG);
+    assert(!memcmp(view.payload+33U,conversation,16U));
+    assert(!memcmp(view.payload+83U,(unsigned char[16]){0},16U));
+    assert(!strcmp((const char *)(view.payload+126U),
+                   "Show starts soon|The River at 20:00"));
+    assert(!sparkles_sl_notice_encode(&session,conversation,51U,
+           "MsSparkles Resident","Bad|Subject","The River",
+           packet,sizeof packet,&used));
+    assert(!sparkles_sl_notice_encode(&session,conversation,51U,
+           "MsSparkles Resident","Show","Bad|body",
+           packet,sizeof packet,&used));
+    assert(!sparkles_sl_notice_encode(&session,conversation,51U,
+           "MsSparkles Resident","Show","",
+           packet,sizeof packet,&used));
     assert(!sparkles_sl_group_start_encode(&session,(unsigned char[16]){0},
                  45U,"MsSparkles Resident",packet,sizeof packet,&used));
     assert(!sparkles_sl_session_encode(&session,(unsigned char[16]){0},
