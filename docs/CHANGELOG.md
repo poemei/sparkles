@@ -1,5 +1,17 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — SL session group/conference message increment (GitHub source only)
+
+- SL v0.3.4: recognize dialog 17 group/conference session messages and preserve session ID, sender UUID, and destination; encode group replies to the session rather than private IM.
+- SL records passive session speech and replies only when Sparkles is explicitly addressed; group slash commands cannot invoke Core commands; inbound buffer raised to 128.
+- MariaDB v1.9.6: distinguish speaker-attributed `group_chat` from private IM and nearby public chat using the existing `conversation_context` table.
+- Ollama v1.2.3: session namespace isolated from private contact, schedule, and memory tools.
+- Extended native SL codec regression cases for dialog 17, session destination, and rejected controls.
+- **Not implemented:** Second Life EventQueueGet / ChatSessionRequest conference invitation acceptance and group notice publishing. Thus newly invited conferences may still not work; live SL verification remains required.
+- No native compilation, deployment, installation, database write verification or operator acceptance established.
+
+
+
 ## 2026-11-12 — Remainder-of-day calendar and SL context diagnostics (GitHub source)
 
 - Ollama v1.2.2: recognize `shedule` and `rest of the day`; dispatch to contact-scoped MariaDB instead of free-form model inference; restrict remaining-day display to unfinished appointments.
