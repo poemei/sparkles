@@ -458,7 +458,9 @@ typedef enum {
  * External database clients must preserve the same scheduling discipline. */
 static appointment_write_result_t insert_appointment(
     const sparkles_mariadb_new_appointment_t *appointment,
-    const char *account,const char *guest_name,unsigned long long *created_id)
+    const char *account,const char *guest_name,
+    unsigned int public_show,const char *venue,const char *dj,
+    unsigned long long *created_id)
 {
     static const char overlap_sql[] =
         "SELECT a.id FROM appointments a "
@@ -542,6 +544,45 @@ static appointment_write_result_t insert_appointment(
     if(!sparkles_mariadb_participant_add(db,*created_id,contact_id))goto done;
     if(guest_id!=contact_id &&
        !sparkles_mariadb_participant_invite(db,*created_id,guest_id))goto done;
+    /* An explicitly confirmed show is registered with its appointment in
+     * the SAME transaction; no public event survives a failed appointment. */
+    if(public_show) {
+        static const char show_sql[]=
+            "INSERT INTO show_events "
+            "(appointment_id,owner_avatar_uuid,venue,dj_name) "
+            "VALUES (?,?,?,?)";
+        const char *platform=NULL,*identity=NULL;
+        MYSQL_BIND show_bind[4]={{0}};
+        unsigned long show_lengths[3];
+        if(!venue||!venue[0]||!dj||
+           !sparkles_mariadb_identity_parts(account,&platform,&identity)||
+           strcmp(platform,"second_life"))goto done;
+        show_lengths[0]=36UL;
+        show_lengths[1]=(unsigned long)strlen(venue);
+        show_lengths[2]=(unsigned long)strlen(dj);
+        stmt=mysql_stmt_init(db);
+        if(!stmt||mysql_stmt_prepare(stmt,show_sql,
+             (unsigned long)strlen(show_sql)))goto done;
+        show_bind[0].buffer_type=MYSQL_TYPE_LONGLONG;
+        show_bind[0].buffer=created_id;
+        show_bind[0].is_unsigned=1;
+        show_bind[1].buffer_type=MYSQL_TYPE_STRING;
+        show_bind[1].buffer=(void *)identity;
+        show_bind[1].buffer_length=show_lengths[0];
+        show_bind[1].length=&show_lengths[0];
+        show_bind[2].buffer_type=MYSQL_TYPE_STRING;
+        show_bind[2].buffer=(void *)venue;
+        show_bind[2].buffer_length=show_lengths[1];
+        show_bind[2].length=&show_lengths[1];
+        show_bind[3].buffer_type=MYSQL_TYPE_STRING;
+        show_bind[3].buffer=(void *)dj;
+        show_bind[3].buffer_length=show_lengths[2];
+        show_bind[3].length=&show_lengths[2];
+        if(mysql_stmt_bind_param(stmt,show_bind)||
+           mysql_stmt_execute(stmt)||
+           mysql_stmt_affected_rows(stmt)!=1ULL)goto done;
+        mysql_stmt_close(stmt);stmt=NULL;
+    }
     /* COMMIT failures cannot conclusively establish whether a write persisted. */
     outcome=APPOINTMENT_DB_UNCERTAIN;
     if (mysql_query(db,"COMMIT")==0) {
@@ -658,7 +699,11 @@ static stnlabz_module_result_t create_service(
         !memchr(in->start_time,0,sizeof in->start_time) ||
         !memchr(in->end_time,0,sizeof in->end_time) ||
         !memchr(in->title,0,sizeof in->title) ||
-        !memchr(in->guest_name,0,sizeof in->guest_name))
+        !memchr(in->guest_name,0,sizeof in->guest_name) ||
+        !memchr(in->show_venue,0,sizeof in->show_venue) ||
+        !memchr(in->show_dj,0,sizeof in->show_dj) ||
+        in->public_show>1U ||
+        (in->public_show && !in->show_venue[0]))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
     if (!calendar_contact_allowed(in->account)) {
@@ -678,7 +723,8 @@ static stnlabz_module_result_t create_service(
         strcmp(appointment.start_time,in->start_time) ||
         strcmp(appointment.end_time,in->end_time))
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-    outcome=insert_appointment(&appointment,in->account,in->guest_name,&id);
+    outcome=insert_appointment(&appointment,in->account,in->guest_name,
+                               in->public_show,in->show_venue,in->show_dj,&id);
     out->id=outcome==APPOINTMENT_DB_SAVED?id:0ULL;
     out->status=outcome==APPOINTMENT_DB_SAVED?SPARKLES_MARIADB_CREATE_SAVED:
         outcome==APPOINTMENT_DB_CONFLICT?SPARKLES_MARIADB_CREATE_CONFLICT:
@@ -1291,7 +1337,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 0U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 1U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
