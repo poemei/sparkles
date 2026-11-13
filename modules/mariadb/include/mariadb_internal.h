@@ -5,6 +5,7 @@
 #include <mysql.h>
 #include "sparkles_memory.h"
 #include "sparkles_contacts.h"
+#include "sparkles_show.h"
 
 /* Calendar permission: authenticated platform identity linked to contacts. */
 int sparkles_mariadb_identity_parts(const char *account,
@@ -23,6 +24,14 @@ int sparkles_mariadb_guest_id(MYSQL *db,const char *name,
 int sparkles_mariadb_participant_invite(MYSQL *db,
                                        unsigned long long appointment_id,
                                        unsigned long long contact_id);
+
+/* Called only while MariaDB module's db_lock is held. */
+int sparkles_mariadb_show_claim(MYSQL *db,sparkles_show_claim_reply_t *reply);
+int sparkles_mariadb_show_respond(MYSQL *db,
+    const sparkles_show_response_request_t *request,
+    sparkles_show_response_reply_t *reply);
+int sparkles_mariadb_show_attempt(MYSQL *db,
+    const sparkles_show_attempt_request_t *request);
 
 #define SPARKLES_MARIADB_CONFIG "/opt/sparkles/auth/mariadb/mariadb.env"
 #define SPARKLES_MARIADB_HOST "localhost"
