@@ -46,11 +46,11 @@ static stnlabz_module_result_t group_resolve_service(
     void *response,size_t response_size,size_t *used,void *ctx)
 {
     static const char sql[]=
-        "SELECT DISTINCT g.group_uuid FROM sl_groups g "
+        "SELECT DISTINCT LOWER(g.group_uuid) FROM sl_groups g "
         "JOIN business_groups bg ON bg.group_id=g.id "
         "JOIN businesses b ON b.id=bg.business_id "
         "WHERE g.group_name=? AND g.is_active=1 AND g.chat_enabled=1 "
-        "AND b.is_active=1 AND b.sl_owner_uuid=? LIMIT 2";
+        "AND b.is_active=1 AND LOWER(b.sl_owner_uuid)=? LIMIT 2";
     const sparkles_sl_group_resolve_request_t *in=request;
     sparkles_sl_group_resolve_reply_t *out=response;
     MYSQL_STMT *stmt=NULL;
