@@ -30,6 +30,7 @@ typedef struct {
     uint64_t sent_at;
     int pending;
     unsigned int session_chat; /* Outgoing destination classification only. */
+    unsigned int notice; /* Official group notice transport attempt. */
 } reliable_t;
 
 static uint64_t tick_ms(void)
@@ -506,6 +507,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 slot->sent_at=now;
                 slot->pending=1;
                 slot->session_chat=response.session_chat;
+                slot->notice=response.notice;
                 report(response.notice?
                     "official group notice sent via UDP dialog 32; delivery NOT confirmed":
                     response.session_chat?
@@ -518,7 +520,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             for (j=0U;j<SL_OUTSTANDING_IM;++j) {
                 if (outbound[j].pending && !resend(fd,&outbound[j],now)) {
                     outbound[j].pending=0;
-                    report(outbound[j].session_chat?
+                    report(outbound[j].notice?
+                           "group notice unacknowledged; publication NOT confirmed":
+                           outbound[j].session_chat?
                            "group session reply unacknowledged; retry limit reached":
                            "private IM reply unacknowledged; retry limit reached");
                 }
