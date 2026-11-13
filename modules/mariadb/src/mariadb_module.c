@@ -945,7 +945,7 @@ static stnlabz_module_result_t appointment_add_command(
         return reply(reply_context,
           "Usage: /appointment-add YYYY-MM-DD HH:MM HH:MM Title (same day)")
             ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_INVALID_STATE;
-    outcome=insert_appointment(&appointment,command->account,NULL,&id);
+    outcome=insert_appointment(&appointment,command->account,NULL,0U,NULL,NULL,&id);
     if (outcome==APPOINTMENT_DB_CONFLICT)
         return reply(reply_context,
           "Appointment not saved: conflicts with an existing scheduled appointment.")
