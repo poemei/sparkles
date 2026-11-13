@@ -108,9 +108,11 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
             goto rollback;
         memcpy(out->action.recipient_uuid,row[1],37U);
         memcpy(when,row[3],17U);
-        sanitize_text(title,sizeof title,row[2]);
-        sanitize_text(venue,sizeof venue,row[4]);
-        sanitize_text(dj,sizeof dj,row[5]);
+        /* Bound each field independently so even maximal authorized
+         * names fit the native IM limit and retain the full role line. */
+        sanitize_text(title,100U,row[2]);
+        sanitize_text(venue,100U,row[4]);
+        sanitize_text(dj,80U,row[5]);
         out->action.kind=(unsigned int)type;
         if(type==SPARKLES_SHOW_NOTICE) {
             memcpy(out->action.subject,"Show starts in 30 minutes",26U);
