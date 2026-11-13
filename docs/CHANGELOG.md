@@ -1,5 +1,9 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — Show scheduling role correction (source only)
+
+**v1.2.7 — Show scheduling guest-role correction (GitHub source only):** When a show description says `with Manon as my DJ` (or another explicit `as my/the/our DJ/host/performer/singer` role), the performer is preserved as event narrative, not treated as an invited appointment participant requiring a separate `contacts` row. An ordinary `meeting with Manon` still requests guest participation. The appointment checker now reports a denied identity separately from a conflict or an unavailable/failed service, and writes response codes (no contact names or message text) for diagnosis. This does not bypass verified contact/calendar authorization, save without a human confirmation, or implement event notices. Source-level regressions cover staff-vs-guest classification. Native build, SQL behavior and operator acceptance remain unverified.
+
 ## 2026-11-12 — DB-driven group registry for Second Life (source only)
 
 - Ollama v1.2.6 updates group-start failure messaging to refer to the linked database business/group relationship rather than legacy `sl.conf` settings.
