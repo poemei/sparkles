@@ -2,6 +2,14 @@
 
 ## 2026-11-12 — Show timer and official SL notices (source only)
 
+- Ollama 1.2.8 and MariaDB 1.10.1 additionally register new, explicitly
+  identified public DJ-hosting shows atomically with the confirmed calendar
+  appointment. The existing November 13 appointment requires a one-time
+  operator-verified registry backfill. The private MariaDB typed create
+  request structure changed; rebuild both modules together.
+
+
+
 - MariaDB 1.10.0 adds explicitly registered public shows and a unique,
   persistent at-most-once attempt ledger. It claims due T−60 owner
   check-ins and T−30 eligible group notices, records check-in answers and
