@@ -110,6 +110,7 @@ static void clear_ack(reliable_t *packet, uint32_t seq)
 static void read_acknowledgments(const unsigned char *raw, size_t size,
                                  const sparkles_sl_packet_view_t *view,
                                  reliable_t *circuit, reliable_t *movement,
+                                 reliable_t *groupstart,
                                  reliable_t outgoing[SL_OUTSTANDING_IM])
 {
     size_t i, offset;
@@ -122,6 +123,7 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
                 uint32_t seq=read_u32le(raw+offset+i*4U);
                 size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
+                clear_ack(groupstart,seq);
                 for (j=0U;j<SL_OUTSTANDING_IM;++j)
                     clear_ack(&outgoing[j],seq);
             }
@@ -216,7 +218,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
 {
     struct sockaddr_in sim = {0};
     unsigned char raw[SPARKLES_SL_PACKET_MAX], decoded[SPARKLES_SL_PACKET_MAX];
-    reliable_t circuit={0}, movement={0};
+    reliable_t circuit={0}, movement={0}, groupstart={0};
     reliable_t outbound[SL_OUTSTANDING_IM]={0};
     uint32_t next=1U, recently_seen[128]={0};
     unsigned char ping=0U;
@@ -251,7 +253,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if (n<=0 || !sparkles_sl_packet_view(raw,(size_t)n,decoded,
                                        sizeof decoded,&view)) continue;
             last_recv=now;
-            read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement,outbound);
+            read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement,
+                                 &groupstart,outbound);
             if ((view.flags & SPARKLES_SL_FLAG_RELIABLE) &&
                 !send_ack(fd,view.sequence,&next)) break;
             for (i=0U;i<128U;++i) {
@@ -324,6 +327,20 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     movement.pending=0;
                     present=1;
                     report("simulator confirmed AgentMovementComplete; avatar presence observed");
+                    if(memcmp(login->group_chat,(unsigned char[16]){0},16U)!=0) {
+                        size_t packet_size=0U;
+                        if(sparkles_sl_group_start_encode(&login->circuit,
+                                login->group_chat,next,login->avatar_name,
+                                groupstart.bytes,sizeof groupstart.bytes,
+                                &packet_size) &&
+                           send_packet(fd,groupstart.bytes,packet_size)) {
+                            groupstart.length=packet_size;
+                            groupstart.sequence=next++;
+                            groupstart.sent_at=now;
+                            groupstart.pending=1;
+                            report("configured group session start requested; awaiting simulator ack");
+                        } else report("configured group session start packet failed");
+                    }
                     if(strlen(login->seed_capability)<sizeof caps.seed_url) {
                         memcpy(caps.seed_url,login->seed_capability,
                                strlen(login->seed_capability)+1U);
@@ -410,12 +427,16 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 }
             }
         }
+        if(groupstart.pending && !resend(fd,&groupstart,now)) {
+            groupstart.pending=0;
+            report("group session start acknowledgment timed out");
+        }
         if (!resend(fd,&circuit,now) || !resend(fd,&movement,now)) {
             report("simulator reliable handshake acknowledgment timed out");
             break;
         }
     }
-    atomic_store(&caps.session_stop,1);
+    if(caps_started)atomic_store(&caps.session_stop,1);
     if(caps_started)(void)pthread_join(caps_thread,NULL);
     close(fd);
     if (present) report("simulator circuit closed; avatar presence lost");
