@@ -25,7 +25,7 @@ SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c src/sl_g
 
 .PHONY: all test clean install uninstall
 all: $(TARGET)
-$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h include/sl_grid.h include/sl_im.h include/sl_caps.h | check-deps
+$(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h include/sl_grid.h include/sl_im.h include/sl_caps.h $(ROOT)/include/sparkles_sl_group.h | check-deps
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -shared $(LDFLAGS) -o $@ $(SOURCES) $(LDLIBS)
 $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
