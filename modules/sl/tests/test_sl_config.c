@@ -34,6 +34,17 @@ int main(void)
     assert(!strcmp(cfg.password, "test-only-not-real"));
     sparkles_sl_config_clear(&cfg);
     assert(cfg.password[0] == '\0');
+    write_content(path,
+        "first=MsSparkles\nlast=Resident\npassword=test\n"
+        "start=home\ngroup_chat=12345678-1234-1234-1234-123456789abc\n");
+    assert(sparkles_sl_config_load(path,&cfg));
+    assert(!strcmp(cfg.group_chat,"12345678-1234-1234-1234-123456789abc"));
+    sparkles_sl_config_clear(&cfg);
+    write_content(path,
+        "first=MsSparkles\nlast=Resident\npassword=test\n"
+        "start=home\ngroup_chat=not-a-uuid\n");
+    assert(!sparkles_sl_config_load(path,&cfg));
+    write_content(path,good);
     assert(chmod(path, 0644) == 0);
     assert(!sparkles_sl_config_load(path, &cfg));
     assert(chmod(path, 0600) == 0);
