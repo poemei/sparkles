@@ -4,9 +4,10 @@
 #include <stdint.h>
 #include "sl_wire.h"
 
-/* One-to-one ImprovedInstantMessage only, Low message 254, Dialog 0.
- * Group, conference, object, inventory and control dialogs are excluded. */
+/* ImprovedInstantMessage: dialog 0 private, dialog 17 group/conference
+ * session messages. Control, inventory and notices are not chat. */
 #define SPARKLES_SL_IM_MESSAGE_ID 254U
+#define SPARKLES_SL_SESSION_SEND_DIALOG 17U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
 
@@ -15,7 +16,7 @@ typedef struct {
     unsigned char conversation[16];
     char name[128];
     char text[SPARKLES_SL_IM_TEXT_MAX];
-    unsigned int ambient; /* 0=private IM, 1=audible nearby avatar chat */
+    unsigned int ambient; /* 0=private IM, 1=nearby chat, 2=session chat */
 } sparkles_sl_private_im_t;
 
 typedef enum {
@@ -49,6 +50,12 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
 
 /* Build reliable outbound private IM, in bounded unzerocoded UDP format.
  * Includes original session/conversation ID for a direct reply. */
+/* Dialog 17 replies are addressed to the session, not to the speaker. */
+int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
+                             const unsigned char conversation[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *message,unsigned char *output,
+                             size_t capacity,size_t *used);
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
