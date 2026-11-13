@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "sparkles_route.h"
 #include "sparkles_memory.h"
+#include "sparkles_sl_group.h"
 #include <stdatomic.h>
 #include <stdio.h>
 #include <strings.h>
@@ -17,7 +18,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 6U
+#define SL_PATCH 7U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -32,6 +33,78 @@ static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
 static uint64_t epoch;
 static int worker_started, dispatcher_started;
 static const stnlabz_module_host_t *module_host;
+static sparkles_sl_group_config_t group_config;
+static char active_private[128];
+static int group_service_registered;
+
+/* A simulator-authenticated private IM is dispatched synchronously by
+ * this worker. IRC and group speakers cannot impersonate this context. */
+static stnlabz_module_result_t group_start_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *response_used,void *unused)
+{
+    const sparkles_sl_group_start_request_t *in=request;
+    sparkles_sl_group_start_reply_t *out=response;
+    sparkles_sl_im_reply_t action={0};
+    char operator_account[40];
+    int index=-1,i,accepted=0;
+    (void)unused;
+    if(response_used)*response_used=0U;
+    if(!in||!out||request_size!=sizeof *in||
+       response_size<sizeof *out||
+       !memchr(in->account,0,sizeof in->account) ||
+       !memchr(in->group,0,sizeof in->group) ||
+       !memchr(in->opening,0,sizeof in->opening) ||
+       !in->opening[0] || !in->group[0])
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    pthread_mutex_lock(&qlock);
+    if(!atomic_load(&stopping) && dispatcher_started &&
+       pthread_equal(pthread_self(),dispatcher) &&
+       active_private[0] && !strcmp(active_private,in->account) &&
+       memcmp(group_config.operator_uuid,(unsigned char[16]){0},16U)!=0) {
+        char id[37];
+        sparkles_sl_uuid_format(group_config.operator_uuid,id);
+        if(snprintf(operator_account,sizeof operator_account,
+                    "sl:%s",id)<(int)sizeof operator_account &&
+           !strcmp(in->account,operator_account)) {
+            for(i=0;i<2;++i)
+                if(group_config.name[i][0] &&
+                   !strcasecmp(in->group,group_config.name[i]) &&
+                   memcmp(group_config.group[i],
+                          (unsigned char[16]){0},16U)!=0) {
+                    index=i;
+                    break;
+                }
+            if(index>=0 && out_count<SL_OUTBOUND_CAP) {
+                memcpy(action.conversation,group_config.group[index],16U);
+                memcpy(action.recipient,group_config.group[index],16U);
+                memcpy(action.text,in->opening,sizeof action.text);
+                action.session_chat=1U;
+                action.start_group=1U;
+                outbound[out_tail]=action;
+                out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+                ++out_count;
+                accepted=1;
+            }
+        }
+    }
+    pthread_mutex_unlock(&qlock);
+    if(!accepted)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    out->queued=1;
+    if(response_used)*response_used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+static void configure_groups(const sparkles_sl_group_config_t *cfg,
+                             void *unused)
+{
+    (void)unused;
+    pthread_mutex_lock(&qlock);
+    memset(&group_config,0,sizeof group_config);
+    if(cfg)group_config=*cfg;
+    pthread_mutex_unlock(&qlock);
+}
+
 
 /* Session chat is shared. Only an explicit address to Sparkles triggers
  * inference; all other session lines are recorded without replies. */
@@ -93,6 +166,8 @@ static void reset_queues(void *unused)
     ++epoch;
     memset(inbound,0,sizeof inbound);
     memset(outbound,0,sizeof outbound);
+    memset(active_private,0,sizeof active_private);
+    memset(&group_config,0,sizeof group_config);
     in_head=in_tail=in_count=0U;
     out_head=out_tail=out_count=0U;
     pthread_mutex_unlock(&qlock);
@@ -188,9 +263,17 @@ static void *dispatch_worker(void *unused)
         if(im.ambient==1U ||
            (im.ambient==2U && (im.text[0]=='/' ||
                                 !session_addressed(im.text))))continue;
+        if(im.ambient==0U) {
+            pthread_mutex_lock(&qlock);
+            memcpy(active_private,request.account,sizeof active_private);
+            pthread_mutex_unlock(&qlock);
+        }
         result=module_host->invoke_service(
             SPARKLES_ROUTER_DISPATCH_SERVICE,
             &request,sizeof request,&response,sizeof response,&used);
+        pthread_mutex_lock(&qlock);
+        memset(active_private,0,sizeof active_private);
+        pthread_mutex_unlock(&qlock);
         if (result!=STNLABZ_MODULE_OK || used!=sizeof response ||
             !response.replied ||
             !memchr(response.text,0,sizeof response.text) ||
@@ -223,7 +306,7 @@ static void *grid_worker(void *unused)
 {
     (void)unused;
     sparkles_sl_grid_run(&stopping,enqueue_private,
-                         dequeue_reply,reset_queues,NULL);
+                         dequeue_reply,reset_queues,configure_groups,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
@@ -318,8 +401,17 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         dispatcher_started) return STNLABZ_MODULE_ERR_START_FAILED;
     module_host=host;
     atomic_store(&stopping,0);
+    if(!host->register_service || !host->unregister_service ||
+       !host->register_service(SPARKLES_SL_GROUP_START_SERVICE,
+                               group_start_service,NULL)) {
+        module_host=NULL;
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    group_service_registered=1;
     reset_queues(NULL);
     if (pthread_create(&dispatcher,NULL,dispatch_worker,NULL)!=0) {
+        (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
+        group_service_registered=0;
         module_host=NULL;
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
@@ -331,6 +423,8 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         pthread_mutex_unlock(&qlock);
         (void)pthread_join(dispatcher,NULL);
         dispatcher_started=0;
+        (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
+        group_service_registered=0;
         module_host=NULL;
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
@@ -352,6 +446,10 @@ static stnlabz_module_result_t sl_stop(void)
     if (!ok) return STNLABZ_MODULE_ERR_STOP_FAILED;
     worker_started=dispatcher_started=0;
     reset_queues(NULL);
+    if(group_service_registered && module_host) {
+        (void)module_host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
+        group_service_registered=0;
+    }
     module_host=NULL;
     return STNLABZ_MODULE_OK;
 }
