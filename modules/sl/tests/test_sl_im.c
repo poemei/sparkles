@@ -109,6 +109,16 @@ int main(void)
     assert(view.payload[82U]==SPARKLES_SL_SESSION_SEND_DIALOG);
     assert(!memcmp(view.payload+33U,conversation,16U));
     assert(!memcmp(view.payload+83U,conversation,16U));
+    assert(sparkles_sl_group_start_encode(&session,conversation,44U,
+              "MsSparkles Resident",packet,sizeof packet,&used));
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(view.message_id==SPARKLES_SL_IM_MESSAGE_ID);
+    assert(view.payload[82U]==SPARKLES_SL_GROUP_START_DIALOG);
+    assert(!memcmp(view.payload+33U,conversation,16U));
+    assert(!memcmp(view.payload+83U,conversation,16U));
+    assert(view.payload[124U]==1U && view.payload[125U]==0U);
+    assert(!sparkles_sl_group_start_encode(&session,(unsigned char[16]){0},
+                 45U,"MsSparkles Resident",packet,sizeof packet,&used));
     assert(!sparkles_sl_session_encode(&session,(unsigned char[16]){0},
                  44U,"MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,0U,
