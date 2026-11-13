@@ -9,6 +9,8 @@ typedef struct {
     char text[512];
     unsigned int session_chat; /* deliver through dialog 17, not direct IM */
     unsigned int start_group; /* initiate group and wait for session confirmation */
+    unsigned int notice; /* official group notice, dialog 32, not session chat */
+    char subject[65];
 } sparkles_sl_im_reply_t;
 
 /* Called by the networking worker; must be nonblocking and bounded. */
@@ -19,6 +21,7 @@ typedef int (*sparkles_sl_im_ingress_fn)(
 typedef int (*sparkles_sl_im_dequeue_fn)(
     sparkles_sl_im_reply_t *reply, void *context);
 typedef void (*sparkles_sl_im_reset_fn)(void *context);
+typedef void (*sparkles_sl_presence_fn)(int online,void *context);
 
 /* Native-C grid loop. Socket belongs ONLY to this network thread.
  * Core inference is invoked by the owning module's separate dispatcher. */
@@ -26,5 +29,6 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_ingress_fn ingress,
                           sparkles_sl_im_dequeue_fn dequeue,
                           sparkles_sl_im_reset_fn reset,
+                          sparkles_sl_presence_fn presence,
                           void *context);
 #endif
