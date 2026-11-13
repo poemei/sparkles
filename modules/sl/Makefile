@@ -20,6 +20,7 @@ TARGET := $(BUILD_DIR)/sl.so
 WIRE_TEST := $(BUILD_DIR)/test_sl_wire
 CONFIG_TEST := $(BUILD_DIR)/test_sl_config
 IM_TEST := $(BUILD_DIR)/test_sl_im
+CAPS_TEST := $(BUILD_DIR)/test_sl_caps
 SOURCES := src/sl_module.c src/sl_wire.c src/sl_config.c src/sl_login.c src/sl_grid.c src/sl_im.c src/sl_caps.c
 
 .PHONY: all test clean install uninstall
@@ -36,10 +37,14 @@ $(CONFIG_TEST): tests/test_sl_config.c src/sl_config.c include/sl_config.h inclu
 $(IM_TEST): tests/test_sl_im.c src/sl_im.c src/sl_wire.c include/sl_im.h include/sl_wire.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_im.c src/sl_im.c src/sl_wire.c
-test: $(WIRE_TEST) $(CONFIG_TEST) $(IM_TEST)
+$(CAPS_TEST): tests/test_sl_caps.c src/sl_caps.c src/sl_wire.c include/sl_caps.h include/sl_grid.h include/sl_im.h | check-deps
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_caps.c src/sl_wire.c -lcurl -pthread $(shell pkg-config --libs libxml-2.0)
+test: $(WIRE_TEST) $(CONFIG_TEST) $(IM_TEST) $(CAPS_TEST)
 	./$(WIRE_TEST)
 	./$(CONFIG_TEST)
 	./$(IM_TEST)
+	./$(CAPS_TEST)
 install: $(TARGET)
 	@id -u "$(MODULE_USER)" >/dev/null && getent group "$(MODULE_GROUP)" >/dev/null
 	install -d -o "$(MODULE_USER)" -g "$(MODULE_GROUP)" -m 0755 "$(MODULEDIR)"
