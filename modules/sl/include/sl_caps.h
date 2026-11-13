@@ -14,6 +14,8 @@ typedef struct {
     pthread_mutex_t *group_lock;
     unsigned char *group_confirm_uuid;
     int *group_confirm_status;
+    unsigned char (*shared_joined)[16];
+    unsigned int *shared_joined_count;
     void *context;
 } sparkles_sl_caps_worker_t;
 
