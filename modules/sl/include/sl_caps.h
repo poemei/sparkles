@@ -6,6 +6,7 @@
 typedef struct {
     char seed_url[2048];
     unsigned char agent[16];
+    unsigned char group_chat[16]; /* Optional operator-configured group. */
     atomic_int *module_stop;
     atomic_int session_stop;
     sparkles_sl_im_ingress_fn ingress;
