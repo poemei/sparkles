@@ -29,6 +29,7 @@ typedef struct {
     unsigned int attempts;
     uint64_t sent_at;
     int pending;
+    unsigned int nearby; /* reliable local chat */
     unsigned int session_chat; /* Outgoing destination classification only. */
     unsigned int notice; /* Official group notice transport attempt. */
 } reliable_t;
@@ -110,6 +111,8 @@ static void clear_ack(reliable_t *packet, uint32_t seq)
     if (packet->pending && packet->sequence == seq) {
         if(packet->session_chat)
             report("group session reply UDP transport acknowledged; group display still unverified");
+        else if(packet->nearby)
+            report("nearby chat UDP transport acknowledged; local display still unverified");
         packet->pending=0;
     }
 }
@@ -304,9 +307,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     }
                 }
             }
-            /* Nearby avatar chat is observational only: never route to
-             * conversational reply generation. Packet deduplication and
-             * the authenticated simulator circuit apply as for IMs. */
+            /* Nearby speech is a public conversational input as well as an
+             * observation. Only the bounded dispatcher performs inference. */
             if (view.message_frequency==2U &&
                 view.message_id==SPARKLES_SL_CHAT_MESSAGE_ID && present &&
                 ingress) {
@@ -478,7 +480,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         break;
                     }
                 }
-                if (!(response.notice ?
+                if (!(response.nearby ?
+                      sparkles_sl_nearby_encode(&login->circuit,next,
+                          response.text,slot->bytes,sizeof slot->bytes,&used) :
+                      response.notice ?
                       sparkles_sl_notice_encode(&login->circuit,
                           response.recipient,next,login->avatar_name,
                           response.subject,response.text,
@@ -490,13 +495,15 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                       sparkles_sl_im_encode(&login->circuit,response.recipient,
                           response.conversation,next,login->avatar_name,
                           response.text,slot->bytes,sizeof slot->bytes,&used))) {
-                    report(response.notice?"group notice encoding rejected":
+                    report(response.nearby?"nearby chat encoding rejected":
+                          response.notice?"group notice encoding rejected":
                           response.session_chat?"group session reply encoding rejected":
                                                 "private IM reply encoding rejected");
                     continue;
                 }
                 if (!send_packet(fd,slot->bytes,used)) {
-                    report(response.notice?"group notice UDP send failed":
+                    report(response.nearby?"nearby chat UDP send failed":
+                           response.notice?"group notice UDP send failed":
                            response.session_chat?"group session reply UDP send failed":
                                                  "private IM reply UDP send failed");
                     break;
@@ -507,8 +514,11 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 slot->sent_at=now;
                 slot->pending=1;
                 slot->session_chat=response.session_chat;
+                slot->nearby=response.nearby;
                 slot->notice=response.notice;
-                report(response.notice?
+                report(response.nearby?
+                    "nearby chat sent on channel zero; awaiting simulator acknowledgment":
+                    response.notice?
                     "official group notice sent via UDP dialog 32; delivery NOT confirmed":
                     response.session_chat?
                     "group session reply sent via UDP dialog 17; awaiting simulator acknowledgment":
@@ -520,7 +530,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             for (j=0U;j<SL_OUTSTANDING_IM;++j) {
                 if (outbound[j].pending && !resend(fd,&outbound[j],now)) {
                     outbound[j].pending=0;
-                    report(outbound[j].notice?
+                    report(outbound[j].nearby?
+                           "nearby chat unacknowledged; local display NOT confirmed":
+                           outbound[j].notice?
                            "group notice unacknowledged; publication NOT confirmed":
                            outbound[j].session_chat?
                            "group session reply unacknowledged; retry limit reached":
