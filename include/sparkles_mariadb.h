@@ -48,6 +48,9 @@ typedef struct {
     char end_time[20];
     char title[201];
     char guest_name[64]; /* Optional exact existing contact first name. */
+    unsigned int public_show; /* Explicit confirmed public show, never inferred by DB. */
+    char show_venue[151];
+    char show_dj[101];
 } sparkles_mariadb_create_request_t;
 
 typedef enum {
