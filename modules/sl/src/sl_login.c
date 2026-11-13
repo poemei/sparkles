@@ -315,9 +315,11 @@ done:
     OPENSSL_cleanse(secret,sizeof secret);
     OPENSSL_cleanse(hashed,sizeof hashed);
     if (request) {
-        xmlChar *bytes=xmlBufferContent(request);
-        size_t length=xmlBufferLength(request);
-        if(bytes && length)OPENSSL_cleanse(bytes,length);
+        const xmlChar *bytes=xmlBufferContent(request);
+        size_t length=(size_t)xmlBufferLength(request);
+        /* This buffer is owned by request; libxml2 exposes its contents
+         * through a const view. Securely erase before freeing it. */
+        if(bytes && length)OPENSSL_cleanse((void *)bytes,length);
         xmlBufferFree(request);
     }
     if (headers) curl_slist_free_all(headers);
