@@ -1,3 +1,23 @@
+## v0.3.7 — DM-initiated named group conversation (GitHub source, 2026-11-12)
+
+This increment registers the typed `sparkles.sl.group.start` service without altering Core's shared ABI. Only the SL dispatcher **while processing an authenticated one-to-one IM from the explicitly configured operator UUID** may enqueue a group opening. Group chat, nearby chat, IRC and accounts merely resembling an SL identity cannot invoke the operation. The service resolves a human-readable group alias to an explicitly configured UUID; the LLM never supplies arbitrary UUIDs.
+
+Add the optional entries below to the existing UID-owned, mode-0600 `/opt/sparkles/auth/sl/sl.conf`, in addition to its existing first/last/password/start fields (use real avatar and group UUIDs; **do not commit or post credentials**):
+
+```ini
+operator_uuid=<authorized-human-avatar-uuid>
+group_chat=<primary-group-uuid>
+group_name=My Group
+group_chat_2=<stn-labz-group-uuid>
+group_name_2=STN-Labz
+```
+
+The second group mapping is optional. An existing `group_chat` without `group_name` continues to work for auto-start but is not a named DM-action destination. The optional operator UUID is required to enable DM-directed group operations; omission leaves this new action disabled.
+
+Example private IM: `Sparkles, open the STN-Labz group chat and tell everyone we're having a meeting at 7 PM.` Ollama proposes a typed alias and opening text; the transport verifies the verified sender and configured mapping, queues a group-start packet, waits up to 30 seconds for a matching simulator `ChatterBoxSessionStartReply` success event, then posts the opening through the group session using dialog 17. On rejection/timeout the opening is **not** sent. The initial private acknowledgment says only that a request was queued; it does not claim the group saw the post. Only one pending group-start action is supported at a time; overlap can be rejected by the transport. Existing private/group reply capability remains unchanged.
+
+The expected SL outcome still requires native compilation/tests, installation under operator control, and a real group-chat test. A simulator UDP ACK confirms only transport receipt, not display in the chat window.
+
 ## Group-chat delivery correction — v0.3.6 (2026-11-12, GitHub source only)
 
 - The native SessionSend (dialog 17) and group-start (dialog 15) encoder now includes the viewer-compatible **one-NUL-byte binary bucket** rather than a zero-length bucket; private IM dialog 0 retains its previously tested framing.
