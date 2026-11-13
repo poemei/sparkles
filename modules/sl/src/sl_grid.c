@@ -260,6 +260,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 sparkles_sl_private_im_t im;
                 sparkles_sl_im_validation_t status;
                 report("ImprovedInstantMessage UDP packet received");
+                if (view.payload_size>82U &&
+                    view.payload[82U]>=13U && view.payload[82U]<=16U)
+                    report("session start/invite control observed; CAP invitation acceptance not yet supported");
                 if (!present || !ingress) {
                     report("IM packet ignored: avatar session not ready");
                 } else {
