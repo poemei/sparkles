@@ -9,6 +9,7 @@
 #define SPARKLES_SL_IM_MESSAGE_ID 254U
 #define SPARKLES_SL_SESSION_SEND_DIALOG 17U
 #define SPARKLES_SL_GROUP_START_DIALOG 15U
+#define SPARKLES_SL_GROUP_NOTICE_DIALOG 32U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
 
@@ -59,6 +60,14 @@ int sparkles_sl_group_start_encode(const sparkles_sl_session_t *session,
                                   uint32_t sequence,const char *sender_name,
                                   unsigned char *output,size_t capacity,
                                   size_t *used);
+/* Real group notice: IM dialog 32, recipient=group UUID, null IM ID,
+ * message="subject|body", no attachment (one-NUL-byte binary bucket).
+ * Enforces the 510-byte Second Life combined notice text limit. */
+int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
+                             const unsigned char group[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *subject,const char *body,
+                             unsigned char *output,size_t capacity,size_t *used);
 int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              const unsigned char conversation[16],
                              uint32_t sequence,const char *sender_name,
