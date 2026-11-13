@@ -1,5 +1,13 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — Ollama 1.2.5 group opening speaker perspective correction
+
+- After operator-confirmed successful group delivery, revise the group-action generation prompt to compose a natural group-facing opening in Sparkles' voice, attribute `from me` to the verified private IM speaker, and preserve explicitly named sources such as `STN 6`.
+- Add an inference retry when a forwarded `from me` greeting remains mistakenly first-person; reject the action after the second ambiguous attempt rather than publishing an incorrectly attributed message.
+- Add group-action selftests for reported live examples. No changes to group transport protocol, authorization, Core ABI, or deployment. Native and live model behavior unverified.
+
+
+
 ## 2026-11-12 — DM-directed Second Life group initiation (source only)
 
 - SL 0.3.7: New typed `sparkles.sl.group.start` service, restricted to a simulator-authenticated private IM from an explicitly configured operator avatar UUID. Two bounded operator-defined group name/UUID mappings; no arbitrary model-supplied destination.
