@@ -19,7 +19,7 @@
 #define SL_MINOR 3U
 #define SL_PATCH 4U
 
-#define SL_INBOUND_CAP 8U
+#define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
 
 static pthread_t worker, dispatcher;
@@ -183,8 +183,11 @@ static void *dispatch_worker(void *unused)
         }
         /* Ambient local chat informs context but is not addressed to the
          * assistant; never dispatch it as a conversational command. */
+        /* A group speaker may not invoke Core slash commands or private
+         * tools; only addressed plain conversation reaches the chat module. */
         if(im.ambient==1U ||
-           (im.ambient==2U && !session_addressed(im.text)))continue;
+           (im.ambient==2U && (im.text[0]=='/' ||
+                                !session_addressed(im.text))))continue;
         result=module_host->invoke_service(
             SPARKLES_ROUTER_DISPATCH_SERVICE,
             &request,sizeof request,&response,sizeof response,&used);
