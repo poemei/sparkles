@@ -304,7 +304,15 @@ int sparkles_sl_login(const sparkles_sl_login_config_t *config,
     if (ok && config->group_chat[0] &&
         !sparkles_sl_uuid_parse(config->group_chat,reply->group_chat))
         ok=0;
+    if (ok && config->group_chat_2[0] &&
+        !sparkles_sl_uuid_parse(config->group_chat_2,reply->group_chat_2))
+        ok=0;
+    if (ok && config->operator_uuid[0] &&
+        !sparkles_sl_uuid_parse(config->operator_uuid,reply->operator_uuid))
+        ok=0;
     if (ok) {
+        memcpy(reply->group_name,config->group_name,sizeof reply->group_name);
+        memcpy(reply->group_name_2,config->group_name_2,sizeof reply->group_name_2);
         int n=snprintf(reply->avatar_name,sizeof reply->avatar_name,
                        "%s %s",config->first,config->last);
         if (n<1 || (size_t)n>=sizeof reply->avatar_name) {
