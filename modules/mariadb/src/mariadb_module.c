@@ -47,12 +47,20 @@ static stnlabz_module_result_t group_resolve_service(
     const void *request,size_t request_size,
     void *response,size_t response_size,size_t *used,void *ctx)
 {
-    static const char sql[]=
+    static const char chat_sql[]=
         "SELECT DISTINCT LOWER(g.group_uuid) FROM sl_groups g "
         "JOIN business_groups bg ON bg.group_id=g.id "
         "JOIN businesses b ON b.id=bg.business_id "
         "WHERE g.group_name=? AND g.is_active=1 AND g.chat_enabled=1 "
         "AND b.is_active=1 AND LOWER(b.sl_owner_uuid)=? LIMIT 2";
+    static const char notice_sql[]=
+        "SELECT DISTINCT LOWER(g.group_uuid) FROM sl_groups g "
+        "JOIN business_groups bg ON bg.group_id=g.id "
+        "JOIN businesses b ON b.id=bg.business_id "
+        "WHERE g.group_name=? AND g.is_active=1 AND g.notices_enabled=1 "
+        "AND bg.notices_enabled=1 AND b.is_active=1 "
+        "AND LOWER(b.sl_owner_uuid)=? LIMIT 2";
+    const char *sql;
     const sparkles_sl_group_resolve_request_t *in=request;
     sparkles_sl_group_resolve_reply_t *out=response;
     MYSQL_STMT *stmt=NULL;
@@ -68,9 +76,10 @@ static stnlabz_module_result_t group_resolve_service(
        response_size<sizeof *out ||
        !memchr(in->account,0,sizeof in->account) ||
        !memchr(in->group_name,0,sizeof in->group_name) ||
-       !in->group_name[0])
+       !in->group_name[0] || in->notice>1U)
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     memset(out,0,sizeof *out);
+    sql=in->notice?notice_sql:chat_sql;
     if(!sparkles_mariadb_identity_parts(in->account,&platform,&identity) ||
        strcmp(platform,"second_life"))
         return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
@@ -1337,7 +1346,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 2U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 3U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
