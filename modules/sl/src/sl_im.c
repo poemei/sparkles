@@ -55,10 +55,16 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
         return SPARKLES_SL_IM_INVALID_SENDER;
     if (memcmp(p+33U,own_agent,16U)!=0)
         return SPARKLES_SL_IM_WRONG_RECIPIENT;
-    if (p[32U]!=0U || p[82U]!=0U)
+    if (p[82U]!=0U && p[82U]!=SPARKLES_SL_SESSION_SEND_DIALOG)
+        return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
+    if (p[82U]==0U && p[32U]!=0U)
+        return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
+    if (p[82U]==SPARKLES_SL_SESSION_SEND_DIALOG &&
+        !nonzero_uuid(p+83U))
         return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
     memcpy(candidate.sender,p,16U);
     memcpy(candidate.conversation,p+83U,16U);
+    candidate.ambient=p[82U]==SPARKLES_SL_SESSION_SEND_DIALOG?2U:0U;
     name_size=p[pos++];
     if (!name_size || name_size>sizeof candidate.name ||
         name_size>n-pos || p[pos+name_size-1U]!=0U ||
@@ -150,18 +156,20 @@ int sparkles_sl_im_decode(const unsigned char *p, size_t n,
 {
     return sparkles_sl_im_validate(p,n,own_agent,im)==SPARKLES_SL_IM_VALID;
 }
-int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
-                         const unsigned char recipient[16],
-                         const unsigned char conversation[16],
-                         uint32_t sequence, const char *sender_name,
-                         const char *message,
-                         unsigned char *out, size_t cap, size_t *used)
+static int im_encode_dialog(const sparkles_sl_session_t *session,
+                            const unsigned char recipient[16],
+                            const unsigned char conversation[16],
+                            uint32_t sequence, const char *sender_name,
+                            const char *message,unsigned int dialog,
+                            unsigned char *out, size_t cap, size_t *used)
 {
     size_t textlen, namelen, offset=10U, total;
     if (used) *used=0U;
     if (!session || !recipient || !conversation || !sender_name ||
         !message || !out || !used || !sequence ||
-        !nonzero_uuid(recipient)) return 0;
+        !nonzero_uuid(recipient) ||
+        (dialog!=0U && dialog!=SPARKLES_SL_SESSION_SEND_DIALOG))
+        return 0;
     for (namelen=0U; namelen<255U && sender_name[namelen]; ++namelen) {}
     if (!namelen || namelen>=255U) return 0;
     for (textlen=0U; textlen<SPARKLES_SL_IM_TEXT_MAX && message[textlen];
@@ -177,8 +185,10 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
     out[6]=0xffU;out[7]=0xffU;out[8]=0U;out[9]=254U;
     memcpy(out+offset,session->agent,16U);
     memcpy(out+offset+16U,session->session,16U);
-    /* FromGroup BOOL = 0 */
+    /* Conversation ID and recipient are the group/session UUID for
+     * SessionSend; direct IMs retain the original recipient UUID. */
     memcpy(out+offset+33U,recipient,16U);
+    out[offset+82U]=(unsigned char)dialog;
     /* ParentEstateID, RegionID, Position = zero for client-originated IM;
      * Offline=0; Dialog=0; ID=original private conversation identifier. */
     memcpy(out+offset+83U,conversation,16U);
@@ -197,4 +207,25 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
     offset+=5U;
     *used=offset;
     return 1;
+}
+
+int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
+                         const unsigned char recipient[16],
+                         const unsigned char conversation[16],
+                         uint32_t sequence,const char *sender_name,
+                         const char *message,unsigned char *out,
+                         size_t cap,size_t *used)
+{
+    return im_encode_dialog(session,recipient,conversation,sequence,
+                            sender_name,message,0U,out,cap,used);
+}
+int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
+                             const unsigned char conversation[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *message,unsigned char *out,
+                             size_t cap,size_t *used)
+{
+    return im_encode_dialog(session,conversation,conversation,sequence,
+                            sender_name,message,SPARKLES_SL_SESSION_SEND_DIALOG,
+                            out,cap,used);
 }
