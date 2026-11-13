@@ -207,23 +207,20 @@ static int accept_invitation(caps_state_t *state,const unsigned char uuid[16])
 static void invitation_event(caps_state_t *state,xmlNodePtr body)
 {
     char id[48]={0},from[48]={0},name[128]={0},message[SPARKLES_SL_IM_TEXT_MAX]={0};
-    char type[24]={0},invitation_type[24]={0};
+    char type[24]={0};
     unsigned char session[16]={0},speaker[16]={0};
     xmlNodePtr instant,map;
     sparkles_sl_private_im_t im={0};
-    int is_invite=0;
     if(!map_text(body,"session_id",id,sizeof id) ||
        !sparkles_sl_uuid_parse(id,session))return;
     instant=map_get(body,"instantmessage");
     map=map_get(instant,"message_params");
     if(!map)return; /* Text chat only; do not join voice invitations. */
-    (void)map_text(body,"type",invitation_type,sizeof invitation_type);
     (void)map_text(map,"type",type,sizeof type);
     if(type[0]&&strcmp(type,"17"))return;
-    is_invite=!strcmp(invitation_type,"13") ||
-              !strcmp(invitation_type,"14") ||
-              !strcmp(invitation_type,"15");
-    if(is_invite && !accept_invitation(state,session))return;
+    /* ChatterBoxInvitation is itself an invitation even when older
+     * simulators omit the outer type field. Acceptance is idempotent. */
+    if(!accept_invitation(state,session))return;
     /* Only pass session messages if server has acknowledged membership. */
     if(!joined(state,session))return;
     if(!map_text(map,"from_id",from,sizeof from) ||
