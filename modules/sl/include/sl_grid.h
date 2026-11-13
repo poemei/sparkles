@@ -7,6 +7,7 @@ typedef struct {
     unsigned char recipient[16];
     unsigned char conversation[16];
     char text[512];
+    unsigned int session_chat; /* deliver through dialog 17, not direct IM */
 } sparkles_sl_im_reply_t;
 
 /* Called by the networking worker; must be nonblocking and bounded. */
