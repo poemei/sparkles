@@ -31,9 +31,9 @@ $(TARGET): $(SOURCES) include/sl_wire.h include/sl_config.h include/sl_login.h i
 $(WIRE_TEST): tests/test_sl_wire.c src/sl_wire.c include/sl_wire.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_wire.c src/sl_wire.c
-$(CONFIG_TEST): tests/test_sl_config.c src/sl_config.c include/sl_config.h include/sl_login.h
+$(CONFIG_TEST): tests/test_sl_config.c src/sl_config.c src/sl_wire.c include/sl_config.h include/sl_login.h include/sl_wire.h
 	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_config.c src/sl_config.c -lcrypto
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_config.c src/sl_config.c src/sl_wire.c -lcrypto
 $(IM_TEST): tests/test_sl_im.c src/sl_im.c src/sl_wire.c include/sl_im.h include/sl_wire.h
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ tests/test_sl_im.c src/sl_im.c src/sl_wire.c
