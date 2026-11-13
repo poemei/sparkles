@@ -451,8 +451,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         }
                     pthread_mutex_unlock(&group_lock);
                     if(already_joined) {
-                        response.start_group=0U;
-                        report("DM-directed group session already joined; posting opening");
+                        pending_action=response;
+                        pending_action.start_group=2U;
+                        report("DM-directed group session already joined; opening queued");
+                        continue;
                     } else {
                     if(pending_active || action_start.pending) {
                         report("group start already in progress; requested opening not sent");
