@@ -1785,6 +1785,9 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
      !strcmp(a.group,"STN-Labz") &&
      !strcmp(a.opening,"Hi, everyone!"))++p;else ok=0;
   ++e;
+  if(parse_group_action("GROUP=STN-Labz\nMESSAGE=Hello there!\n",human,&a) &&
+     !strcmp(a.opening,"Hello there!"))++p;else ok=0;
+  ++e;
   if(!parse_group_action("GROUP=UnknownGroup\nMESSAGE=Hi",human,&a))++p;
   else ok=0;
   ++e;
