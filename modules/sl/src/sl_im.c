@@ -173,13 +173,15 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
     if (!session || !recipient || !conversation || !sender_name ||
         !message || !out || !used || !sequence ||
         !nonzero_uuid(recipient) ||
-        (dialog!=0U && dialog!=SPARKLES_SL_SESSION_SEND_DIALOG))
+        (dialog!=0U && dialog!=SPARKLES_SL_SESSION_SEND_DIALOG &&
+         dialog!=SPARKLES_SL_GROUP_START_DIALOG))
         return 0;
     for (namelen=0U; namelen<255U && sender_name[namelen]; ++namelen) {}
     if (!namelen || namelen>=255U) return 0;
     for (textlen=0U; textlen<SPARKLES_SL_IM_TEXT_MAX && message[textlen];
          ++textlen) { /* bounded native C11 length */ }
-    if (!textlen || textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
+    if ((!textlen && dialog!=SPARKLES_SL_GROUP_START_DIALOG) ||
+        textlen>=SPARKLES_SL_IM_TEXT_MAX) return 0;
     /* Header(6) + Low ID(4) + fixed fields(103) + name(1) +
      * message size(2) + message NUL(1) + bucket size(2). */
     total=10U+103U+1U+namelen+1U+2U+textlen+1U+2U+5U;
@@ -223,6 +225,16 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
 {
     return im_encode_dialog(session,recipient,conversation,sequence,
                             sender_name,message,0U,out,cap,used);
+}
+int sparkles_sl_group_start_encode(const sparkles_sl_session_t *session,
+                                  const unsigned char group[16],
+                                  uint32_t sequence,const char *sender_name,
+                                  unsigned char *output,size_t capacity,
+                                  size_t *used)
+{
+    return im_encode_dialog(session,group,group,sequence,
+                            sender_name,"",SPARKLES_SL_GROUP_START_DIALOG,
+                            output,capacity,used);
 }
 int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              const unsigned char conversation[16],
