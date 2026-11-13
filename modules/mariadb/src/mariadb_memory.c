@@ -17,7 +17,8 @@ static int context_write(MYSQL *db,const sparkles_memory_exchange_request_t *in)
     MYSQL_STMT *stmt=NULL;
     MYSQL_BIND bind[6]={{0}};
     unsigned long lengths[6];
-    const char *category=in->ambient?"local_chat":"conversation";
+    const char *category=in->ambient==2U?"group_chat":
+                         in->ambient==1U?"local_chat":"conversation";
     const char *source=!strncmp(in->account,"sl:",3U)?"SL":"IRC";
     const char *visibility=in->ambient?"SHARED":"PRIVATE";
     int okay=1;
