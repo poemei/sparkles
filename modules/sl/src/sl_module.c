@@ -5,6 +5,8 @@
 #include "sparkles_memory.h"
 #include "sparkles_sl_group.h"
 #include "sparkles_sl_group_db.h"
+#include "sparkles_show.h"
+#include <poll.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <strings.h>
@@ -19,12 +21,12 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 8U
+#define SL_PATCH 9U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
 
-static pthread_t worker, dispatcher;
+static pthread_t worker, dispatcher, show_timer;
 static atomic_int stopping=ATOMIC_VAR_INIT(0);
 static pthread_mutex_t qlock=PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t ready=PTHREAD_COND_INITIALIZER;
@@ -32,7 +34,8 @@ static sparkles_sl_private_im_t inbound[SL_INBOUND_CAP];
 static sparkles_sl_im_reply_t outbound[SL_OUTBOUND_CAP];
 static size_t in_head, in_tail, in_count, out_head, out_tail, out_count;
 static uint64_t epoch;
-static int worker_started, dispatcher_started;
+static int worker_started, dispatcher_started, show_timer_started;
+static atomic_int sl_present=ATOMIC_VAR_INIT(0);
 static const stnlabz_module_host_t *module_host;
 static char active_private[128];
 static int group_service_registered;
@@ -156,6 +159,11 @@ static int dequeue_reply(sparkles_sl_im_reply_t *reply, void *unused)
 /* A reconnect invalidates pending exchanges; do not route stale IM
  * responses into a later SL session. Core calls already in flight
  * are discarded using the session epoch. */
+static void presence_update(int online,void *unused)
+{
+    (void)unused;
+    atomic_store(&sl_present,online?1:0);
+}
 static void reset_queues(void *unused)
 {
     (void)unused;
@@ -264,9 +272,39 @@ static void *dispatch_worker(void *unused)
             memcpy(active_private,request.account,sizeof active_private);
             pthread_mutex_unlock(&qlock);
         }
-        result=module_host->invoke_service(
-            SPARKLES_ROUTER_DISPATCH_SERVICE,
-            &request,sizeof request,&response,sizeof response,&used);
+        /* Only a simulator-verified private IM can answer a show
+         * check-in. Explicit phrases don't hijack normal confirmations. */
+        if(im.ambient==0U &&
+           (!strcasecmp(im.text,"show yes") ||
+            !strcasecmp(im.text,"show cancel"))) {
+            sparkles_show_response_request_t answer={0};
+            sparkles_show_response_reply_t acknowledged={0};
+            size_t answer_used=0U;
+            stnlabz_module_result_t answer_rc;
+            memcpy(answer.account,request.account,strlen(request.account)+1U);
+            answer.answer=!strcasecmp(im.text,"show yes")?1U:2U;
+            answer_rc=module_host->invoke_service(SPARKLES_SHOW_RESPONSE_SERVICE,
+                &answer,sizeof answer,&acknowledged,sizeof acknowledged,&answer_used);
+            if(answer_rc==STNLABZ_MODULE_OK &&
+               answer_used==sizeof acknowledged && acknowledged.updated) {
+                const char *confirmation=answer.answer==1U?
+                   "Show confirmation recorded. Scheduled group notices remain enabled.":
+                   "The show's automatic group notices are cancelled. "
+                   "Your calendar appointment is unchanged.";
+                memcpy(response.text,confirmation,strlen(confirmation)+1U);
+            } else {
+                const char *missing="No single outstanding show check-in "
+                    "was found. No show record was changed.";
+                memcpy(response.text,missing,strlen(missing)+1U);
+            }
+            response.replied=1U;
+            used=sizeof response;
+            result=STNLABZ_MODULE_OK;
+        } else {
+            result=module_host->invoke_service(
+                SPARKLES_ROUTER_DISPATCH_SERVICE,
+                &request,sizeof request,&response,sizeof response,&used);
+        }
         pthread_mutex_lock(&qlock);
         memset(active_private,0,sizeof active_private);
         pthread_mutex_unlock(&qlock);
@@ -298,11 +336,79 @@ static void *dispatch_worker(void *unused)
         pthread_mutex_unlock(&qlock);
     }
 }
+/* Polling is isolated from the socket and inference dispatch threads.
+ * Claiming is an at-most-once DB reservation, NOT a delivery receipt.
+ * Once claimed, a failed/missed send requires operator reconciliation. */
+static void *show_timer_worker(void *unused)
+{
+    (void)unused;
+    while(!atomic_load(&stopping)) {
+        sparkles_show_claim_reply_t result={0};
+        sparkles_show_attempt_request_t receipt={0};
+        sparkles_sl_im_reply_t action={0};
+        size_t used=0U,ignored=0U;
+        stnlabz_module_result_t rc;
+        uint64_t generation;
+        int capacity_ok=0;
+        (void)poll(NULL,0,3000);
+        if(atomic_load(&stopping) || !atomic_load(&sl_present) ||
+           !module_host || !module_host->invoke_service)continue;
+        pthread_mutex_lock(&qlock);
+        capacity_ok=out_count+2U<SL_OUTBOUND_CAP;
+        generation=epoch;
+        pthread_mutex_unlock(&qlock);
+        if(!capacity_ok)continue;
+        rc=module_host->invoke_service(SPARKLES_SHOW_CLAIM_SERVICE,
+                        NULL,0U,&result,sizeof result,&used);
+        if(rc!=STNLABZ_MODULE_OK || used!=sizeof result) {
+            /* Legacy databases without show_events simply remain inactive. */
+            continue;
+        }
+        if(!result.available)continue;
+        receipt.attempt_id=result.action.attempt_id;
+        if((result.action.kind!=SPARKLES_SHOW_CONFIRMATION &&
+            result.action.kind!=SPARKLES_SHOW_NOTICE) ||
+           !memchr(result.action.message,0,sizeof result.action.message) ||
+           !memchr(result.action.subject,0,sizeof result.action.subject) ||
+           !sparkles_sl_uuid_parse(result.action.recipient_uuid,
+                                   action.recipient)) {
+            fprintf(stderr,"[SL] invalid claimed show task; marked failed\n");
+            goto persist_attempt;
+        }
+        memcpy(action.text,result.action.message,
+               strlen(result.action.message)+1U);
+        if(result.action.kind==SPARKLES_SHOW_NOTICE) {
+            action.notice=1U;
+            memcpy(action.subject,result.action.subject,
+                   strlen(result.action.subject)+1U);
+            memcpy(action.conversation,action.recipient,16U);
+        } else {
+            memcpy(action.conversation,action.recipient,16U);
+        }
+        pthread_mutex_lock(&qlock);
+        if(!atomic_load(&stopping) && atomic_load(&sl_present) &&
+           epoch==generation && out_count<SL_OUTBOUND_CAP) {
+            outbound[out_tail]=action;
+            out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+            ++out_count;
+            receipt.queued=1U;
+        }
+        pthread_mutex_unlock(&qlock);
+persist_attempt:
+        rc=module_host->invoke_service(SPARKLES_SHOW_ATTEMPT_SERVICE,
+                         &receipt,sizeof receipt,NULL,0U,&ignored);
+        if(rc!=STNLABZ_MODULE_OK)
+            fprintf(stderr,"[SL] claimed show attempt status persistence failed\n");
+        fprintf(stderr,"[SL] show task %s; simulator delivery is NOT confirmed\n",
+                receipt.queued?"queued":"not queued");
+    }
+    return NULL;
+}
 static void *grid_worker(void *unused)
 {
     (void)unused;
     sparkles_sl_grid_run(&stopping,enqueue_private,
-                         dequeue_reply,reset_queues,NULL);
+                         dequeue_reply,reset_queues,presence_update,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
@@ -415,6 +521,7 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         dispatcher_started) return STNLABZ_MODULE_ERR_START_FAILED;
     module_host=host;
     atomic_store(&stopping,0);
+    atomic_store(&sl_present,0);
     if(!host->register_service || !host->unregister_service ||
        !host->register_service(SPARKLES_SL_GROUP_START_SERVICE,
                                group_start_service,NULL)) {
@@ -443,13 +550,27 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     worker_started=1;
+    if(pthread_create(&show_timer,NULL,show_timer_worker,NULL)!=0) {
+        atomic_store(&stopping,1);
+        pthread_mutex_lock(&qlock);
+        pthread_cond_broadcast(&ready);
+        pthread_mutex_unlock(&qlock);
+        (void)pthread_join(worker,NULL);
+        (void)pthread_join(dispatcher,NULL);
+        worker_started=dispatcher_started=show_timer_started=0;
+        (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
+        group_service_registered=0;
+        module_host=NULL;
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    show_timer_started=1;
     fprintf(stderr,"[SL] native C grid/IM workers started; avatar presence not yet established\n");
     return STNLABZ_MODULE_OK;
 }
 static stnlabz_module_result_t sl_stop(void)
 {
     int ok=1;
-    if (!worker_started || !dispatcher_started)
+    if (!worker_started || !dispatcher_started || !show_timer_started)
         return STNLABZ_MODULE_ERR_INVALID_STATE;
     atomic_store(&stopping,1);
     pthread_mutex_lock(&qlock);
@@ -457,6 +578,7 @@ static stnlabz_module_result_t sl_stop(void)
     pthread_mutex_unlock(&qlock);
     if (pthread_join(worker,NULL)!=0) ok=0;
     if (pthread_join(dispatcher,NULL)!=0) ok=0;
+    if (pthread_join(show_timer,NULL)!=0) ok=0;
     if (!ok) return STNLABZ_MODULE_ERR_STOP_FAILED;
     worker_started=dispatcher_started=0;
     reset_queues(NULL);
