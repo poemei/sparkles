@@ -346,6 +346,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         memcpy(caps.seed_url,login->seed_capability,
                                strlen(login->seed_capability)+1U);
                         memcpy(caps.agent,login->circuit.agent,16U);
+                        memcpy(caps.group_chat,login->group_chat,16U);
                         caps.module_stop=stop;
                         caps.ingress=ingress;
                         caps.context=context;
