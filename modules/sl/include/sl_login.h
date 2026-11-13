@@ -11,6 +11,7 @@ typedef struct {
     char last[64];
     char password[256];
     char start[128];
+    char group_chat[37]; /* Optional operator-selected group UUID. */
 } sparkles_sl_login_config_t;
 
 typedef struct {
@@ -19,6 +20,7 @@ typedef struct {
     char sim_ip[64];
     unsigned short sim_port;
     char seed_capability[2048];
+    unsigned char group_chat[16]; /* Zero when no group session selected. */
 } sparkles_sl_login_reply_t;
 
 /* Returns 1 only on a syntactically valid successful grid login response.
