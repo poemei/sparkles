@@ -102,6 +102,25 @@ int main(void)
     assert(!strcmp((const char *)(view.payload+104U),"MsSparkles Resident"));
     assert(view.payload[124U]==3U && view.payload[125U]==0U);
     assert(!strcmp((const char *)(view.payload+126U),"Hi"));
+    /* Channel-zero nearby avatar speech uses ChatFromViewer Low 80;
+     * it must not be encoded as a direct IM or group message. */
+    assert(sparkles_sl_nearby_encode(&session,52U,"Hello nearby",
+                                   packet,sizeof packet,&used));
+    assert(packet[0]==SPARKLES_SL_FLAG_RELIABLE);
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(view.message_frequency==2U &&
+           view.message_id==SPARKLES_SL_CHAT_SEND_MESSAGE_ID);
+    assert(view.sequence==52U && view.payload_size==52U);
+    assert(!memcmp(view.payload,own,16U));
+    assert(!memcmp(view.payload+16U,conversation,16U));
+    assert(view.payload[32U]==13U && view.payload[33U]==0U);
+    assert(!strcmp((const char *)(view.payload+34U),"Hello nearby"));
+    assert(view.payload[47U]==1U); /* normal chat */
+    assert(view.payload[48U]==0U && view.payload[49U]==0U &&
+           view.payload[50U]==0U && view.payload[51U]==0U);
+    assert(!sparkles_sl_nearby_encode(&session,0U,"Hello",packet,sizeof packet,&used));
+    assert(!sparkles_sl_nearby_encode(&session,53U,"",packet,sizeof packet,&used));
+    assert(!sparkles_sl_nearby_encode(&session,53U,"Hello",packet,10U,&used));
     assert(sparkles_sl_session_encode(&session,conversation,43U,
               "MsSparkles Resident","Hi Mochi",packet,sizeof packet,&used));
     assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
