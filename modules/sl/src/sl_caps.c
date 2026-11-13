@@ -253,12 +253,19 @@ static void session_start_event(caps_state_t *state,xmlNodePtr body)
     xmlFree(status);
     if(!map_text(body,"session_id",id,sizeof id) ||
        !sparkles_sl_uuid_parse(id,session))return;
-    if(memcmp(session,state->worker->group_chat,16U)!=0)return;
+    if(state->worker->group_lock &&
+       state->worker->group_confirm_uuid &&
+       state->worker->group_confirm_status) {
+        pthread_mutex_lock(state->worker->group_lock);
+        memcpy(state->worker->group_confirm_uuid,session,16U);
+        *state->worker->group_confirm_status=success?1:-1;
+        pthread_mutex_unlock(state->worker->group_lock);
+    }
     if(success) {
         note_joined(state,session);
-        caps_log("configured group chat session start confirmed by simulator");
+        caps_log("group chat session start confirmed by simulator");
     } else {
-        caps_log("configured group chat session start rejected by simulator");
+        caps_log("group chat session start rejected by simulator");
     }
 }
 static void session_event_reply(caps_state_t *state,xmlNodePtr body)
