@@ -8,6 +8,7 @@
 typedef struct {
     char account[128]; /* Simulator-verified sl:<avatar-uuid> */
     char group_name[64];
+    unsigned int notice; /* 0=group chat, 1=on-demand notice */
 } sparkles_sl_group_resolve_request_t;
 typedef struct {
     char group_uuid[37]; /* lower-case canonical UUID, or empty on failure */
