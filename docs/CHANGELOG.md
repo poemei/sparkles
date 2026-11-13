@@ -1,5 +1,22 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — Show timer and official SL notices (source only)
+
+- MariaDB 1.10.0 adds explicitly registered public shows and a unique,
+  persistent at-most-once attempt ledger. It claims due T−60 owner
+  check-ins and T−30 eligible group notices, records check-in answers and
+  whether an action was queued. Existing appointment and group tables
+  remain authoritative.
+- SL 0.3.9 adds a simulator-presence-gated timer, a private IM
+  check-in response path (`show yes` / `show cancel`), and native
+  dialog-32 group notices with bounded `subject|message` format. A notice
+  is queued once, not claimed delivered or acknowledged as published.
+- New migration must be applied and the specific public show linked to
+  the saved calendar appointment; no generic calendar entry is public by
+  default. Group membership, role rights, timezone, tests, deployment and
+  live delivery remain operator-verification gates.
+
+
 ## 2026-11-12 — Show scheduling role correction (source only)
 
 **v1.2.7 — Show scheduling guest-role correction (GitHub source only):** When a show description says `with Manon as my DJ` (or another explicit `as my/the/our DJ/host/performer/singer` role), the performer is preserved as event narrative, not treated as an invited appointment participant requiring a separate `contacts` row. An ordinary `meeting with Manon` still requests guest participation. The appointment checker now reports a denied identity separately from a conflict or an unavailable/failed service, and writes response codes (no contact names or message text) for diagnosis. This does not bypass verified contact/calendar authorization, save without a human confirmation, or implement event notices. Source-level regressions cover staff-vs-guest classification. Native build, SQL behavior and operator acceptance remain unverified.
