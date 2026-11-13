@@ -15,14 +15,16 @@ int sparkles_mariadb_memory_valid(
        (request->ambient && (!request->record ||
         strncmp(request->account,"sl:",3U)))||!account_len||account_len>127U||!text_len||
        text_len>SPARKLES_MEMORY_TEXT_MAX)return 0;
-    /* Native SL transport identifies the caller as sl:<UUID>. Treat it
-     * as a platform-scoped observation namespace, NOT calendar authority.
-     * Strict UUID format prevents arbitrary memory namespace injection. */
-    if(!strncmp(request->account,"sl:",3U)) {
+    /* The public-only slnear namespace can READ shared context from
+     * the corresponding verified speaker UUID, but cannot write. */
+    if(!strncmp(request->account,"sl:",3U) ||
+       !strncmp(request->account,"slnear:",7U)) {
         static const unsigned int hyphen_at[]={8U,13U,18U,23U};
-        if(account_len!=39U)return 0;
+        size_t prefix=!strncmp(request->account,"slnear:",7U)?7U:3U;
+        if(account_len!=prefix+36U ||
+           (prefix==7U && request->record))return 0;
         for(i=0U;i<36U;++i) {
-            unsigned char c=(unsigned char)request->account[i+3U];
+            unsigned char c=(unsigned char)request->account[i+prefix];
             int sep=i==hyphen_at[0]||i==hyphen_at[1]||
                     i==hyphen_at[2]||i==hyphen_at[3];
             if(sep ? c!='-' : !((c>='0'&&c<='9')||
@@ -80,6 +82,15 @@ int sparkles_mariadb_memory_selftests(
     CHECK(sparkles_mariadb_memory_valid(&req));
     req.record=0U;
     CHECK(!sparkles_mariadb_memory_valid(&req));
+    req.ambient=0U;
+    memcpy(req.account,"slnear:12345678-1234-1234-1234-123456789abc",44U);
+    CHECK(sparkles_mariadb_memory_valid(&req));
+    req.record=1U;
+    CHECK(!sparkles_mariadb_memory_valid(&req));
+    req.record=0U;
+    req.account[7U]='z';
+    CHECK(!sparkles_mariadb_memory_valid(&req));
+    memcpy(req.account,"sl:12345678-1234-1234-1234-123456789abc",40U);
     req.record=1U;
     req.ambient=2U;
     CHECK(sparkles_mariadb_memory_valid(&req));
