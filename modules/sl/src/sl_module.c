@@ -260,11 +260,20 @@ static void *dispatch_worker(void *unused)
                             im.ambient==2U?"session":im.ambient?"nearby":"private");
             }
         }
-        /* Ambient local chat informs context but is not addressed to the
-         * assistant; never dispatch it as a conversational command. */
-        /* A group speaker may not invoke Core slash commands or private
-         * tools; only addressed plain conversation reaches the chat module. */
-        if(im.ambient==1U ||
+        /* Nearby talk is public conversation, not an authorized IM.
+         * A separate Core account namespace ensures no private calendar,
+         * contact, or IM history can be used as public authority. It is
+         * still attributed to the simulator-verified avatar UUID. */
+        if(im.ambient==1U) {
+            char id[37];
+            sparkles_sl_uuid_format(im.sender,id);
+            if(snprintf(request.account,sizeof request.account,
+                        "slnear:%s",id)>=(int)sizeof request.account)
+                continue;
+        }
+        /* Public channels never execute slash commands or private tools.
+         * Session chat retains its existing explicit-address boundary. */
+        if((im.ambient==1U && im.text[0]=='/') ||
            (im.ambient==2U && (im.text[0]=='/' ||
                                 !session_addressed(im.text))))continue;
         if(im.ambient==0U) {
@@ -312,8 +321,9 @@ static void *dispatch_worker(void *unused)
             !response.replied ||
             !memchr(response.text,0,sizeof response.text) ||
             !response.text[0]) {
-            fprintf(stderr,"[SL] %s Core dispatch returned no reply\n",
-                    im.ambient==2U?"session chat":"private IM");
+            if(im.ambient!=1U)
+                fprintf(stderr,"[SL] %s Core dispatch returned no reply\n",
+                        im.ambient==2U?"session chat":"private IM");
             continue;
         }
         if(im.ambient==2U)
@@ -322,6 +332,7 @@ static void *dispatch_worker(void *unused)
             memcpy(reply.recipient,im.sender,16U);
         memcpy(reply.conversation,im.conversation,16U);
         reply.session_chat=im.ambient==2U;
+        reply.nearby=im.ambient==1U;
         memcpy(reply.text,response.text,sizeof reply.text);
         pthread_mutex_lock(&qlock);
         if (!atomic_load(&stopping) && generation==epoch &&
@@ -331,7 +342,8 @@ static void *dispatch_worker(void *unused)
             ++out_count;
         } else {
             fprintf(stderr,"[SL] %s response discarded (disconnect or full queue)\n",
-                    im.ambient==2U?"session chat":"private IM");
+                    im.ambient==2U?"session chat":
+                    im.ambient==1U?"nearby chat":"private IM");
         }
         pthread_mutex_unlock(&qlock);
     }
