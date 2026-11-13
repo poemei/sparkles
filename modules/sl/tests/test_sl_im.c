@@ -43,6 +43,25 @@ int main(void)
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[111U]='e';
     assert(sparkles_sl_im_decode(input,size,own,&im));
+    /* SessionSend dialog 17: distinguish shared group/conference speech.
+     * Reject inventory and invitation control dialogs as conversation. */
+    input[82U]=SPARKLES_SL_SESSION_SEND_DIALOG;
+    assert(sparkles_sl_im_decode(input,size,own,&im));
+    assert(im.ambient==2U && !memcmp(im.conversation,conversation,16U));
+    input[32U]=1U;
+    assert(sparkles_sl_im_decode(input,size,own,&im));
+    input[32U]=0U;
+    input[82U]=13U; /* Session invitation control is not chat. */
+    assert(!sparkles_sl_im_decode(input,size,own,&im));
+    input[82U]=32U; /* Group notice not treated as chat. */
+    assert(!sparkles_sl_im_decode(input,size,own,&im));
+    input[82U]=SPARKLES_SL_SESSION_SEND_DIALOG;
+    memset(input+83U,0,16U);
+    assert(!sparkles_sl_im_decode(input,size,own,&im));
+    memcpy(input+83U,conversation,16U);
+    input[82U]=0U;
+    assert(sparkles_sl_im_decode(input,size,own,&im));
+    assert(im.ambient==0U);
     /* Current template: EstateID U32 then MetaData block count U8. */
     input[118U]=7U;
     input[122U]=0U;
@@ -78,6 +97,15 @@ int main(void)
     assert(!strcmp((const char *)(view.payload+104U),"MsSparkles Resident"));
     assert(view.payload[124U]==3U && view.payload[125U]==0U);
     assert(!strcmp((const char *)(view.payload+126U),"Hi"));
+    assert(sparkles_sl_session_encode(&session,conversation,43U,
+              "MsSparkles Resident","Hi Mochi",packet,sizeof packet,&used));
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(view.message_id==SPARKLES_SL_IM_MESSAGE_ID);
+    assert(view.payload[82U]==SPARKLES_SL_SESSION_SEND_DIALOG);
+    assert(!memcmp(view.payload+33U,conversation,16U));
+    assert(!memcmp(view.payload+83U,conversation,16U));
+    assert(!sparkles_sl_session_encode(&session,(unsigned char[16]){0},
+                 44U,"MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,0U,
                                  "MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(!sparkles_sl_im_encode(&session,sender,conversation,1U,
