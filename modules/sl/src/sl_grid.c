@@ -29,6 +29,7 @@ typedef struct {
     unsigned int attempts;
     uint64_t sent_at;
     int pending;
+    unsigned int session_chat; /* Outgoing destination classification only. */
 } reliable_t;
 
 static uint64_t tick_ms(void)
@@ -105,7 +106,11 @@ static int send_ping(int fd, unsigned char ping, uint32_t *next)
 }
 static void clear_ack(reliable_t *packet, uint32_t seq)
 {
-    if (packet->pending && packet->sequence == seq) packet->pending=0;
+    if (packet->pending && packet->sequence == seq) {
+        if(packet->session_chat)
+            report("group session reply UDP transport acknowledged; group display still unverified");
+        packet->pending=0;
+    }
 }
 static void read_acknowledgments(const unsigned char *raw, size_t size,
                                  const sparkles_sl_packet_view_t *view,
@@ -394,7 +399,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     for (k=0U;k<SL_OUTSTANDING_IM;++k)
                         if (!outbound[k].pending) {slot=&outbound[k];break;}
                     if (k==SL_OUTSTANDING_IM) {
-                        report("private IM outstanding window full; response dropped");
+                        report("outbound IM window full; response dropped");
                         break;
                     }
                 }
@@ -405,11 +410,11 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                       sparkles_sl_im_encode(&login->circuit,response.recipient,
                           response.conversation,next,login->avatar_name,
                           response.text,slot->bytes,sizeof slot->bytes,&used))) {
-                    report("private IM outbound encoding rejected");
+                    report(response.session_chat?"group session reply encoding rejected":"private IM reply encoding rejected");
                     continue;
                 }
                 if (!send_packet(fd,slot->bytes,used)) {
-                    report("private IM outbound socket send failed");
+                    report(response.session_chat?"group session reply UDP send failed":"private IM reply UDP send failed");
                     break;
                 }
                 slot->length=used;
@@ -417,7 +422,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 slot->attempts=0U;
                 slot->sent_at=now;
                 slot->pending=1;
-                report("private IM reply sent; awaiting simulator acknowledgment");
+                slot->session_chat=response.session_chat;
+                report(response.session_chat?
+                    "group session reply sent via UDP dialog 17; awaiting simulator acknowledgment":
+                    "private IM reply sent via UDP dialog 0; awaiting simulator acknowledgment");
             }
         }
         {
@@ -425,7 +433,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             for (j=0U;j<SL_OUTSTANDING_IM;++j) {
                 if (outbound[j].pending && !resend(fd,&outbound[j],now)) {
                     outbound[j].pending=0;
-                    report("private IM reply unacknowledged; retry limit reached");
+                    report(outbound[j].session_chat?
+                           "group session reply unacknowledged; retry limit reached":
+                           "private IM reply unacknowledged; retry limit reached");
                 }
             }
         }
