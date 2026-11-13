@@ -385,6 +385,24 @@ static stnlabz_module_result_t sl_qualify(
     CHECK(!sparkles_sl_im_encode(&session,agent,session_id,4U,
                                 "MsSparkles Resident","",
                                 packet,sizeof packet,&used));
+    /* A typed operation outside an authenticated private IM must fail
+     * closed even if its account text resembles an SL avatar UUID. */
+    {
+        sparkles_sl_group_start_request_t req={{0}};
+        sparkles_sl_group_start_reply_t receipt={{0}};
+        size_t receipt_used=9U;
+        memcpy(req.account,"sl:12345678-1234-1234-1234-123456789abc",40U);
+        memcpy(req.group,"STN-Labz",9U);
+        memcpy(req.opening,"Hello everyone",15U);
+        CHECK(group_start_service(&req,sizeof req,&receipt,sizeof receipt,
+                                  &receipt_used,NULL)==
+              STNLABZ_MODULE_ERR_NOT_AUTHORIZED);
+        CHECK(!receipt.queued && receipt_used==0U);
+        req.opening[0]=0;
+        CHECK(group_start_service(&req,sizeof req,&receipt,sizeof receipt,
+                                  &receipt_used,NULL)==
+              STNLABZ_MODULE_ERR_INVALID_ARGUMENT);
+    }
 
 #undef CHECK
     result->tests_executed=count;
