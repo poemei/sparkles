@@ -2,6 +2,9 @@
 
 ## 2026-11-12 — DB-driven group registry for Second Life (source only)
 
+- Ollama v1.2.6 updates group-start failure messaging to refer to the linked database business/group relationship rather than legacy `sl.conf` settings.
+
+
 - SL v0.3.8 replaces its fixed configured group/operator records with a read-only MariaDB group resolution service. Secure SL config now accepts only its original four login fields; group slots and configuration-driven auto-start are removed.
 - MariaDB v1.9.7 registers `sparkles.mariadb.sl_groups.resolve`: prepared name lookup through `sl_groups` → `business_groups` → `businesses` gated by the simulator-verified human's avatar UUID matching the linked business's `sl_owner_uuid`; group and business must both be active and the group chat-enabled.
 - Existing inbound group session invitations, ordinary group response encoding and authorization of private IM dispatch remain. Startup auto-join for a single configured primary group is no longer automatic; group starts are on demand or invitation-based.
