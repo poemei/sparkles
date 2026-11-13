@@ -3,7 +3,7 @@
 ## 2026-11-12 — DM-directed Second Life group initiation (source only)
 
 - SL 0.3.7: New typed `sparkles.sl.group.start` service, restricted to a simulator-authenticated private IM from an explicitly configured operator avatar UUID. Two bounded operator-defined group name/UUID mappings; no arbitrary model-supplied destination.
-- Native SL grid queues a group-start packet, waits for positive simulator session-start confirmation, then sends the requested opening message. Rejection and 30-second timeout do not post the message. A private acknowledgment indicates *queued*, not delivered.
+- Native SL grid sends to an already confirmed joined session or queues a group-start packet, waits for positive simulator session-start confirmation, then sends the requested opening message. Rejection and 30-second timeout do not post the message. A private acknowledgment indicates *queued*, not delivered.
 - Ollama 1.2.4: Explicit natural-language group-chat launch intent and fail-closed strict extraction of named group and opening text before invoking the typed transport tool.
 - Existing Second Life IM/group-chat and Core/module split retained. No local installation or deployment. No native tests or live delivery evidence in this increment.
 
