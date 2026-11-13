@@ -1,5 +1,15 @@
 # Sparkles — Changelog
 
+## 2026-11-12 — SL v0.3.6 group-chat framing and delivery diagnostics
+
+- Make session-send dialog 17 and group-session-start dialog 15 include the viewer-style one-byte empty binary bucket while leaving direct IM dialog 0 framing unchanged.
+- Distinguish group-session UDP sends, reliable acknowledgments, retries and queue drops from private IM diagnostics; acknowledgments do not prove recipient display.
+- Recognize `ChatterBoxSessionEventReply` rejected session operations through the EventQueueGet worker and report bounded event/error details.
+- Correct group observation persistence logging to say `channel=session`.
+- Extend group codec and LLSD event regressions; no native or live-grid validation completed here.
+
+
+
 ## 2026-11-12 — SL group event capability and primary-group start (source only)
 
 - SL 0.3.5: Native C HTTPS LLSD seed negotiation for EventQueueGet and ChatSessionRequest, independent cancellable long-poll worker, invitation acceptance, session-start/forced-close lifecycle tracking and group session message ingress.
