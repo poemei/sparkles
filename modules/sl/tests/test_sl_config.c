@@ -42,6 +42,26 @@ int main(void)
     sparkles_sl_config_clear(&cfg);
     write_content(path,
         "first=MsSparkles\nlast=Resident\npassword=test\n"
+        "start=home\ngroup_chat=12345678-1234-1234-1234-123456789abc\n"
+        "group_name=My Group\n"
+        "group_chat_2=22345678-1234-1234-1234-123456789abc\n"
+        "group_name_2=STN-Labz\n"
+        "operator_uuid=32345678-1234-1234-1234-123456789abc\n");
+    assert(sparkles_sl_config_load(path,&cfg));
+    assert(!strcmp(cfg.group_name,"My Group"));
+    assert(!strcmp(cfg.group_name_2,"STN-Labz"));
+    assert(!strcmp(cfg.operator_uuid,"32345678-1234-1234-1234-123456789abc"));
+    sparkles_sl_config_clear(&cfg);
+    write_content(path,
+        "first=MsSparkles\nlast=Resident\npassword=test\n"
+        "start=home\noperator_uuid=invalid\n");
+    assert(!sparkles_sl_config_load(path,&cfg));
+    write_content(path,
+        "first=MsSparkles\nlast=Resident\npassword=test\n"
+        "start=home\ngroup_chat_2=22345678-1234-1234-1234-123456789abc\n");
+    assert(!sparkles_sl_config_load(path,&cfg));
+    write_content(path,
+        "first=MsSparkles\nlast=Resident\npassword=test\n"
         "start=home\ngroup_chat=not-a-uuid\n");
     assert(!sparkles_sl_config_load(path,&cfg));
     write_content(path,good);
