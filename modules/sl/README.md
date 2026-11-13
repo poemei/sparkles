@@ -1,3 +1,11 @@
+## Group-chat delivery correction — v0.3.6 (2026-11-12, GitHub source only)
+
+- The native SessionSend (dialog 17) and group-start (dialog 15) encoder now includes the viewer-compatible **one-NUL-byte binary bucket** rather than a zero-length bucket; private IM dialog 0 retains its previously tested framing.
+- Outgoing group messages log their dialog and socket-send attempt separately from private IM. A reliable simulator UDP ACK is reported as **transport acknowledgment only**, never as proof of delivery to another resident's group window. Retries, encoding failures and queue drops are group-specific.
+- Simulator `ChatterBoxSessionEventReply` denial events are now surfaced with bounded event/reason diagnostics instead of silently ignored. Group-context observation success is logged as `channel=session` rather than incorrectly as `nearby`.
+- Native codec regressions now inspect the session/group-start bucket lengths and bytes. LLSD event regression includes a rejected session event.
+- **Status:** source-only; native build, acceptance by Linden Lab simulator, and message appearance in both SL groups remain to be confirmed. An HTTP 500 from EventQueueGet is not itself proof of outgoing message failure.
+
 ## Group chat capabilities — 0.3.5 (GitHub source, 2026-11-12)
 
 - After simulator-confirmed avatar presence, a dedicated native C worker negotiates `EventQueueGet` and `ChatSessionRequest` from the login-issued HTTPS seed capability. It polls LLSD events independently of the UDP socket, acknowledges event IDs, retries the poll after expected 502 idle responses, and stops with the simulator session.
