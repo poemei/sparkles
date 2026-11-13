@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 7U
+#define OLLAMA_VERSION_PATCH 8U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -114,6 +114,49 @@ static int schedule_guest(const char *text,char name[64])
         return 1;
     }
     return 0;
+}
+
+/* Public entertainment registration is opt-in through an unambiguous
+ * human description, never inferred from an arbitrary calendar title.
+ * Strictly supports "host at VENUE with PERSON as my DJ" here; other
+ * calendar events remain private until explicitly tagged by the operator. */
+static int show_details(const char *human,char venue[151],char dj[101])
+{
+    char lower[701];
+    const char *at,*with,*role;
+    size_t i,n,vstart,vend,dstart,dend;
+    if(!human||!venue||!dj)return 0;
+    venue[0]=dj[0]=0;
+    n=strlen(human);
+    if(n>=sizeof lower)return 0;
+    for(i=0U;i<n;++i) {
+        unsigned char c=(unsigned char)human[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
+    }
+    lower[n]=0;
+    at=strstr(lower,"host at ");
+    if(!at)return 0;
+    with=strstr(at+8U," with ");
+    if(!with)return 0;
+    role=strstr(with+6U," as my dj");
+    if(!role)return 0;
+    vstart=(size_t)(at-lower)+8U;
+    vend=(size_t)(with-lower);
+    dstart=(size_t)(with-lower)+6U;
+    dend=(size_t)(role-lower);
+    while(vstart<vend&&human[vstart]==' ')++vstart;
+    while(vend>vstart&&human[vend-1U]==' ')--vend;
+    while(dstart<dend&&human[dstart]==' ')++dstart;
+    while(dend>dstart&&human[dend-1U]==' ')--dend;
+    if(vend<=vstart||vend-vstart>=151U||
+       dend<=dstart||dend-dstart>=101U)return 0;
+    for(i=vstart;i<vend;++i)
+        if((unsigned char)human[i]<0x20U||human[i]=='|')return 0;
+    for(i=dstart;i<dend;++i)
+        if((unsigned char)human[i]<0x20U||human[i]=='|')return 0;
+    memcpy(venue,human+vstart,vend-vstart);venue[vend-vstart]=0;
+    memcpy(dj,human+dstart,dend-dstart);dj[dend-dstart]=0;
+    return 1;
 }
 
 /* Schedule retrieval is not appointment creation. Protect the private record
@@ -463,6 +506,9 @@ static int finish_schedule(const sparkles_schedule_plan_t *plan,
         memcpy(request.account,account,strlen(account)+1U);
         memcpy(request.title,e->title,strlen(e->title)+1U);
         memcpy(request.guest_name,plan->guest_name,strlen(plan->guest_name)+1U);
+        request.public_show=plan->public_show;
+        memcpy(request.show_venue,plan->show_venue,sizeof request.show_venue);
+        memcpy(request.show_dj,plan->show_dj,sizeof request.show_dj);
         rc=owner->invoke_service(SPARKLES_MARIADB_CREATE_SERVICE,
             &request,sizeof request,&result,sizeof result,&used);
         if(rc!=STNLABZ_MODULE_OK||used!=sizeof result)return 0;
@@ -1063,7 +1109,9 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
             {
                 const char *message=
                     result==(int)plan.count?
-                      "Your confirmed appointments were saved in the calendar.":
+                      (plan.public_show?
+                       "Your show was saved in the calendar and registered for timed notices.":
+                       "Your confirmed appointments were saved in the calendar."):
                     result==-1?
                       "Nothing saved; the proposed times conflict with existing appointments.":
                     result==-2?
@@ -1124,6 +1172,9 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     }
     if(!account[0])return schedule_reply(reply,ctx,
        "Calendar changes require a verified account.");
+    if(plan.count==1U && !strncmp(account,"sl:",3U) &&
+       show_details(text,plan.show_venue,plan.show_dj))
+        plan.public_show=1U;
     {
         unsigned int i;
         int needs_date=0,needs_end=0;
@@ -1841,6 +1892,18 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  e+=se;p+=sp;
  ok=dialogue_selftest(&de,&dp)&&ok;
  e+=de;p+=dp;
+ /* Explicitly identified public shows are preserved for atomic
+  * registration, never invented for private calendar appointments. */
+ {
+  char venue[151]={0},dj[101]={0};
+  ++e;
+  if(show_details("Sparkles, I have to host at The River with Manon as my DJ Friday 2026-11-13 at 20:00 to 22:00",venue,dj) &&
+     !strcmp(venue,"The River") && !strcmp(dj,"Manon"))++p;else ok=0;
+  ++e;
+  if(!show_details("I have a meeting at The River with Manon Friday",venue,dj))++p;else ok=0;
+  ++e;
+  if(!show_details("I need to host at The River with Manon for lunch",venue,dj))++p;else ok=0;
+ }
  /* Named entertainment staff are event details, not invitations. */
  {
   char guest[64]={0};
