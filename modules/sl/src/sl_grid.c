@@ -227,6 +227,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     reliable_t circuit={0}, movement={0}, groupstart={0}, action_start={0};
     sparkles_sl_im_reply_t pending_action={0};
     int pending_active=0, group_event_status=0;
+    uint64_t action_started_at=0U;
     unsigned char group_event_uuid[16]={0};
     pthread_mutex_t group_lock=PTHREAD_MUTEX_INITIALIZER;
     reliable_t outbound[SL_OUTSTANDING_IM]={0};
@@ -393,6 +394,13 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
         }
         if (present && pending_active) {
             int completed=0,success=0;
+            if(now-action_started_at>30000U) {
+                pending_active=0;
+                action_start.pending=0;
+                memset(&pending_action,0,sizeof pending_action);
+                report("DM-directed group start timed out; opening NOT sent");
+            }
+            if(!pending_active)continue;
             pthread_mutex_lock(&group_lock);
             if(group_event_status &&
                !memcmp(group_event_uuid,pending_action.conversation,16U)) {
@@ -420,6 +428,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 reliable_t *slot;
                 if(atomic_load(stop))break;
                 if(pending_action.start_group==2U) {
+                    size_t free_slots=0U,k;
+                    for(k=0U;k<SL_OUTSTANDING_IM;++k)
+                        if(!outbound[k].pending)++free_slots;
+                    if(!free_slots)break; /* Keep opening queued. */
                     response=pending_action;
                     memset(&pending_action,0,sizeof pending_action);
                     response.start_group=0U;
@@ -445,6 +457,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     action_start.pending=1;
                     pending_action=response;
                     pending_active=1;
+                    action_started_at=now;
                     report("DM-directed group start requested; awaiting session acceptance before opening");
                     continue;
                 }
