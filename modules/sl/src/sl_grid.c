@@ -115,7 +115,7 @@ static void clear_ack(reliable_t *packet, uint32_t seq)
 static void read_acknowledgments(const unsigned char *raw, size_t size,
                                  const sparkles_sl_packet_view_t *view,
                                  reliable_t *circuit, reliable_t *movement,
-                                 reliable_t *groupstart,
+                                 reliable_t *groupstart,reliable_t *action_start,
                                  reliable_t outgoing[SL_OUTSTANDING_IM])
 {
     size_t i, offset;
@@ -128,7 +128,7 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
                 uint32_t seq=read_u32le(raw+offset+i*4U);
                 size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
-                clear_ack(groupstart,seq);
+                clear_ack(groupstart,seq);clear_ack(action_start,seq);
                 for (j=0U;j<SL_OUTSTANDING_IM;++j)
                     clear_ack(&outgoing[j],seq);
             }
@@ -142,7 +142,7 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
                 uint32_t seq=read_u32le(view->payload+1U+i*4U);
                 size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
-                clear_ack(groupstart,seq);
+                clear_ack(groupstart,seq);clear_ack(action_start,seq);
                 for (j=0U;j<SL_OUTSTANDING_IM;++j)
                     clear_ack(&outgoing[j],seq);
             }
@@ -224,7 +224,11 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
 {
     struct sockaddr_in sim = {0};
     unsigned char raw[SPARKLES_SL_PACKET_MAX], decoded[SPARKLES_SL_PACKET_MAX];
-    reliable_t circuit={0}, movement={0}, groupstart={0};
+    reliable_t circuit={0}, movement={0}, groupstart={0}, action_start={0};
+    sparkles_sl_im_reply_t pending_action={0};
+    int pending_active=0, group_event_status=0;
+    unsigned char group_event_uuid[16]={0};
+    pthread_mutex_t group_lock=PTHREAD_MUTEX_INITIALIZER;
     reliable_t outbound[SL_OUTSTANDING_IM]={0};
     uint32_t next=1U, recently_seen[128]={0};
     unsigned char ping=0U;
@@ -260,7 +264,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                                        sizeof decoded,&view)) continue;
             last_recv=now;
             read_acknowledgments(raw,(size_t)n,&view,&circuit,&movement,
-                                 &groupstart,outbound);
+                                 &groupstart,&action_start,outbound);
             if ((view.flags & SPARKLES_SL_FLAG_RELIABLE) &&
                 !send_ack(fd,view.sequence,&next)) break;
             for (i=0U;i<128U;++i) {
@@ -355,6 +359,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         caps.module_stop=stop;
                         caps.ingress=ingress;
                         caps.context=context;
+                        caps.group_lock=&group_lock;
+                        caps.group_confirm_uuid=group_event_uuid;
+                        caps.group_confirm_status=&group_event_status;
                         atomic_init(&caps.session_stop,0);
                         if(pthread_create(&caps_thread,NULL,sparkles_sl_caps_run,&caps)==0)
                             caps_started=1;
@@ -384,6 +391,25 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if (!send_ping(fd,ping++,&next)) break;
             last_ping=now;
         }
+        if (present && pending_active) {
+            int completed=0,success=0;
+            pthread_mutex_lock(&group_lock);
+            if(group_event_status &&
+               !memcmp(group_event_uuid,pending_action.conversation,16U)) {
+                completed=1;
+                success=group_event_status>0;
+                group_event_status=0;
+            }
+            pthread_mutex_unlock(&group_lock);
+            if(completed) {
+                if(success)
+                    report("DM-directed group start confirmed; opening queued for session send");
+                else
+                    report("DM-directed group start rejected; opening NOT sent");
+                if(success)pending_action.start_group=2U;
+                pending_active=0;
+            }
+        }
         if (present && dequeue) {
             sparkles_sl_im_reply_t response;
             size_t j;
@@ -392,7 +418,36 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             for (j=0U;j<SL_OUTSTANDING_IM;++j) {
                 size_t used=0U;
                 reliable_t *slot;
-                if (atomic_load(stop) || !dequeue(&response,context)) break;
+                if(atomic_load(stop))break;
+                if(pending_action.start_group==2U) {
+                    response=pending_action;
+                    memset(&pending_action,0,sizeof pending_action);
+                    response.start_group=0U;
+                } else if(!dequeue(&response,context))break;
+                if(response.start_group==1U) {
+                    size_t start_size=0U;
+                    if(pending_active || action_start.pending) {
+                        report("group start already in progress; requested opening not sent");
+                        continue;
+                    }
+                    if(!sparkles_sl_group_start_encode(&login->circuit,
+                          response.conversation,next,login->avatar_name,
+                          action_start.bytes,sizeof action_start.bytes,
+                          &start_size) ||
+                       !send_packet(fd,action_start.bytes,start_size)) {
+                        report("DM-directed group start packet failed; opening not sent");
+                        continue;
+                    }
+                    action_start.sequence=next++;
+                    action_start.length=start_size;
+                    action_start.sent_at=now;
+                    action_start.attempts=0U;
+                    action_start.pending=1;
+                    pending_action=response;
+                    pending_active=1;
+                    report("DM-directed group start requested; awaiting session acceptance before opening");
+                    continue;
+                }
                 slot=&outbound[j];
                 if (slot->pending) {
                     size_t k;
@@ -439,6 +494,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 }
             }
         }
+        if(action_start.pending && !resend(fd,&action_start,now)) {
+            action_start.pending=0;
+            report("DM-directed group start transport acknowledgment timed out");
+        }
         if(groupstart.pending && !resend(fd,&groupstart,now)) {
             groupstart.pending=0;
             report("group session start acknowledgment timed out");
@@ -450,6 +509,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     }
     if(caps_started)atomic_store(&caps.session_stop,1);
     if(caps_started)(void)pthread_join(caps_thread,NULL);
+    pthread_mutex_destroy(&group_lock);
     close(fd);
     if (present) report("simulator circuit closed; avatar presence lost");
     return present;
@@ -458,6 +518,7 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_ingress_fn ingress,
                           sparkles_sl_im_dequeue_fn dequeue,
                           sparkles_sl_im_reset_fn reset,
+                          sparkles_sl_group_config_fn configure,
                           void *context)
 {
     while (!atomic_load(stop)) {
@@ -466,6 +527,15 @@ void sparkles_sl_grid_run(atomic_int *stop,
         if (!sparkles_sl_login_from_file(&login)) {
             report("grid login failed (credentials, protocol, or network); no avatar presence");
         } else {
+            if(configure) {
+                sparkles_sl_group_config_t config={0};
+                memcpy(config.operator_uuid,login.operator_uuid,16U);
+                memcpy(config.group[0],login.group_chat,16U);
+                memcpy(config.group[1],login.group_chat_2,16U);
+                memcpy(config.name[0],login.group_name,64U);
+                memcpy(config.name[1],login.group_name_2,64U);
+                configure(&config,context);
+            }
             report("grid login response accepted; attempting simulator circuit");
             (void)grid_session(&login,stop,ingress,dequeue,context);
         }
