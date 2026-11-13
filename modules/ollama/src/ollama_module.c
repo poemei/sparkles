@@ -18,7 +18,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 2U
+#define OLLAMA_VERSION_PATCH 3U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1482,6 +1482,34 @@ static stnlabz_module_result_t chat_controller(
     !memchr(command->arguments,0,sizeof command->arguments)||
     !memchr(command->account,0,sizeof command->account))
   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+
+ /* Session-only speech must never run a participant's private calendar,
+  * contacts, commitments or memory lookups. The SL transport has already
+  * established the session destination and verified the sender. */
+ if(!strncmp(command->account,"slg-",4U)) {
+  int n;
+  if(!memchr(command->sender,0,sizeof command->sender))
+   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+  memset(&in,0,sizeof in);
+  memset(&out,0,sizeof out);
+  n=snprintf(in.prompt,sizeof in.prompt,
+    "You are Sparkles in an invited multi-person Second Life text session. "
+    "Reply briefly and naturally to the speaker who addressed you. "
+    "This is shared conversation. Never disclose private messages, "
+    "private calendars, contact records, secrets, or inferred personal facts. "
+    "Do not claim that you performed an action. Do not execute a tool. "
+    "Speaker: %s\\nMessage: %s",
+    command->sender,command->arguments);
+  if(n<0 || (size_t)n>=sizeof in.prompt)
+   return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+  result=generate(&in,sizeof in,&out,sizeof out,&used,NULL);
+  if(result!=STNLABZ_MODULE_OK)return result;
+  if(used!=sizeof out || !memchr(out.text,0,sizeof out.text) ||
+     !out.text[0])
+   return STNLABZ_MODULE_ERR_INVALID_STATE;
+  return reply(reply_context,out.text)?
+    STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+ }
 
  if(!strncmp(command->account,"sl:",3U) && owner &&
     owner->invoke_service && command->sender[0] &&
