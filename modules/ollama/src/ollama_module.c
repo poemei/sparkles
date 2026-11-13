@@ -1767,6 +1767,26 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
  e+=se;p+=sp;
  ok=dialogue_selftest(&de,&dp)&&ok;
  e+=de;p+=dp;
+ /* DM group requests must yield exact, literal group aliases and
+  * bounded messages; model hallucinations cannot choose another group. */
+ {
+  sparkles_sl_group_start_request_t a={{0}};
+  const char *human="Sparkles, open STN-Labz group chat and tell everyone hi";
+  ++e;
+  if(group_action_intent(human))++p;else ok=0;
+  ++e;
+  if(!group_action_intent("hello Sparkles in the group"))++p;else ok=0;
+  ++e;
+  if(parse_group_action("GROUP=STN-Labz\nMESSAGE=Hi, everyone!",human,&a) &&
+     !strcmp(a.group,"STN-Labz") &&
+     !strcmp(a.opening,"Hi, everyone!"))++p;else ok=0;
+  ++e;
+  if(!parse_group_action("GROUP=UnknownGroup\nMESSAGE=Hi",human,&a))++p;
+  else ok=0;
+  ++e;
+  if(!parse_group_action("GROUP=STN-Labz\nMESSAGE=Hi\nMORE=bad",human,&a))++p;
+  else ok=0;
+ }
  /* Explicit guest parsing is generic and rejects multiple named people. */
  {
   static const struct {const char *input;int expected;const char *name;} cases[]={
