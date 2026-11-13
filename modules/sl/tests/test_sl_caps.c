@@ -40,10 +40,16 @@ int main(void)
     sparkles_sl_caps_worker_t worker={0};
     caps_body_t *response=calloc(1,sizeof *response);
     unsigned char session[16];
+    unsigned char shared_joined[64][16]={{0}};
+    unsigned int shared_joined_count=0U;
+    pthread_mutex_t shared_lock=PTHREAD_MUTEX_INITIALIZER;
     atomic_int stop=ATOMIC_VAR_INIT(0);
     assert(response);
     worker.module_stop=&stop;
     worker.ingress=sink;
+    worker.group_lock=&shared_lock;
+    worker.shared_joined=shared_joined;
+    worker.shared_joined_count=&shared_joined_count;
     worker.agent[0]=0x55U;
     atomic_init(&worker.session_stop,0);
     state.worker=&worker;
@@ -62,6 +68,8 @@ int main(void)
         response->length=sizeof start_event-1U;
         assert(consume_events(&state,response));
         assert(joined(&state,session));
+        assert(shared_joined_count==1U);
+        assert(!memcmp(shared_joined[0],session,16U));
         assert(state.ack==40);
     }
     memcpy(response->bytes,event,sizeof event);
@@ -92,6 +100,7 @@ int main(void)
         response->length=sizeof close_event-1U;
         assert(consume_events(&state,response));
         assert(!joined(&state,session));
+        assert(shared_joined_count==0U);
     }
     {
         static const char rejected[]=
@@ -113,6 +122,7 @@ int main(void)
     assert(!valid_cap_url("http://sim.example.com/cap/abc"));
     assert(!valid_cap_url("file:///etc/passwd"));
     free(response);
+    pthread_mutex_destroy(&shared_lock);
     puts("SL capability LLSD event and session ingress regression: PASS");
     return 0;
 }
