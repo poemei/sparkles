@@ -580,7 +580,8 @@ static stnlabz_module_result_t sl_stop(void)
     if (pthread_join(dispatcher,NULL)!=0) ok=0;
     if (pthread_join(show_timer,NULL)!=0) ok=0;
     if (!ok) return STNLABZ_MODULE_ERR_STOP_FAILED;
-    worker_started=dispatcher_started=0;
+    worker_started=dispatcher_started=show_timer_started=0;
+    atomic_store(&sl_present,0);
     reset_queues(NULL);
     if(group_service_registered && module_host) {
         (void)module_host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
