@@ -1,32 +1,32 @@
 ## v0.3.8 — Database-driven Second Life groups (GitHub source)
 
 Group UUIDs, names and operator identity are no longer read from
-\`/opt/sparkles/auth/sl/sl.conf\`. This secure file accepts only
-\`first\`, \`last\`, \`password\` and \`start\`; legacy group/operator keys
+`/opt/sparkles/auth/sl/sl.conf`. This secure file accepts only
+`first`, `last`, `password` and `start`; legacy group/operator keys
 are rejected. Leave your existing login credentials unchanged.
 
 For **DM-directed group initiation**, the SL dispatcher forwards the
 simulator-verified private-IM account and the human-mentioned group name
-to the new MariaDB \`sparkles.mariadb.sl_groups.resolve\` service.
+to the new MariaDB `sparkles.mariadb.sl_groups.resolve` service.
 MariaDB resolves the group dynamically through the operator-populated
-\`sl_groups\`, \`business_groups\` and \`businesses\` tables. There is no
+`sl_groups`, `business_groups` and `businesses` tables. There is no
 two-group restriction and no hardcoded destination. The request is authorized
-only if the group is active with \`chat_enabled=1\`, linked to an active
-business with \`sl_owner_uuid\` equal to the verified requesting avatar UUID.
-If \`sl_owner_uuid\` is NULL or wrong, the group is unknown, duplicated,
+only if the group is active with `chat_enabled=1`, linked to an active
+business with `sl_owner_uuid` equal to the verified requesting avatar UUID.
+If `sl_owner_uuid` is NULL or wrong, the group is unknown, duplicated,
 unlinked or inactive, the group operation fails closed.
 
 **Existing-session behavior:** Incoming Second Life group-chat invitations
 continue to be accepted and conversation replies remain available; the
 DM-directed group start and session-confirmed outgoing message flow is
-unchanged. The old \`sl.conf\`-driven automatic primary-group startup was
+unchanged. The old `sl.conf`-driven automatic primary-group startup was
 removed; group chat is now started on demand by an authorized DM or by an
 incoming invitation, **not** proactively for every active database group.
 
 The MariaDB business owner UUID must be populated for the business linked
 to each operator-directed group. To inspect (read only):
 
-\`\`\`sql
+```sql
 SELECT b.id, b.business_name, b.sl_owner_uuid,
        g.id AS group_id, g.group_name, g.group_uuid,
        g.chat_enabled, g.is_active, b.is_active AS business_active
@@ -34,7 +34,7 @@ FROM businesses b
 JOIN business_groups bg ON bg.business_id=b.id
 JOIN sl_groups g ON g.id=bg.group_id
 ORDER BY b.id,g.id;
-\`\`\`
+```
 
 This increment does **not** implement show schedules or group notice publishing.
 GitHub source changes have not been installed or live-grid tested.
