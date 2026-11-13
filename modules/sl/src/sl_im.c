@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "sl_im.h"
 #include <string.h>
 
@@ -177,7 +178,8 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
         !message || !out || !used || !sequence ||
         !nonzero_uuid(recipient) ||
         (dialog!=0U && dialog!=SPARKLES_SL_SESSION_SEND_DIALOG &&
-         dialog!=SPARKLES_SL_GROUP_START_DIALOG))
+         dialog!=SPARKLES_SL_GROUP_START_DIALOG &&
+         dialog!=SPARKLES_SL_GROUP_NOTICE_DIALOG))
         return 0;
     for (namelen=0U; namelen<255U && sender_name[namelen]; ++namelen) {}
     if (!namelen || namelen>=255U) return 0;
@@ -202,7 +204,8 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
     out[offset+82U]=(unsigned char)dialog;
     /* ParentEstateID, RegionID, Position = zero for client-originated IM;
      * Offline=0; Dialog=0; ID=original private conversation identifier. */
-    memcpy(out+offset+83U,conversation,16U);
+    if(dialog!=SPARKLES_SL_GROUP_NOTICE_DIALOG)
+        memcpy(out+offset+83U,conversation,16U);
     offset+=103U;
     out[offset++]=(unsigned char)(namelen+1U);
     memcpy(out+offset,sender_name,namelen);
@@ -249,4 +252,36 @@ int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
     return im_encode_dialog(session,conversation,conversation,sequence,
                             sender_name,message,SPARKLES_SL_SESSION_SEND_DIALOG,
                             out,cap,used);
+}
+
+/* Follows viewer send_group_notice: dialog 32, group recipient,
+ * null IM ID and subject|message body with empty one-byte bucket.
+ * Do not encode inventory attachments. */
+int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
+                             const unsigned char group[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *subject,const char *body,
+                             unsigned char *output,size_t capacity,size_t *used)
+{
+    char message[512];
+    size_t i,subject_len,body_len;
+    if(used)*used=0U;
+    if(!subject||!body||!group||!session||!sender_name||!output||!used)
+        return 0;
+    subject_len=strnlen(subject,65U);
+    body_len=strnlen(body,449U);
+    if(!subject_len||subject_len>=65U||!body_len||body_len>=449U||
+       subject_len+body_len+1U>510U)return 0;
+    /* A vertical bar terminates the subject on the viewer/region side.
+     * Refuse ambiguous or control-byte notice content. */
+    for(i=0U;i<subject_len;++i)
+        if(subject[i]=='|'||subject[i]=='\n'||subject[i]=='\r')return 0;
+    for(i=0U;i<body_len;++i)
+        if(body[i]=='|'||body[i]=='\r')return 0;
+    memcpy(message,subject,subject_len);
+    message[subject_len]='|';
+    memcpy(message+subject_len+1U,body,body_len);
+    message[subject_len+body_len+1U]=0;
+    return im_encode_dialog(session,group,group,sequence,sender_name,
+        message,SPARKLES_SL_GROUP_NOTICE_DIALOG,output,capacity,used);
 }
