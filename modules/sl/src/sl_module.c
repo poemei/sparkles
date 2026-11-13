@@ -21,7 +21,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 10U
+#define SL_PATCH 11U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -39,6 +39,7 @@ static atomic_int sl_present=ATOMIC_VAR_INIT(0);
 static const stnlabz_module_host_t *module_host;
 static char active_private[128];
 static int group_service_registered;
+static int notice_service_registered;
 
 /* A simulator-authenticated private IM is dispatched synchronously by
  * this worker. IRC and group speakers cannot impersonate this context. */
@@ -102,6 +103,80 @@ static stnlabz_module_result_t group_start_service(
     pthread_mutex_unlock(&qlock);
     if(!accepted)return STNLABZ_MODULE_ERR_INVALID_STATE;
     out->queued=1;
+    if(response_used)*response_used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+
+/* Authenticated private-IM-only, on-demand official group notice.
+ * This service queues a notice; the simulator may still deny publication. */
+static stnlabz_module_result_t notice_send_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *response_used,void *unused)
+{
+    const sparkles_sl_notice_send_request_t *in=request;
+    sparkles_sl_notice_send_reply_t *out=response;
+    sparkles_sl_group_resolve_request_t lookup={0};
+    sparkles_sl_group_resolve_reply_t found={0};
+    sparkles_sl_im_reply_t action={0};
+    size_t used=0U,i,subject_len,body_len;
+    stnlabz_module_result_t rc;
+    uint64_t generation;
+    int permitted,queued=0;
+    (void)unused;
+    if(response_used)*response_used=0U;
+    if(!in||!out||request_size!=sizeof *in||response_size<sizeof *out||
+       !memchr(in->account,0,sizeof in->account)||
+       !memchr(in->group,0,sizeof in->group)||
+       !memchr(in->subject,0,sizeof in->subject)||
+       !memchr(in->body,0,sizeof in->body)||
+       !in->account[0]||!in->group[0]||!in->subject[0]||!in->body[0])
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    subject_len=strlen(in->subject);
+    body_len=strlen(in->body);
+    if(subject_len+body_len+1U>510U)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    for(i=0U;i<subject_len;++i)
+        if(in->subject[i]=='|' || (unsigned char)in->subject[i]<0x20U)
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    for(i=0U;i<body_len;++i)
+        if(in->body[i]=='|' || in->body[i]=='\r' ||
+           ((unsigned char)in->body[i]<0x20U && in->body[i]!='\n'))
+            return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    pthread_mutex_lock(&qlock);
+    permitted=!atomic_load(&stopping)&&dispatcher_started &&
+        pthread_equal(pthread_self(),dispatcher) && active_private[0] &&
+        !strcmp(active_private,in->account);
+    generation=epoch;
+    pthread_mutex_unlock(&qlock);
+    if(!permitted||!module_host||!module_host->invoke_service)
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    memcpy(lookup.account,in->account,strlen(in->account)+1U);
+    memcpy(lookup.group_name,in->group,strlen(in->group)+1U);
+    lookup.notice=1U;
+    rc=module_host->invoke_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,
+          &lookup,sizeof lookup,&found,sizeof found,&used);
+    if(rc!=STNLABZ_MODULE_OK||used!=sizeof found||!found.matched||
+       !sparkles_sl_uuid_parse(found.group_uuid,action.recipient))
+        return rc==STNLABZ_MODULE_ERR_INVALID_STATE?
+               STNLABZ_MODULE_ERR_INVALID_STATE:
+               STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    memcpy(action.conversation,action.recipient,16U);
+    memcpy(action.subject,in->subject,subject_len+1U);
+    memcpy(action.text,in->body,body_len+1U);
+    action.notice=1U;
+    pthread_mutex_lock(&qlock);
+    if(!atomic_load(&stopping)&&generation==epoch&&
+       dispatcher_started&&pthread_equal(pthread_self(),dispatcher)&&
+       active_private[0]&&!strcmp(active_private,in->account)&&
+       out_count<SL_OUTBOUND_CAP) {
+        outbound[out_tail]=action;
+        out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+        ++out_count;
+        queued=1;
+    }
+    pthread_mutex_unlock(&qlock);
+    if(!queued)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    out->queued=1U;
     if(response_used)*response_used=sizeof *out;
     return STNLABZ_MODULE_OK;
 }
@@ -518,6 +593,24 @@ static stnlabz_module_result_t sl_qualify(
               STNLABZ_MODULE_ERR_INVALID_ARGUMENT);
     }
 
+    {
+        sparkles_sl_notice_send_request_t req={0};
+        sparkles_sl_notice_send_reply_t receipt={0};
+        size_t written=9U;
+        memcpy(req.account,"sl:12345678-1234-1234-1234-123456789abc",40U);
+        memcpy(req.group,"Sparkles Entertainment",23U);
+        memcpy(req.subject,"Executive announcement",23U);
+        memcpy(req.body,"Sparkles joins the team.",25U);
+        CHECK(notice_send_service(&req,sizeof req,&receipt,
+                                  sizeof receipt,&written,NULL)==
+              STNLABZ_MODULE_ERR_NOT_AUTHORIZED);
+        CHECK(!receipt.queued && written==0U);
+        req.subject[0]='|';
+        CHECK(notice_send_service(&req,sizeof req,&receipt,
+                                  sizeof receipt,&written,NULL)==
+              STNLABZ_MODULE_ERR_INVALID_ARGUMENT);
+    }
+
 #undef CHECK
     result->tests_executed=count;
     result->tests_passed=passed;
@@ -541,8 +634,18 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     group_service_registered=1;
+    if(!host->register_service(SPARKLES_SL_NOTICE_SEND_SERVICE,
+                               notice_send_service,NULL)) {
+        (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
+        group_service_registered=0;
+        module_host=NULL;
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    notice_service_registered=1;
     reset_queues(NULL);
     if (pthread_create(&dispatcher,NULL,dispatch_worker,NULL)!=0) {
+        (void)host->unregister_service(SPARKLES_SL_NOTICE_SEND_SERVICE,NULL);
+        notice_service_registered=0;
         (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
         group_service_registered=0;
         module_host=NULL;
@@ -556,6 +659,8 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         pthread_mutex_unlock(&qlock);
         (void)pthread_join(dispatcher,NULL);
         dispatcher_started=0;
+        (void)host->unregister_service(SPARKLES_SL_NOTICE_SEND_SERVICE,NULL);
+        notice_service_registered=0;
         (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
         group_service_registered=0;
         module_host=NULL;
@@ -570,6 +675,8 @@ static stnlabz_module_result_t sl_start(const stnlabz_module_host_t *host)
         (void)pthread_join(worker,NULL);
         (void)pthread_join(dispatcher,NULL);
         worker_started=dispatcher_started=show_timer_started=0;
+        (void)host->unregister_service(SPARKLES_SL_NOTICE_SEND_SERVICE,NULL);
+        notice_service_registered=0;
         (void)host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
         group_service_registered=0;
         module_host=NULL;
@@ -595,6 +702,10 @@ static stnlabz_module_result_t sl_stop(void)
     worker_started=dispatcher_started=show_timer_started=0;
     atomic_store(&sl_present,0);
     reset_queues(NULL);
+    if(notice_service_registered && module_host) {
+        (void)module_host->unregister_service(SPARKLES_SL_NOTICE_SEND_SERVICE,NULL);
+        notice_service_registered=0;
+    }
     if(group_service_registered && module_host) {
         (void)module_host->unregister_service(SPARKLES_SL_GROUP_START_SERVICE,NULL);
         group_service_registered=0;
