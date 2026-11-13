@@ -1511,7 +1511,7 @@ static int sl_group_conversation(const stnlabz_module_command_t *command,
  sparkles_llm_request_t in={{0}};
  sparkles_llm_response_t out={{0}};
  sparkles_sl_group_start_request_t action={{0}};
- sparkles_sl_group_start_reply_t result={{0}};
+ sparkles_sl_group_start_reply_t result={0};
  size_t used=0U,action_used=0U;
  stnlabz_module_result_t status;
  int n;
