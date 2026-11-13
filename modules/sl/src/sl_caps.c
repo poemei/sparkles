@@ -261,6 +261,33 @@ static void session_start_event(caps_state_t *state,xmlNodePtr body)
         caps_log("configured group chat session start rejected by simulator");
     }
 }
+static void session_event_reply(caps_state_t *state,xmlNodePtr body)
+{
+    char id[48]={0},event[64]={0},error[128]={0};
+    unsigned char session[16];
+    xmlNodePtr result=map_get(body,"success");
+    xmlChar *value;
+    int success;
+    (void)state;
+    if(!result || xmlStrcmp(result->name,BAD_CAST "boolean"))return;
+    value=xmlNodeGetContent(result);
+    if(!value)return;
+    success=!xmlStrcmp(value,BAD_CAST "true") ||
+            !xmlStrcmp(value,BAD_CAST "1");
+    xmlFree(value);
+    if(!map_text(body,"session_id",id,sizeof id) ||
+       !sparkles_sl_uuid_parse(id,session))return;
+    if(success) {
+        caps_log("chat session event accepted by simulator");
+        return;
+    }
+    (void)map_text(body,"event",event,sizeof event);
+    (void)map_text(body,"error",error,sizeof error);
+    /* These are simulator-controlled diagnostics; bound both strings and
+     * print no session UUID, message body, credentials or cap URLs. */
+    fprintf(stderr,"[SL CAPS] chat session event rejected: event=%.63s error=%.127s\n",
+            event[0]?event:"unknown",error[0]?error:"unspecified");
+}
 static void session_closed_event(caps_state_t *state,xmlNodePtr body)
 {
     char id[48]={0};
@@ -305,6 +332,8 @@ static int consume_events(caps_state_t *state,caps_body_t *response)
             invitation_event(state,body);
         else if(!strcmp(event_name,"ChatterBoxSessionStartReply"))
             session_start_event(state,body);
+        else if(!strcmp(event_name,"ChatterBoxSessionEventReply"))
+            session_event_reply(state,body);
         else if(!strcmp(event_name,"ForceCloseChatterBoxSession"))
             session_closed_event(state,body);
     }
