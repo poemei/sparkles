@@ -8,6 +8,7 @@
 #include "sparkles_memory.h"
 #include "sparkles_contacts.h"
 #include "sparkles_sl_group_db.h"
+#include "sparkles_show.h"
 #include "mariadb_internal.h"
 
 static MYSQL *db;
@@ -22,6 +23,7 @@ static int memory_service_registered;
 static int contacts_service_registered;
 static int mutate_service_registered;
 static int group_resolve_registered;
+static int show_claim_registered,show_response_registered,show_attempt_registered;
 
 /* Resolve authenticated transport identity to an existing contact. All
  * calendar operations share this gate; lookup itself is serialized with
@@ -117,6 +119,63 @@ static stnlabz_module_result_t group_resolve_service(
     if(!out->matched)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
     if(used)*used=sizeof *out;
     return STNLABZ_MODULE_OK;
+}
+
+/* Only trusted in-process clients may request the next due action.
+ * DB-side unique attempts keep retries/restarts from double-posting. */
+static stnlabz_module_result_t shows_claim_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *used,void *ctx)
+{
+    sparkles_show_claim_reply_t *out=response;
+    int ok=0;
+    (void)ctx;
+    if(used)*used=0U;
+    if(request||request_size||!out||response_size<sizeof *out)
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    (void)pthread_mutex_lock(&db_lock);
+    if(db&&!mysql_ping(db))ok=sparkles_mariadb_show_claim(db,out);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!ok)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+static stnlabz_module_result_t shows_response_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *used,void *ctx)
+{
+    const sparkles_show_response_request_t *in=request;
+    sparkles_show_response_reply_t *out=response;
+    int ok=0;
+    (void)ctx;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||response_size<sizeof *out ||
+       !memchr(in->account,0,sizeof in->account) ||
+       (in->answer!=1U&&in->answer!=2U))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    (void)pthread_mutex_lock(&db_lock);
+    if(db&&!mysql_ping(db))ok=sparkles_mariadb_show_respond(db,in,out);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!ok)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+static stnlabz_module_result_t shows_attempt_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *used,void *ctx)
+{
+    const sparkles_show_attempt_request_t *in=request;
+    int ok=0;
+    (void)ctx;(void)response;(void)response_size;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!in->attempt_id)
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    (void)pthread_mutex_lock(&db_lock);
+    if(db&&!mysql_ping(db))ok=sparkles_mariadb_show_attempt(db,in);
+    (void)pthread_mutex_unlock(&db_lock);
+    return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
 }
 
 static unsigned int schema_table_count(MYSQL *connection)
@@ -968,6 +1027,7 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
     return ok ? STNLABZ_MODULE_OK : STNLABZ_MODULE_ERR_QUALIFICATION;
 }
 
+static stnlabz_module_result_t stop(void);
 static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
 {
     sparkles_mariadb_config_t config;
@@ -1150,12 +1210,39 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     group_resolve_registered=1;
+    if(!h->register_service(SPARKLES_SHOW_CLAIM_SERVICE,shows_claim_service,NULL) ||
+       !h->register_service(SPARKLES_SHOW_RESPONSE_SERVICE,shows_response_service,NULL) ||
+       !h->register_service(SPARKLES_SHOW_ATTEMPT_SERVICE,shows_attempt_service,NULL)) {
+        /* Registration may have partially completed. Undo in reverse order. */
+        (void)h->unregister_service(SPARKLES_SHOW_ATTEMPT_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_SHOW_RESPONSE_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_SHOW_CLAIM_SERVICE,NULL);
+        /* Core services must not be torn down with an active connection.
+         * Fail module start and unwind using the same stop path. */
+        {
+            (void)stop();
+        }
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    show_claim_registered=show_response_registered=show_attempt_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven core tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if(show_attempt_registered && host_owner &&
+       !host_owner->unregister_service(SPARKLES_SHOW_ATTEMPT_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    show_attempt_registered=0;
+    if(show_response_registered && host_owner &&
+       !host_owner->unregister_service(SPARKLES_SHOW_RESPONSE_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    show_response_registered=0;
+    if(show_claim_registered && host_owner &&
+       !host_owner->unregister_service(SPARKLES_SHOW_CLAIM_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    show_claim_registered=0;
     if (group_resolve_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -1204,7 +1291,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 7U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 0U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
