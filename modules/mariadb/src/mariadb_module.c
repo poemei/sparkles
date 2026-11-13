@@ -7,6 +7,7 @@
 #include "sparkles_mariadb.h"
 #include "sparkles_memory.h"
 #include "sparkles_contacts.h"
+#include "sparkles_sl_group_db.h"
 #include "mariadb_internal.h"
 
 static MYSQL *db;
@@ -20,6 +21,7 @@ static int check_service_registered;
 static int memory_service_registered;
 static int contacts_service_registered;
 static int mutate_service_registered;
+static int group_resolve_registered;
 
 /* Resolve authenticated transport identity to an existing contact. All
  * calendar operations share this gate; lookup itself is serialized with
@@ -32,6 +34,89 @@ static int calendar_contact_allowed(const char *account)
         allowed=sparkles_mariadb_contact_calendar_allowed(db,account);
     (void)pthread_mutex_unlock(&db_lock);
     return allowed;
+}
+
+/* Resolve an SL group from the operator-maintained business registry.
+ * Neither the LLM nor the SL transport can choose an unregistered UUID.
+ * The authenticated private IM sender must be the recorded business owner.
+ * A missing owner UUID fails closed until the operator populates it.
+ * The business/group link is authoritative for operation ownership. */
+static stnlabz_module_result_t group_resolve_service(
+    const void *request,size_t request_size,
+    void *response,size_t response_size,size_t *used,void *ctx)
+{
+    static const char sql[]=
+        "SELECT DISTINCT g.group_uuid FROM sl_groups g "
+        "JOIN business_groups bg ON bg.group_id=g.id "
+        "JOIN businesses b ON b.id=bg.business_id "
+        "WHERE g.group_name=? AND g.is_active=1 AND g.chat_enabled=1 "
+        "AND b.is_active=1 AND b.sl_owner_uuid=? LIMIT 2";
+    const sparkles_sl_group_resolve_request_t *in=request;
+    sparkles_sl_group_resolve_reply_t *out=response;
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND args[2]={{0}},field={0};
+    const char *platform=NULL,*identity=NULL;
+    unsigned long arg_len[2],uuid_len=0U;
+    char uuid[37]={0},account[40]={0};
+    int okay=1,rc;
+    size_t name_len;
+    (void)ctx;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||
+       response_size<sizeof *out ||
+       !memchr(in->account,0,sizeof in->account) ||
+       !memchr(in->group_name,0,sizeof in->group_name) ||
+       !in->group_name[0])
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    if(!sparkles_mariadb_identity_parts(in->account,&platform,&identity) ||
+       strcmp(platform,"second_life"))
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    name_len=strlen(in->group_name);
+    if(name_len>63U)return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    arg_len[0]=(unsigned long)name_len;
+    arg_len[1]=36UL;
+    args[0].buffer_type=MYSQL_TYPE_STRING;
+    args[0].buffer=(void *)in->group_name;
+    args[0].buffer_length=arg_len[0];args[0].length=&arg_len[0];
+    args[1].buffer_type=MYSQL_TYPE_STRING;
+    args[1].buffer=(void *)identity;
+    args[1].buffer_length=arg_len[1];args[1].length=&arg_len[1];
+    field.buffer_type=MYSQL_TYPE_STRING;
+    field.buffer=uuid;field.buffer_length=sizeof uuid;
+    field.length=&uuid_len;
+    (void)pthread_mutex_lock(&db_lock);
+    if(!db||mysql_ping(db))okay=0;
+    if(okay)stmt=mysql_stmt_init(db);
+    if(!stmt)okay=0;
+    if(okay && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))okay=0;
+    if(okay && mysql_stmt_bind_param(stmt,args))okay=0;
+    if(okay && mysql_stmt_execute(stmt))okay=0;
+    if(okay && mysql_stmt_bind_result(stmt,&field))okay=0;
+    if(okay && mysql_stmt_store_result(stmt))okay=0;
+    if(okay && mysql_stmt_num_rows(stmt)==1ULL) {
+        rc=mysql_stmt_fetch(stmt);
+        if(rc!=0 || uuid_len!=36UL)okay=0;
+        else {
+            uuid[36]=0;
+            if(snprintf(account,sizeof account,"sl:%s",uuid)!=(int)39 ||
+               !sparkles_mariadb_identity_parts(account,&platform,&identity))
+                okay=0;
+            else {
+                memcpy(out->group_uuid,uuid,sizeof uuid);
+                out->matched=1U;
+            }
+        }
+    }
+    if(stmt)mysql_stmt_close(stmt);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!okay) {
+        memset(out,0,sizeof *out);
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
+    if(!out->matched)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
 }
 
 static unsigned int schema_table_count(MYSQL *connection)
@@ -1011,12 +1096,41 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     contacts_service_registered=1;
-    fprintf(stderr, "[MARIADB] local database connected; seven tables verified\n");
+    /* Existing calendar/contact services stay available even if the
+     * operator-created optional group tables are not yet populated. */
+    if(!h->register_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,
+                            group_resolve_service,NULL)) {
+        (void)h->unregister_service(SPARKLES_CONTACTS_SERVICE,NULL);
+        contacts_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MEMORY_EXCHANGE_SERVICE,NULL);
+        memory_service_registered=0;
+        (void)h->unregister_command("appointment-add",NULL);
+        add_command_registered=0;
+        (void)h->unregister_command("schedule",NULL);
+        command_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_MUTATE_SERVICE,NULL);
+        mutate_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CHECK_SERVICE,NULL);
+        check_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_CREATE_SERVICE,NULL);
+        create_service_registered=0;
+        (void)h->unregister_service(SPARKLES_MARIADB_APPOINTMENTS_SERVICE,NULL);
+        (void)h->unregister_service(SPARKLES_MARIADB_STATUS_SERVICE,NULL);
+        registered=0;host_owner=NULL;db=NULL;
+        mysql_close(candidate);
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    group_resolve_registered=1;
+    fprintf(stderr, "[MARIADB] local database connected; seven core tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if (group_resolve_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    group_resolve_registered=0;
     if (contacts_service_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_CONTACTS_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -1061,7 +1175,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 6U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 9U, 7U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
