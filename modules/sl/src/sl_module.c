@@ -150,8 +150,16 @@ static void *dispatch_worker(void *unused)
             size_t memory_used=0U;
             stnlabz_module_result_t memory_result;
             size_t text_length=strlen(im.text);
-            memcpy(observation.account,request.account,
-                   strlen(request.account)+1U);
+            if(im.ambient==2U) {
+                char speaker_id[37];
+                sparkles_sl_uuid_format(im.sender,speaker_id);
+                if(snprintf(observation.account,sizeof observation.account,
+                            "sl:%s",speaker_id)>=
+                   (int)sizeof observation.account)continue;
+            } else {
+                memcpy(observation.account,request.account,
+                       strlen(request.account)+1U);
+            }
             if(text_length>SPARKLES_MEMORY_TEXT_MAX) {
                 fprintf(stderr,"[SL] observation exceeds context limit; not saved\n");
             } else {
@@ -167,7 +175,7 @@ static void *dispatch_worker(void *unused)
                     fprintf(stderr,
                         "[SL] context observation NOT saved: result=%d used=%zu saved=%u channel=%s\n",
                         (int)memory_result,memory_used,receipt.saved,
-                        im.ambient==2U?"session":im.ambient?"nearby":"private");
+                        im.ambient==2U?"session":im.ambient==2U?"session":im.ambient?"nearby":"private");
                 else
                     fprintf(stderr,"[SL] context observation saved: channel=%s\n",
                             im.ambient?"nearby":"private");
