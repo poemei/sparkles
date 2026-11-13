@@ -53,7 +53,12 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
      * No interpretation of unrelated IM dialog types as personal chat. */
     if (!nonzero_uuid(p) || !memcmp(p,own_agent,16U))
         return SPARKLES_SL_IM_INVALID_SENDER;
-    if (memcmp(p+33U,own_agent,16U)!=0)
+    /* Group relay may address the avatar or the active session UUID.
+     * Never accept an arbitrary third-party destination. */
+    if (memcmp(p+33U,own_agent,16U)!=0 &&
+        !(p[82U]==SPARKLES_SL_SESSION_SEND_DIALOG &&
+          nonzero_uuid(p+83U) &&
+          memcmp(p+33U,p+83U,16U)==0))
         return SPARKLES_SL_IM_WRONG_RECIPIENT;
     if (p[82U]!=0U && p[82U]!=SPARKLES_SL_SESSION_SEND_DIALOG)
         return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
