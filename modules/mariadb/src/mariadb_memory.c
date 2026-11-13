@@ -70,19 +70,19 @@ int sparkles_mariadb_context_exchange(
     /* Public nearby recall is never allowed to expose private IMs. */
     static const char read_private_sql[] =
         "SELECT LEFT(content,220) FROM conversation_context "
-        "WHERE account=? AND status='ACTIVE' "
+        "WHERE account=? AND content<>? AND status='ACTIVE' "
         "AND (expires_at IS NULL OR expires_at>NOW()) "
         "AND visibility IN ('PRIVATE','SHARED') "
         "ORDER BY updated_at DESC,id DESC LIMIT 6";
     static const char read_nearby_sql[] =
         "SELECT LEFT(content,220) FROM conversation_context "
-        "WHERE account=? AND status='ACTIVE' "
+        "WHERE account=? AND content<>? AND status='ACTIVE' "
         "AND (expires_at IS NULL OR expires_at>NOW()) "
         "AND visibility='SHARED' "
         "ORDER BY updated_at DESC,id DESC LIMIT 6";
     MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND bind={0}, col={0};
-    unsigned long account_length=0U,found_len=0U;
+    MYSQL_BIND bind[2]={{0}}, col={0};
+    unsigned long account_length=0U,utterance_length=0U,found_len=0U;
     char content[512];
     char *account;
     char nearby_account[128]={0};
@@ -103,6 +103,7 @@ int sparkles_mariadb_context_exchange(
         account=nearby_account;
     }
     account_length=(unsigned long)strlen(account);
+    utterance_length=(unsigned long)strlen(in->utterance);
     stmt=mysql_stmt_init(db);
     if(!stmt) {
         if(!in->record)return 0;
@@ -114,11 +115,17 @@ int sparkles_mariadb_context_exchange(
         const char *sql=nearby?read_nearby_sql:read_private_sql;
         if(mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))okay=0;
     }
-    bind.buffer_type=MYSQL_TYPE_STRING;
-    bind.buffer=account;
-    bind.buffer_length=account_length;
-    bind.length=&account_length;
-    if(okay&&mysql_stmt_bind_param(stmt,&bind))okay=0;
+    bind[0].buffer_type=MYSQL_TYPE_STRING;
+    bind[0].buffer=account;
+    bind[0].buffer_length=account_length;
+    bind[0].length=&account_length;
+    /* The SL transport writes before inference. Do not present the
+     * current utterance as if it were an earlier memory. */
+    bind[1].buffer_type=MYSQL_TYPE_STRING;
+    bind[1].buffer=(void *)in->utterance;
+    bind[1].buffer_length=utterance_length;
+    bind[1].length=&utterance_length;
+    if(okay&&mysql_stmt_bind_param(stmt,bind))okay=0;
     if(okay&&mysql_stmt_execute(stmt))okay=0;
     memset(content,0,sizeof content);
     col.buffer_type=MYSQL_TYPE_STRING;
