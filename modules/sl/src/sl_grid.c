@@ -137,6 +137,7 @@ static void read_acknowledgments(const unsigned char *raw, size_t size,
                 uint32_t seq=read_u32le(view->payload+1U+i*4U);
                 size_t j;
                 clear_ack(circuit,seq);clear_ack(movement,seq);
+                clear_ack(groupstart,seq);
                 for (j=0U;j<SL_OUTSTANDING_IM;++j)
                     clear_ack(&outgoing[j],seq);
             }
@@ -269,7 +270,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 report("ImprovedInstantMessage UDP packet received");
                 if (view.payload_size>82U &&
                     view.payload[82U]>=13U && view.payload[82U]<=16U)
-                    report("session start/invite control observed; CAP invitation acceptance not yet supported");
+                    report("session invitation/control packet observed; event worker handles joining");
                 if (!present || !ingress) {
                     report("IM packet ignored: avatar session not ready");
                 } else {
