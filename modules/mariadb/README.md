@@ -1,3 +1,5 @@
+**v1.10.1 — Atomic appointment/show registration (source only):** The existing typed appointment create service accepts optional explicit `public_show`, `show_venue` and `show_dj` metadata. It registers `show_events` in the same transaction as the appointment and participant relationship; failures roll back the appointment rather than report a show registered without a calendar record. Explicit `/appointment-add` and ordinary calendar events remain private. Ollama v1.2.8 supplies the metadata only for an unambiguous host-with-DJ show statement. The existing November 13 show predates the increment and still requires a verified manual `show_events` backfill. Both modules must be rebuilt together because their private request struct changed.
+
 **v1.10.0 — Persistent show coordination (GitHub source only):**
 New optional schema `modules/mariadb/sql/20261112_show_coordination.sql`
 adds an explicit `show_events` registry linked to existing appointments
