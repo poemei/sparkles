@@ -4,6 +4,8 @@
 #include "sl_login.h"
 #include "sl_wire.h"
 #include "sl_im.h"
+#include "sl_caps.h"
+#include <pthread.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <poll.h>
@@ -220,7 +222,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     unsigned char ping=0U;
     unsigned char avatar_position[12]={0};
     uint64_t began, last_recv, last_ping, last_update;
-    int fd, started_movement=0, present=0;
+    int fd, started_movement=0, present=0, caps_started=0;
+    pthread_t caps_thread;
+    sparkles_sl_caps_worker_t caps={0};
     sim.sin_family=AF_INET;
     sim.sin_port=htons(login->sim_port);
     if (inet_pton(AF_INET,login->sim_ip,&sim.sin_addr)!=1) return 0;
@@ -320,6 +324,18 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     movement.pending=0;
                     present=1;
                     report("simulator confirmed AgentMovementComplete; avatar presence observed");
+                    if(strlen(login->seed_capability)<sizeof caps.seed_url) {
+                        memcpy(caps.seed_url,login->seed_capability,
+                               strlen(login->seed_capability)+1U);
+                        memcpy(caps.agent,login->circuit.agent,16U);
+                        caps.module_stop=stop;
+                        caps.ingress=ingress;
+                        caps.context=context;
+                        atomic_init(&caps.session_stop,0);
+                        if(pthread_create(&caps_thread,NULL,sparkles_sl_caps_run,&caps)==0)
+                            caps_started=1;
+                        else report("capability event worker could not start");
+                    }
                 }
             }
         }
@@ -399,6 +415,8 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             break;
         }
     }
+    atomic_store(&caps.session_stop,1);
+    if(caps_started)(void)pthread_join(caps_thread,NULL);
     close(fd);
     if (present) report("simulator circuit closed; avatar presence lost");
     return present;
