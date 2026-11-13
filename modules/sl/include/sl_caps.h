@@ -2,6 +2,7 @@
 #define SPARKLES_SL_CAPS_H
 #include "sl_grid.h"
 #include <stdatomic.h>
+#include <pthread.h>
 
 typedef struct {
     char seed_url[2048];
@@ -10,6 +11,9 @@ typedef struct {
     atomic_int *module_stop;
     atomic_int session_stop;
     sparkles_sl_im_ingress_fn ingress;
+    pthread_mutex_t *group_lock;
+    unsigned char *group_confirm_uuid;
+    int *group_confirm_status;
     void *context;
 } sparkles_sl_caps_worker_t;
 
