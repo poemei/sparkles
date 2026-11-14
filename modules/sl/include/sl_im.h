@@ -9,6 +9,8 @@
 #define SPARKLES_SL_IM_MESSAGE_ID 254U
 #define SPARKLES_SL_SESSION_SEND_DIALOG 17U
 #define SPARKLES_SL_GROUP_START_DIALOG 15U
+#define SPARKLES_SL_GROUP_INVITE_DIALOG 3U
+#define SPARKLES_SL_GROUP_INVITE_ACCEPT_DIALOG 35U
 #define SPARKLES_SL_GROUP_NOTICE_DIALOG 32U
 #define SPARKLES_SL_OBJECT_IM_DIALOG 19U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
@@ -22,6 +24,21 @@ typedef struct {
     char text[SPARKLES_SL_IM_TEXT_MAX];
     unsigned int ambient; /* 0=private IM, 1=nearby chat, 2=session chat, 3=object IM */
 } sparkles_sl_private_im_t;
+
+/* Official group-membership invitation, NOT chat-session invitation.
+ * Only a zero-fee invite with well-formed 20-byte role/fee bucket qualifies. */
+typedef struct {
+    unsigned char group[16];
+    unsigned char transaction[16];
+} sparkles_sl_group_invitation_t;
+int sparkles_sl_group_invitation_decode(const unsigned char *payload,
+    size_t length,const unsigned char own_agent[16],
+    sparkles_sl_group_invitation_t *invite);
+int sparkles_sl_group_invitation_accept_encode(
+    const sparkles_sl_session_t *session,
+    const unsigned char group[16],const unsigned char transaction[16],
+    uint32_t sequence,const char *sender_name,
+    unsigned char *output,size_t capacity,size_t *used);
 
 typedef enum {
     SPARKLES_SL_IM_VALID=0,
