@@ -112,7 +112,6 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
         out->action.attempt_id=mysql_insert_id(connection);
         if(!out->action.attempt_id)goto rollback;
         out->available=1U;
-        break;
     }
 commit_claim:
     if(mysql_query(connection,"COMMIT")) {
