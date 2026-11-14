@@ -14,6 +14,10 @@
 #include "stnlabz_abi/module.h"
 #include "sl_wire.h"
 #include "sl_grid.h"
+#include "sl_hud.h"
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* Native C in-process Second Life grid transport. Core controls lifecycle.
  * A module start means only that the worker started; grid login and avatar
@@ -21,7 +25,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 15U
+#define SL_PATCH 16U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -181,6 +185,89 @@ static stnlabz_module_result_t notice_send_service(
     return STNLABZ_MODULE_OK;
 }
 
+
+/* Operator-pinned object UUID, not an IM text claim or an HTTP token.
+ * Only the operator can install a 0600 hud.conf with the matching
+ * operator and HUD object UUIDs. No file -> native HUD actions disabled. */
+static int hud_object_authorized(const unsigned char sender[16],
+                                 char operator_uuid[37])
+{
+    static const char path[]="/opt/sparkles/auth/sl/hud.conf";
+    char line[128],object_text[37]={0},owner_text[37]={0};
+    unsigned int seen=0U;
+    unsigned char object_id[16],owner_id[16];
+    struct stat st;
+    FILE *f;
+    int fd=open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    if(fd<0)return 0;
+    if(fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_uid!=geteuid()||
+       (st.st_mode&077U)||st.st_size<70||st.st_size>300) {
+        close(fd);
+        return 0;
+    }
+    f=fdopen(fd,"r");
+    if(!f){close(fd);return 0;}
+    while(fgets(line,sizeof line,f)) {
+        char *end=strchr(line,'\n');
+        size_t len=strlen(line);
+        if(!end&&!feof(f)) {seen=0U;break;}
+        if(end)*end=0;
+        if(!strncmp(line,"operator_uuid=",14U)&&!(seen&1U)&&
+           strlen(line+14U)==36U) {
+            memcpy(owner_text,line+14U,37U);seen|=1U;
+        } else if(!strncmp(line,"object_uuid=",12U)&&!(seen&2U)&&
+                  strlen(line+12U)==36U) {
+            memcpy(object_text,line+12U,37U);seen|=2U;
+        } else {seen=0U;break;}
+        (void)len;
+    }
+    if(ferror(f))seen=0U;
+    fclose(f);
+    if(seen!=3U||!sparkles_sl_uuid_parse(object_text,object_id)||
+       !sparkles_sl_uuid_parse(owner_text,owner_id)||
+       memcmp(sender,object_id,16U))return 0;
+    memcpy(operator_uuid,owner_text,37U);
+    return 1;
+}
+static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
+{
+    static char last_request[SPARKLES_SL_HUD_REQUEST_MAX]={0};
+    sparkles_sl_hud_request_t request={0};
+    sparkles_sl_notice_send_reply_t response={0};
+    char operator_uuid[37]={0};
+    size_t used=0U;
+    stnlabz_module_result_t rc;
+    if(!im||im->ambient!=3U||!module_host||
+       !hud_object_authorized(im->sender,operator_uuid)) {
+        fprintf(stderr,"[SL HUD] object command rejected: not authorized\n");
+        return;
+    }
+    if(!sparkles_sl_hud_parse(im->text,operator_uuid,&request)) {
+        fprintf(stderr,"[SL HUD] malformed command rejected\n");
+        return;
+    }
+    if(!strcmp(request.request_id,last_request)) {
+        fprintf(stderr,"[SL HUD] duplicate command rejected\n");
+        return;
+    }
+    /* Mark this request consumed BEFORE queue attempt. The uncertain
+     * result is never replayed automatically from the same request ID. */
+    memcpy(last_request,request.request_id,sizeof last_request);
+    pthread_mutex_lock(&qlock);
+    memcpy(active_private,request.notice.account,
+           strlen(request.notice.account)+1U);
+    pthread_mutex_unlock(&qlock);
+    rc=notice_send_service(&request.notice,sizeof request.notice,
+                           &response,sizeof response,&used,NULL);
+    pthread_mutex_lock(&qlock);
+    memset(active_private,0,sizeof active_private);
+    pthread_mutex_unlock(&qlock);
+    fprintf(stderr,
+        "[SL HUD] authenticated object request %s: %s; publication unverified\n",
+        request.request_id,
+        rc==STNLABZ_MODULE_OK&&used==sizeof response&&response.queued?
+        "notice queued":"notice rejected/not queued");
+}
 /* Session chat is shared. Only an explicit address to Sparkles triggers
  * inference; all other session lines are recorded without replies. */
 static int session_addressed(const char *text)
@@ -276,6 +363,10 @@ static void *dispatch_worker(void *unused)
         generation=epoch;
         pthread_mutex_unlock(&qlock);
         if (!module_host || !module_host->invoke_service) continue;
+        if(im.ambient==3U) {
+            dispatch_hud_im(&im);
+            continue;
+        }
         {
             char id[37];
             sparkles_sl_uuid_format(im.sender,id);
