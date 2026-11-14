@@ -293,10 +293,14 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     size_t j,free_slot=SL_OUTSTANDING_IM;
                     reliable_t *slot;
                     size_t encoded=0U;
-                    if(!present || !authorize_invite ||
-                       !sparkles_sl_group_invitation_decode(view.payload,
+                    report("group membership invitation dialog received");
+                    if(!present || !authorize_invite) {
+                        report("group membership invite ignored: simulator session not ready");
+                        continue;
+                    }
+                    if(!sparkles_sl_group_invitation_decode(view.payload,
                            view.payload_size,login->circuit.agent,&invite)) {
-                        report("group membership invite ignored: session not ready or invalid/fee-bearing invitation");
+                        report("group membership invite ignored: invalid packet, wrong recipient or fee");
                         continue;
                     }
                     if(!authorize_invite(invite.group,context)) {
@@ -326,7 +330,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     slot->attempts=0U;
                     slot->sent_at=now;
                     slot->pending=1;
-                    report("authorized free group invitation accepted via dialog 35; membership NOT yet confirmed");
+                    report("authorized free group invite acceptance sent via dialog 35; membership NOT yet confirmed");
                     continue;
                 }
                 sparkles_sl_im_validation_t status;
