@@ -15,9 +15,6 @@
 #include "sl_wire.h"
 #include "sl_grid.h"
 #include "sl_hud.h"
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 /* Native C in-process Second Life grid transport. Core controls lifecycle.
  * A module start means only that the worker started; grid login and avatar
@@ -25,7 +22,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 16U
+#define SL_PATCH 17U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -186,49 +183,17 @@ static stnlabz_module_result_t notice_send_service(
 }
 
 
-/* Simulator object IM: AgentData.AgentID is the owner UUID and
- * MessageBlock.ID identifies the object. Verify BOTH pinned UUIDs.
- * Operator-pinned object UUID, not an IM text claim or an HTTP token.
- * Only the operator can install a 0600 hud.conf with the matching
- * operator and HUD object UUIDs. No file -> native HUD actions disabled. */
-static int hud_object_authorized(const unsigned char owner[16],
-                                 const unsigned char object[16],
-                                 char operator_uuid[37])
+/* AgentData.AgentID in simulator-delivered object IM is the owner UUID.
+ * MessageBlock.ID identifies the sending object. The avatar UUID is not
+ * supplied by untrusted command text. Group permission is resolved through
+ * the existing MariaDB ownership/notice service for each requested group. */
+static int hud_simulator_identity(const sparkles_sl_private_im_t *im,
+                                  char operator_uuid[37])
 {
-    static const char path[]="/opt/sparkles/auth/sl/hud.conf";
-    char line[128],object_text[37]={0},owner_text[37]={0};
-    unsigned int seen=0U;
-    unsigned char object_id[16],owner_id[16];
-    struct stat st;
-    FILE *f;
-    int fd=open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
-    if(fd<0)return 0;
-    if(fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_uid!=geteuid()||
-       (st.st_mode&077U)||st.st_size<70||st.st_size>300) {
-        close(fd);
-        return 0;
-    }
-    f=fdopen(fd,"r");
-    if(!f){close(fd);return 0;}
-    while(fgets(line,sizeof line,f)) {
-        char *end=strchr(line,'\n');
-        if(!end&&!feof(f)) {seen=0U;break;}
-        if(end)*end=0;
-        if(!strncmp(line,"operator_uuid=",14U)&&!(seen&1U)&&
-           strlen(line+14U)==36U) {
-            memcpy(owner_text,line+14U,37U);seen|=1U;
-        } else if(!strncmp(line,"object_uuid=",12U)&&!(seen&2U)&&
-                  strlen(line+12U)==36U) {
-            memcpy(object_text,line+12U,37U);seen|=2U;
-        } else {seen=0U;break;}
-    }
-    if(ferror(f))seen=0U;
-    fclose(f);
-    if(seen!=3U||!sparkles_sl_uuid_parse(object_text,object_id)||
-       !sparkles_sl_uuid_parse(owner_text,owner_id)||
-       memcmp(object,object_id,16U)||
-       memcmp(owner,owner_id,16U))return 0;
-    sparkles_sl_uuid_format(owner_id,operator_uuid);
+    unsigned char zero[16]={0};
+    if(!im||im->ambient!=3U||!memcmp(im->sender,zero,16U)||
+       !memcmp(im->conversation,zero,16U))return 0;
+    sparkles_sl_uuid_format(im->sender,operator_uuid);
     return 1;
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
@@ -242,8 +207,8 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
     size_t used=0U;
     stnlabz_module_result_t rc;
     if(!im||im->ambient!=3U||!module_host||
-       !hud_object_authorized(im->sender,im->conversation,operator_uuid)) {
-        fprintf(stderr,"[SL HUD] object command rejected: not authorized\n");
+       !hud_simulator_identity(im,operator_uuid)) {
+        fprintf(stderr,"[SL HUD] object command rejected: missing simulator identity\n");
         return;
     }
     if(!sparkles_sl_hud_parse(im->text,operator_uuid,&request)) {
@@ -256,8 +221,10 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
             return;
         }
     }
-    /* Mark consumed before queue attempt. Recent replay protection is
-     * in-memory and does not survive process restart. */
+    /* Only this isolated object-origin branch can enter this path.
+     * Actual notice permission is enforced by the MariaDB resolver in
+     * notice_send_service; neither HUD-selected groups nor UUID text
+     * can override it. Recent replay protection is in-memory. */
     memcpy(recent_requests[next_request],request.request_id,
            sizeof request.request_id);
     next_request=(next_request+1U)%32U;
@@ -271,7 +238,7 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
     memset(active_private,0,sizeof active_private);
     pthread_mutex_unlock(&qlock);
     fprintf(stderr,
-        "[SL HUD] authenticated object request %s: %s; publication unverified\n",
+        "[SL HUD] simulator-attributed object request %s: %s; publication unverified\n",
         request.request_id,
         rc==STNLABZ_MODULE_OK&&used==sizeof response&&response.queued?
         "notice queued":"notice rejected/not queued");
