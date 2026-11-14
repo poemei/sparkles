@@ -221,7 +221,7 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
     int n,queued=0;
     if(!im||!hud_simulator_identity(im,owner_uuid)||
        !sparkles_sl_group_links_parse(im->text,&request)) {
-        fprintf(stderr,"[SL LINKS] malformed object request rejected\\n");
+        fprintf(stderr,"[SL LINKS] malformed object request rejected\n");
         return;
     }
     now=time(NULL);
@@ -229,16 +229,16 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         if(!memcmp(recent_visitors[i],request.visitor,16U) &&
            now!=((time_t)-1) && recent_at[i]!=0 &&
            now>=recent_at[i] && now-recent_at[i]<30) {
-            fprintf(stderr,"[SL LINKS] duplicate visitor request suppressed\\n");
+            fprintf(stderr,"[SL LINKS] duplicate visitor request suppressed\n");
             return;
         }
     n=snprintf(action.text,sizeof action.text,
-        "Hi %s 💜\\n\\n"
-        "Thank you for your interest in Sparkles Entertainment and Team Sparkles.\\n\\n"
-        "Sparkles Entertainment\\n"
-        "[secondlife:///app/group/%s/about Join Sparkles Entertainment]\\n\\n"
-        "Team Sparkles\\n"
-        "[secondlife:///app/group/%s/about Join Team Sparkles]\\n\\n"
+        "Hi %s 💜\n\n"
+        "Thank you for your interest in Sparkles Entertainment and Team Sparkles.\n\n"
+        "Sparkles Entertainment\n"
+        "[secondlife:///app/group/%s/about Join Sparkles Entertainment]\n\n"
+        "Team Sparkles\n"
+        "[secondlife:///app/group/%s/about Join Team Sparkles]\n\n"
         "We look forward to seeing you at our events!",
         request.display_name,sparkles_group,team_group);
     if(n<=0||(size_t)n>=sizeof action.text)return;
@@ -256,7 +256,7 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         next_visitor=(next_visitor+1U)%64U;
     }
     pthread_mutex_unlock(&qlock);
-    fprintf(stderr,"[SL LINKS] visitor links %s; IM delivery unverified\\n",
+    fprintf(stderr,"[SL LINKS] visitor links %s; IM delivery unverified\n",
             queued?"queued":"not queued");
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
