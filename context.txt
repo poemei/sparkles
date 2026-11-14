@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot updated: 2026-11-12 23:22 PST (America/Los_Angeles); original handoff 2026-11-10
+Snapshot updated: 2026-11-13 late evening PST (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -859,4 +859,154 @@ operator's final acceptance. For future requested engineering, inspect
 AGENTS.md and actual source before changing anything. Retain the
 GitHub-only workflow and human development authority.
 
-END OF SPARKLES CONTEXT — 2026-11-12 (America/Los_Angeles)
+======================================================================
+22. 2026-11-13 — MARKETING HUD, GROUP NOTICE INTEGRATION AND TESTS
+======================================================================
+SOURCE: This operator conversation, GitHub source readbacks and commits,
+operator-pasted Second Life HUD logs, and operator-uploaded SQL dumps.
+This section supplements, but does not retrospectively rewrite, the
+older handoff's "current" statements or evidence gates.
+
+OPERATOR REQUIREMENTS / BOUNDARIES:
+- Sparkles is to issue REAL official Second Life group NOTICES through
+  her own native avatar transport; group chat is not a substitute.
+- The marketing HUD does not use Corrade, PHP, Discord, public HTTPS
+  endpoints, or extra token/URL configuration. The operator explicitly
+  rejected such dependencies and manual UUID or Agent configuration.
+- Two existing HUD inventory notecards are authoritative selections:
+  approved_groups.cfg: set|group name|enabled|delay seconds;
+  venues.cfg: alias|venue name|slurl|landmark inventory name|enabled.
+  Those HUD choices do not override MariaDB's final group authorization.
+- The marketing sets are "all" and "events". Each currently selects
+  Sparkles Entertainment, Poe's Peeps and Team Sparkles, enabled=1,
+  delay=10 seconds. The Abyss Club VIPs is explicitly disabled.
+- The River landmark inventory name is exactly
+  "The River ~ Rock Music at its BEST"; STN Tech Center maps to the
+  Dongjak SLURL and landmark name "STN Tech Center". The Abyss venue
+  line is commented out. Do not confuse map links with SL inventory
+  landmark attachments.
+
+IMPLEMENTATION HISTORY ON GITHUB main:
+- Early HUD v1.4.0/1.4.1 posted through a proposed authenticated HTTP
+  bridge and sparkles-hud.cfg; that architecture was expressly
+  rejected by the operator. Do not resurrect it. Source cleanup removed
+  the HUD HTTP client, native HTTP notice listener and associated
+  temporary marketing group-list service. The source-only v1.4.2 HUD
+  retained preview and fail-closed Post pending native integration.
+- A native Second Life object IM path was subsequently authored:
+  HUD object llInstantMessage -> simulator object-origin dialog 19 ->
+  native SL transport's separately validated object IM -> isolated
+  dispatch -> existing native single-group notice queue, with MariaDB
+  group/owner permission checks. Strict STNHUD1 field parsing, bounded
+  notice text, signature construction, a bounded replay window, and
+  regression test source were added; normal avatar conversation and
+  object commands remain separate. Original v1.5.0 code also required
+  manually selecting Sparkles' avatar and supplying a server-local
+  hud.conf UUID allowlist. The operator rejected this manual setup.
+- The following source increment removed HUD Agent selection and
+  hud.conf/UUID entry. HUD v1.5.1 calls llRequestUserKey automatically
+  using source-specified name "MsSparkles Resident" and includes native
+  group-selection pacing. SL v0.3.17 derives object-owner identity
+  from simulator-delivered object IM metadata and retains MariaDB
+  authorization. This is the recorded source design; the actual
+  avatar-name lookup and simulator object-IM behavior must be tested
+  in-world. Do not infer that an arbitrary object may grant itself
+  group permissions by claiming an owner UUID in text.
+- Notable latest source commits at the close of that increment:
+  HUD automatic avatar lookup: 6a3760972a4c6204bf400cf6f8a5abf07f32caf9
+  Native SL removal of local HUD UUID config:
+    d921dad1e5a13b64ccd76899c505c1f2563b40c8
+  HUD instructions revised: 6066d97ce8e4eabf624c682cc7df9ac24dc64419
+  SL native identity qualification case:
+    cefe247aebc2e54becbcf8acada4941ed96a9a23
+  Source filenames include modules/sl/lsl/Sparkles_Marketing_HUD.lsl,
+  modules/sl/src/sl_module.c, sl_grid.c, sl_im.c, sl_hud.c,
+  modules/sl/tests/test_sl_hud.c and test_sl_im.c.
+- Relevant compile command:
+    make -C modules/sl clean all test
+  No corresponding native build/test output for this final increment
+  was supplied. The operator's subsequent in-world reports provide
+  real deployment observations, not proof every source regression passed.
+
+OPERATOR-OBSERVED IN-WORLD HUD BEHAVIOR:
+- At roughly 23:22-23:25 SLT the operator posted HUD v1.4.2 chat
+  excerpts: initialized, loaded six enabled group-set records and
+  three venue records, previewed STN Tech Center and correct landmark
+  inventory name, and explicitly reported NOT SENT because the native
+  transport was not yet connected. The old name "Corrade Notices" in
+  local chat was the HUD OBJECT NAME, not evidence of Corrade use.
+- Later, the operator reported a real official notice with title
+  "This is a test message", date Fri Nov 13 2026 at 23:41:03 SLT,
+  authored text about Sparkles as STN-Labz's autonomous executive
+  agent, a Dongjak ride destination, and the Sparkles Entertainment
+  signature. The operator reported it was sent to Poe's Peeps and
+  Sparkles Entertainment. First test did NOT reach Team Sparkles.
+- The operator said Sparkles belongs to Team Sparkles with the AI role
+  and in-world permission to chat and send notices. These simulator
+  role permissions are separate from the MariaDB business-registry
+  ownership condition.
+- In a subsequent exchange, operator said, "I saw it", and wanted
+  further independent receipt confirmation; the operator placed the
+  request "Mochi id you see this, tell Poe" in the notice. An actual
+  report back from Mochi was not supplied in this conversation.
+  Do not claim Mochi acknowledged or that all group members received
+  the notice. The operator reported people IMing to ask who Sparkles
+  was; clarified that these IMs came from Sparkles Entertainment.
+- Team Sparkles currently has three members, according to the
+  operator: Poe, Mochi and Sparkles. This helps target live delivery
+  tests but does not substitute for a notice receipt.
+
+ROOT CAUSE FOUND FROM OPERATOR SQL DUMPS (2026-11-13):
+- sl_groups.sql included Team Sparkles id=4, group UUID
+  553469c0-74e9-e50c-a2d3-4eaf7a6063bd, with chat_enabled=1,
+  notices_enabled=1, entertainment_enabled=1, is_active=1.
+- business_groups.sql linked business_id=4 to group_id=4 with
+  notices_enabled=1. Thus the group and relationship flags were enabled.
+- businesses.sql showed business id=4, name Team Sparkles, had
+  sl_owner_uuid='c6fd0e08-3e70-4c6c-b4d5-c115e63a4' (35 characters).
+  Other businesses used the full 36-character owner UUID
+  'c6fd0e08-3e70-4c6c-b4d5-c115e63a4134'.
+  MariaDB's owner-match filter therefore fails for Team Sparkles,
+  even though Second Life role permission allows sending notices.
+- A narrow operator-side SQL UPDATE was provided to correct business
+  id=4 from the truncated 35-character owner UUID to the full one,
+  conditional on the old value. A SELECT/CHAR_LENGTH verification was
+  provided. No database mutation was executed through this chat and
+  no post-UPDATE SQL result was supplied; operator response "finally"
+  acknowledged diagnosis, not independently verified SQL completion.
+- Do NOT replace MariaDB ownership checks with HUD notecards or role
+  assertions. The reported first-test failure had a specific data
+  mismatch, not demonstrated need for another HUD/native C patch.
+
+REMAINING EVIDENCE / NEXT-SESSION BOUNDARIES:
+- Verify corrected Team Sparkles business owner UUID (36 characters)
+  from actual DB output if a future task depends on that status.
+- Confirm Team Sparkles notice publication/receipt independently;
+  Mochi's confirmation was solicited but NOT yet observed here.
+- Explicitly separate HUD object IM submission, Sparkles native queue,
+  simulator UDP ACK, and member receipt; no one implies all the others.
+- Native landmark INVENTORY ITEM retrieval/attachment is not
+  verified or accepted. SLURL in a body is not an attached landmark.
+- Separate 7:30 PM and 9:00 PM HUD show-timer notices, automatic
+  phase-specific notecard copy, and final operator acceptance remain
+  outstanding unless later source and live tests establish otherwise.
+- Do not silently change a working native implementation merely
+  because an issue can be imagined. Inspect the current source, logs,
+  group registry and observed results first.
+
+======================================================================
+23. CURRENT HANDOFF / AUTHORIZATION — 2026-11-13
+======================================================================
+AUTHORIZED THIS TURN: Update only poemei/sparkles/context.txt on
+GitHub's default branch to preserve current conversation decisions,
+implementation lineage, operator observations, diagnosis and limits.
+No code corrections, module revisions, database writes, deployment,
+Second Life tests, schedule changes, training, or other repository
+edits are authorized by this context-update request.
+
+This continuity file remains informational, not controlled policy.
+GitHub commit, compilation, in-world observation, actual publication,
+and operator acceptance are distinct. The operator directs future
+engineering; await a specific new request before additional work.
+
+END OF SPARKLES CONTEXT — 2026-11-13 (America/Los_Angeles)
