@@ -1162,6 +1162,32 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
         if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
            !response.matched){++p;++np;} else ok=0;
     }
+    /* Marketing group lookup must fail closed without a valid principal.
+     * No database is required for these negative regression checks. */
+    {
+        sparkles_sl_marketing_groups_request_t request={0};
+        sparkles_sl_marketing_groups_reply_t response={0};
+        size_t used=7U;
+        stnlabz_module_result_t rc;
+        ++e;++ne;
+        rc=marketing_groups_service(&request,sizeof request,&response,
+                                  sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
+           response.count==0U){++p;++np;} else ok=0;
+        memcpy(request.account,"irc:unverified",15U);
+        used=7U;
+        ++e;++ne;
+        rc=marketing_groups_service(&request,sizeof request,&response,
+                                  sizeof response,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
+           response.count==0U){++p;++np;} else ok=0;
+        used=7U;
+        ++e;++ne;
+        rc=marketing_groups_service(&request,sizeof request,&response,
+                                  sizeof response-1U,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U)
+           {++p;++np;} else ok=0;
+    }
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
