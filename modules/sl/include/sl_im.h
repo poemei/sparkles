@@ -69,6 +69,14 @@ int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
                              uint32_t sequence,const char *sender_name,
                              const char *subject,const char *body,
                              unsigned char *output,size_t capacity,size_t *used);
+/* Attachment requires a verified owned landmark INVENTORY ITEM UUID, not the
+ * landmark asset UUID. This encoder does not perform inventory retrieval. */
+int sparkles_sl_notice_landmark_encode(const sparkles_sl_session_t *session,
+                             const unsigned char group[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *subject,const char *body,
+                             const unsigned char item[16],
+                             unsigned char *output,size_t capacity,size_t *used);
 int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              const unsigned char conversation[16],
                              uint32_t sequence,const char *sender_name,
