@@ -10,6 +10,7 @@
 #define SPARKLES_SL_SESSION_SEND_DIALOG 17U
 #define SPARKLES_SL_GROUP_START_DIALOG 15U
 #define SPARKLES_SL_GROUP_NOTICE_DIALOG 32U
+#define SPARKLES_SL_OBJECT_IM_DIALOG 19U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_CHAT_SEND_MESSAGE_ID 80U
 #define SPARKLES_SL_IM_TEXT_MAX 2048U
@@ -19,7 +20,7 @@ typedef struct {
     unsigned char conversation[16];
     char name[128];
     char text[SPARKLES_SL_IM_TEXT_MAX];
-    unsigned int ambient; /* 0=private IM, 1=nearby chat, 2=session chat */
+    unsigned int ambient; /* 0=private IM, 1=nearby chat, 2=session chat, 3=object IM */
 } sparkles_sl_private_im_t;
 
 typedef enum {
@@ -43,6 +44,11 @@ int sparkles_sl_chat_decode(const unsigned char *payload,size_t length,
                            const unsigned char own_agent[16],
                            sparkles_sl_private_im_t *chat);
 
+/* Object-origin IM uses dialog 19. This parser classifies only; it
+ * DOES NOT authorize the sender or route it into conversation. */
+int sparkles_sl_object_im_decode(const unsigned char *payload,size_t length,
+                                const unsigned char own_agent[16],
+                                sparkles_sl_private_im_t *im);
 int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im);
