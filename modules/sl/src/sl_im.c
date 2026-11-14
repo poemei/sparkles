@@ -454,3 +454,31 @@ int sparkles_sl_notice_landmark_encode(const sparkles_sl_session_t *session,
         message,SPARKLES_SL_GROUP_NOTICE_DIALOG,
         (const unsigned char *)xml,(size_t)n,output,capacity,used);
 }
+
+/* Official InviteGroupRequest: AgentData, GroupData and one InviteData.
+ * Empty role UUID selects the Everyone role. */
+int sparkles_sl_group_invite_encode(
+    const sparkles_sl_session_t *session,
+    const unsigned char group[16],const unsigned char visitor[16],
+    uint32_t sequence,unsigned char *out,size_t capacity,size_t *used)
+{
+    const size_t total=10U+32U+16U+1U+32U;
+    if(used)*used=0U;
+    if(!session||!group||!visitor||!out||!used||!sequence||
+       !nonzero_uuid(group)||!nonzero_uuid(visitor)||
+       capacity<total || total>SPARKLES_SL_PACKET_MAX)return 0;
+    memset(out,0,total);
+    out[0]=SPARKLES_SL_FLAG_RELIABLE;
+    u32be(out+1U,sequence);
+    out[6U]=0xffU;out[7U]=0xffU;
+    out[8U]=1U; /* Low 349 == 0x015d, big-endian */
+    out[9U]=0x5dU;
+    memcpy(out+10U,session->agent,16U);
+    memcpy(out+26U,session->session,16U);
+    memcpy(out+42U,group,16U);
+    out[58U]=1U; /* One InviteData block. */
+    memcpy(out+59U,visitor,16U);
+    /* RoleID at 75..90 remains null, the Everyone role. */
+    *used=total;
+    return 1;
+}
