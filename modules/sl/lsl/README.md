@@ -30,38 +30,28 @@ events|Team Sparkles|1|10
 events|The Abyss Club VIPs|0|10
 ```
 
-Touch the HUD and choose **Agent**. Enter Sparkles' actual legacy
-Second Life avatar username, e.g. `First Resident` or `first.last`.
-The HUD uses `llRequestUserKey` to resolve that name via Second Life;
-it refuses Post if resolution fails. No hardcoded avatar UUID is used.
+On startup, the HUD automatically calls `llRequestUserKey` for
+`MsSparkles Resident`, the Sparkles avatar name already established
+in the native SL source. No manual Agent menu or avatar UUID entry is
+required. If the simulator lookup fails, Post fails closed.
 Use the Title, Message, Venue and Preview buttons as before. The
 `Set` button chooses `events` or `all`, default `events`.
 The HUD sends **one bounded object IM per enabled group**, respecting the
 configured delay between outgoing submissions. An IM sent by an object
 does not provide an application-level acknowledgment.
 
-## Native server-side operator pinning (no endpoint or token)
+## Native simulator identity and MariaDB authorization
 
-On the machine **running the Sparkles Second Life module**, the human
-operator must securely provision the following file, *not commit it*:
-
-`/opt/sparkles/auth/sl/hud.conf`
-
-```text
-operator_uuid=<actual HUD owner's Second Life avatar UUID>
-object_uuid=<actual HUD object UUID from llGetKey()>
-```
-
-This is a server-local **two-UUID allowlist**, not a URL, token, or
-web service. The module requires the regular file to be owned by its
-effective service user and to be inaccessible to other users (mode
-`0600`, with no symlink). If absent or mismatched, native HUD commands
-are rejected. An object recreated/re-rezzed may have a different UUID;
-the operator must check the actual in-world object ID. The server-side
-operator UUID is never trusted merely because a HUD text field says so.
+No `hud.conf`, token, endpoint, object UUID entry, or operator UUID
+entry is required. The HUD obtains its own owner and object identities
+from Second Life, and the native receiver uses the simulator-delivered
+object-IM owner identity rather than trusting UUIDs within the message.
+The requested notice group must be authorized by the existing MariaDB
+`businesses`, `business_groups` and `sl_groups` relationships for
+that owner. No registry match means no notice is queued.
 
 The native grid receiver separately decodes simulator-origin dialog 19
-object IMs, verifies the pinned sender object UUID, validates strict
+object IMs, validates simulator-attributed object identity and strict
 `STNHUD1` escaped request fields, and then uses Sparkles' existing
 single-group notice service and MariaDB business/group authorization.
 Object IMs are **not sent to Core conversation or Ollama inference**.
