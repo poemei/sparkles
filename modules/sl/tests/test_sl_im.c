@@ -167,7 +167,7 @@ int main(void)
         payload=view.payload;
         assert(payload[82U]==SPARKLES_SL_GROUP_NOTICE_DIALOG);
         assert(!memcmp(payload+83U,(unsigned char[16]){0},16U));
-        pos=103U+(size_t)payload[103U];
+        pos=103U+1U+(size_t)payload[103U]; /* name-length byte + name */
         pos+=2U+(size_t)payload[pos]+((size_t)payload[pos+1U]<<8U);
         bucket_len=(size_t)payload[pos]|((size_t)payload[pos+1U]<<8U);
         pos+=2U;
