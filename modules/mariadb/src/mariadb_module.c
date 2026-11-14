@@ -22,7 +22,7 @@ static int check_service_registered;
 static int memory_service_registered;
 static int contacts_service_registered;
 static int mutate_service_registered;
-static int group_resolve_registered;
+static int group_resolve_registered,group_invite_registered;
 static int show_claim_registered,show_response_registered,show_attempt_registered;
 
 /* Resolve authenticated transport identity to an existing contact. All
@@ -130,6 +130,71 @@ static stnlabz_module_result_t group_resolve_service(
     return STNLABZ_MODULE_OK;
 }
 
+
+/* A group invite is an authenticated grid event, not a business-owner IM.
+ * The operator's registry authorizes exact group UUIDs with an active
+ * business link. No model or HUD name can authorize membership. */
+static stnlabz_module_result_t group_invite_auth_service(
+    const void *request,size_t request_size,
+    void *response,size_t response_size,size_t *used,void *ctx)
+{
+    static const char sql[]=
+        "SELECT g.group_uuid FROM sl_groups g "
+        "JOIN business_groups bg ON bg.group_id=g.id "
+        "JOIN businesses b ON b.id=bg.business_id "
+        "WHERE LOWER(g.group_uuid)=? AND g.is_active=1 "
+        "AND g.chat_enabled=1 AND b.is_active=1 LIMIT 1";
+    const sparkles_sl_group_invite_auth_request_t *in=request;
+    sparkles_sl_group_invite_auth_reply_t *out=response;
+    MYSQL_STMT *stmt=NULL;
+    MYSQL_BIND arg={0},field={0};
+    unsigned long len=36UL,found_len=0UL;
+    char group[37]={0};
+    const char *platform=NULL,*identity=NULL;
+    char account[40]={0};
+    int okay=1,fetch_result;
+    (void)ctx;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!out||
+       response_size<sizeof *out ||
+       !memchr(in->group_uuid,0,sizeof in->group_uuid))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    if(strlen(in->group_uuid)!=36U ||
+       snprintf(account,sizeof account,"sl:%s",in->group_uuid)!=39 ||
+       !sparkles_mariadb_identity_parts(account,&platform,&identity) ||
+       strcmp(platform,"second_life"))
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    arg.buffer_type=MYSQL_TYPE_STRING;
+    arg.buffer=(void *)in->group_uuid;
+    arg.buffer_length=36UL;arg.length=&len;
+    field.buffer_type=MYSQL_TYPE_STRING;
+    field.buffer=group;field.buffer_length=sizeof group;
+    field.length=&found_len;
+    (void)pthread_mutex_lock(&db_lock);
+    if(!db||mysql_ping(db))okay=0;
+    if(okay)stmt=mysql_stmt_init(db);
+    if(!stmt)okay=0;
+    if(okay && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))okay=0;
+    if(okay && mysql_stmt_bind_param(stmt,&arg))okay=0;
+    if(okay && mysql_stmt_execute(stmt))okay=0;
+    if(okay && mysql_stmt_bind_result(stmt,&field))okay=0;
+    if(okay && mysql_stmt_store_result(stmt))okay=0;
+    if(okay && mysql_stmt_num_rows(stmt)>0ULL) {
+        fetch_result=mysql_stmt_fetch(stmt);
+        if(fetch_result!=0 || found_len!=36UL)okay=0;
+        else out->allowed=1U;
+    }
+    if(stmt)mysql_stmt_close(stmt);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!okay) {
+        memset(out,0,sizeof *out);
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
+    if(!out->allowed)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
 
 /* Only trusted in-process clients may request the next due action.
  * DB-side unique attempts keep retries/restarts from double-posting. */
@@ -1281,6 +1346,12 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     group_resolve_registered=1;
+    if(!h->register_service(SPARKLES_SL_GROUP_INVITE_AUTH_SERVICE,
+                            group_invite_auth_service,NULL)) {
+        (void)stop();
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    group_invite_registered=1;
     if(!h->register_service(SPARKLES_SHOW_CLAIM_SERVICE,shows_claim_service,NULL) ||
        !h->register_service(SPARKLES_SHOW_RESPONSE_SERVICE,shows_response_service,NULL) ||
        !h->register_service(SPARKLES_SHOW_ATTEMPT_SERVICE,shows_attempt_service,NULL)) {
@@ -1314,6 +1385,10 @@ static stnlabz_module_result_t stop(void)
        !host_owner->unregister_service(SPARKLES_SHOW_CLAIM_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
     show_claim_registered=0;
+    if (group_invite_registered && host_owner &&
+        !host_owner->unregister_service(SPARKLES_SL_GROUP_INVITE_AUTH_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    group_invite_registered=0;
     if (group_resolve_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
