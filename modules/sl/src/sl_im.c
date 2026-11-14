@@ -22,6 +22,54 @@ static int nonzero_uuid(const unsigned char *p)
     for(i=0U;i<16U;++i) any|=p[i];
     return any!=0U;
 }
+/* Group membership invitation: simulator-originated IM dialog 3.
+ * FromAgentID carries the group UUID; ID is the invitation transaction.
+ * The viewer parses a 20-byte bucket: network-order fee U32 + role UUID.
+ * Any nonzero fee, malformed data or additional unexpected bytes fails
+ * closed. Invitation contents never reach the conversational model. */
+int sparkles_sl_group_invitation_decode(const unsigned char *p,size_t n,
+    const unsigned char own_agent[16],sparkles_sl_group_invitation_t *invite)
+{
+    size_t pos=103U,name_len,text_len,bucket_len;
+    unsigned int meta_count,i;
+    if(!p||!own_agent||!invite||n<110U ||
+       p[82U]!=SPARKLES_SL_GROUP_INVITE_DIALOG ||
+       !nonzero_uuid(p)||!nonzero_uuid(p+83U) ||
+       memcmp(p+33U,own_agent,16U)!=0)return 0;
+    memset(invite,0,sizeof *invite);
+    name_len=p[pos++];
+    if(!name_len || name_len>n-pos ||
+       p[pos+name_len-1U]!=0U) return 0;
+    pos+=name_len;
+    if(n-pos<2U)return 0;
+    text_len=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
+    pos+=2U;
+    if(!text_len||text_len>n-pos||p[pos+text_len-1U]!=0U)return 0;
+    pos+=text_len;
+    if(n-pos<2U)return 0;
+    bucket_len=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
+    pos+=2U;
+    if(bucket_len!=20U || bucket_len>n-pos)return 0;
+    if(p[pos]||p[pos+1U]||p[pos+2U]||p[pos+3U])return 0;
+    pos+=bucket_len;
+    if(pos<n) {
+        if(n-pos<5U)return 0;
+        pos+=4U; /* estate block */
+        meta_count=p[pos++];
+        for(i=0U;i<meta_count;++i) {
+            size_t field_len;
+            if(n-pos<2U)return 0;
+            field_len=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
+            pos+=2U;
+            if(field_len>n-pos)return 0;
+            pos+=field_len;
+        }
+    }
+    if(pos!=n)return 0;
+    memcpy(invite->group,p,16U);
+    memcpy(invite->transaction,p+83U,16U);
+    return 1;
+}
 const char *sparkles_sl_im_validation_name(sparkles_sl_im_validation_t result)
 {
     switch (result) {
@@ -226,7 +274,8 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
         !nonzero_uuid(recipient) ||
         (dialog!=0U && dialog!=SPARKLES_SL_SESSION_SEND_DIALOG &&
          dialog!=SPARKLES_SL_GROUP_START_DIALOG &&
-         dialog!=SPARKLES_SL_GROUP_NOTICE_DIALOG))
+         dialog!=SPARKLES_SL_GROUP_NOTICE_DIALOG &&
+         dialog!=SPARKLES_SL_GROUP_INVITE_ACCEPT_DIALOG))
         return 0;
     for (namelen=0U; namelen<255U && sender_name[namelen]; ++namelen) {}
     if (!namelen || namelen>=255U) return 0;
@@ -272,6 +321,18 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
     return 1;
 }
 
+int sparkles_sl_group_invitation_accept_encode(
+    const sparkles_sl_session_t *session,
+    const unsigned char group[16],const unsigned char transaction[16],
+    uint32_t sequence,const char *sender_name,
+    unsigned char *output,size_t capacity,size_t *used)
+{
+    const unsigned char empty_bucket[1]={0U};
+    if(!transaction||!nonzero_uuid(transaction))return 0;
+    return im_encode_dialog(session,group,transaction,sequence,sender_name,
+      "message",SPARKLES_SL_GROUP_INVITE_ACCEPT_DIALOG,
+      empty_bucket,sizeof empty_bucket,output,capacity,used);
+}
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
