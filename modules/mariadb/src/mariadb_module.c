@@ -38,28 +38,34 @@ static int calendar_contact_allowed(const char *account)
     return allowed;
 }
 
-/* Resolve an SL group from the operator-maintained business registry.
- * Neither the LLM nor the SL transport can choose an unregistered UUID.
- * The authenticated private IM sender must be the recorded business owner.
- * A missing owner UUID fails closed until the operator populates it.
- * The business/group link is authoritative for operation ownership. */
+/* Operator-maintained sl_groups is the group registry for both businesses
+ * and independent clubs. An unlinked group needs no fabricated business:
+ * its enabled chat/notice flag is authoritative for conversational requests.
+ * Once ANY business_groups link exists, preserve the existing requirement
+ * that the verified private-IM sender own an active linked business.
+ * The grid independently enforces Sparkles' actual group role privileges. */
 static stnlabz_module_result_t group_resolve_service(
     const void *request,size_t request_size,
     void *response,size_t response_size,size_t *used,void *ctx)
 {
     static const char chat_sql[]=
         "SELECT DISTINCT LOWER(g.group_uuid) FROM sl_groups g "
-        "JOIN business_groups bg ON bg.group_id=g.id "
-        "JOIN businesses b ON b.id=bg.business_id "
         "WHERE g.group_name=? AND g.is_active=1 AND g.chat_enabled=1 "
-        "AND b.is_active=1 AND LOWER(b.sl_owner_uuid)=? LIMIT 2";
+        "AND (NOT EXISTS (SELECT 1 FROM business_groups bg "
+        "WHERE bg.group_id=g.id) OR EXISTS ("
+        "SELECT 1 FROM business_groups bg "
+        "JOIN businesses b ON b.id=bg.business_id "
+        "WHERE bg.group_id=g.id AND b.is_active=1 "
+        "AND LOWER(b.sl_owner_uuid)=?)) LIMIT 2";
     static const char notice_sql[]=
         "SELECT DISTINCT LOWER(g.group_uuid) FROM sl_groups g "
-        "JOIN business_groups bg ON bg.group_id=g.id "
-        "JOIN businesses b ON b.id=bg.business_id "
         "WHERE g.group_name=? AND g.is_active=1 AND g.notices_enabled=1 "
-        "AND bg.notices_enabled=1 AND b.is_active=1 "
-        "AND LOWER(b.sl_owner_uuid)=? LIMIT 2";
+        "AND (NOT EXISTS (SELECT 1 FROM business_groups bg "
+        "WHERE bg.group_id=g.id) OR EXISTS ("
+        "SELECT 1 FROM business_groups bg "
+        "JOIN businesses b ON b.id=bg.business_id "
+        "WHERE bg.group_id=g.id AND bg.notices_enabled=1 "
+        "AND b.is_active=1 AND LOWER(b.sl_owner_uuid)=?)) LIMIT 2";
     const char *sql;
     const sparkles_sl_group_resolve_request_t *in=request;
     sparkles_sl_group_resolve_reply_t *out=response;
@@ -132,18 +138,17 @@ static stnlabz_module_result_t group_resolve_service(
 
 
 /* A group invite is an authenticated grid event, not a business-owner IM.
- * The operator's registry authorizes exact group UUIDs with an active
- * business link. No model or HUD name can authorize membership. */
+ * All explicitly enabled sl_groups, including clubs without any business
+ * mapping, are eligible to receive a free membership-invite acceptance.
+ * No model or HUD name can authorize an unregistered group UUID. */
 static stnlabz_module_result_t group_invite_auth_service(
     const void *request,size_t request_size,
     void *response,size_t response_size,size_t *used,void *ctx)
 {
     static const char sql[]=
         "SELECT g.group_uuid FROM sl_groups g "
-        "JOIN business_groups bg ON bg.group_id=g.id "
-        "JOIN businesses b ON b.id=bg.business_id "
         "WHERE LOWER(g.group_uuid)=? AND g.is_active=1 "
-        "AND g.chat_enabled=1 AND b.is_active=1 LIMIT 1";
+        "AND g.chat_enabled=1 LIMIT 1";
     const sparkles_sl_group_invite_auth_request_t *in=request;
     sparkles_sl_group_invite_auth_reply_t *out=response;
     MYSQL_STMT *stmt=NULL;
