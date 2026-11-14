@@ -23,7 +23,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 23U
+#define SL_PATCH 24U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -204,6 +204,31 @@ static int hud_simulator_identity(const sparkles_sl_private_im_t *im,
  * and cannot independently be proven by object IM. Rate-limit visitors
  * before queuing outbound messages. This does not send group invitations:
  * neither membership lookups nor outbound group invite protocol exist. */
+
+/* Called by the capability worker only after an explicit membership result.
+ * No result, partial response, or currently-known member causes an invite. */
+static void enqueue_membership_result(
+    const sparkles_sl_membership_request_t *request,int result,void *unused)
+{
+    sparkles_sl_im_reply_t action={0};
+    int queued=0;
+    (void)unused;
+    if(!request||result!=0)return;
+    memcpy(action.recipient,request->group,16U);
+    memcpy(action.visitor,request->visitor,16U);
+    action.invite_group=1U;
+    pthread_mutex_lock(&qlock);
+    if(!atomic_load(&stopping)&&out_count<SL_OUTBOUND_CAP) {
+        outbound[out_tail]=action;
+        out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+        ++out_count;
+        queued=1;
+    }
+    pthread_mutex_unlock(&qlock);
+    fprintf(stderr,"[SL LINKS] confirmed nonmember group invite %s; "
+            "simulator acceptance unverified\\n",
+            queued?"queued":"not queued");
+}
 static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
 {
     static unsigned char recent_visitors[64][16]={{0}};
@@ -250,6 +275,27 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         outbound[out_tail]=action;
         out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
         ++out_count;
+        /* Only two fixed group UUIDs. Never accept group selection
+         * from the sign or inferred visitor identity. */
+        if(out_count+2U<=SL_OUTBOUND_CAP) {
+            static const char *const groups[2]={
+                "c7887707-b795-e925-72a4-dcec960380ce",
+                "553469c0-74e9-e50c-a2d3-4eaf7a6063bd"
+            };
+            size_t g;
+            for(g=0U;g<2U;++g) {
+                sparkles_sl_im_reply_t check={0};
+                (void)sparkles_sl_uuid_parse(groups[g],check.recipient);
+                memcpy(check.visitor,request.visitor,16U);
+                check.membership_check=1U;
+                outbound[out_tail]=check;
+                out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+                ++out_count;
+            }
+        } else {
+            fprintf(stderr,"[SL LINKS] membership queue full; "
+                    "only welcome links queued\\n");
+        }
         queued=1;
         memcpy(recent_visitors[next_visitor],request.visitor,16U);
         recent_at[next_visitor]=now;
@@ -654,7 +700,8 @@ static void *grid_worker(void *unused)
     (void)unused;
     sparkles_sl_grid_run(&stopping,enqueue_private,
                          dequeue_reply,reset_queues,presence_update,
-                         authorize_group_membership_invite,NULL);
+                         authorize_group_membership_invite,
+                         enqueue_membership_result,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
