@@ -11,6 +11,15 @@ typedef struct {
     char landmark[128]; /* exact inventory name; not yet attached */
     sparkles_sl_notice_send_request_t notice;
 } sparkles_sl_hud_request_t;
+/* STNLINK1: group-links sign request, never a free-form IM relay.
+ * Visitor and display name are caller-supplied; object owner identity
+ * is simulator-attributed by the transport. */
+typedef struct {
+    unsigned char visitor[16];
+    char display_name[96];
+} sparkles_sl_group_links_request_t;
+int sparkles_sl_group_links_parse(const char *message,
+                                  sparkles_sl_group_links_request_t *out);
 int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
                           sparkles_sl_hud_request_t *out);
 #endif
