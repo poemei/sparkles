@@ -22,7 +22,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 20U
+#define SL_PATCH 21U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -140,7 +140,7 @@ static stnlabz_module_result_t notice_send_service(
         if(in->subject[i]=='|' || (unsigned char)in->subject[i]<0x20U)
             return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     for(i=0U;i<body_len;++i)
-        if(in->body[i]=='|' || in->body[i]=='\r' ||
+        if(in->body[i]=='\r' ||
            ((unsigned char)in->body[i]<0x20U && in->body[i]!='\n'))
             return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     pthread_mutex_lock(&qlock);
