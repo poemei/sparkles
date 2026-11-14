@@ -343,9 +343,9 @@ int sparkles_sl_notice_landmark_encode(const sparkles_sl_session_t *session,
     if(!subject_len||subject_len>=65U||!body_len||body_len>=449U||
        subject_len+body_len+1U>510U)return 0;
     for(i=0U;i<subject_len;++i)
-        if(subject[i]=='|'||subject[i]=='\\r'||subject[i]=='\\n')return 0;
+        if(subject[i]=='|'||subject[i]=='\r'||subject[i]=='\n')return 0;
     for(i=0U;i<body_len;++i)
-        if(body[i]=='|'||body[i]=='\\r')return 0;
+        if(body[i]=='|'||body[i]=='\r')return 0;
     memcpy(message,subject,subject_len);
     message[subject_len]='|';
     memcpy(message+subject_len+1U,body,body_len);
@@ -353,7 +353,7 @@ int sparkles_sl_notice_landmark_encode(const sparkles_sl_session_t *session,
     sparkles_sl_uuid_format(item,item_id);
     sparkles_sl_uuid_format(session->agent,owner_id);
     n=snprintf(xml,sizeof xml,
-       "<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><llsd><map>"
+       "<?xml version=\"1.0\" encoding=\"UTF-8\"?><llsd><map>"
        "<key>item_id</key><uuid>%s</uuid>"
        "<key>owner_id</key><uuid>%s</uuid>"
        "</map></llsd>",item_id,owner_id);
