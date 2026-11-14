@@ -226,7 +226,7 @@ static void enqueue_membership_result(
     }
     pthread_mutex_unlock(&qlock);
     fprintf(stderr,"[SL LINKS] confirmed nonmember group invite %s; "
-            "simulator acceptance unverified\\n",
+            "simulator acceptance unverified\n",
             queued?"queued":"not queued");
 }
 static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
@@ -294,7 +294,7 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
             }
         } else {
             fprintf(stderr,"[SL LINKS] membership queue full; "
-                    "only welcome links queued\\n");
+                    "only welcome links queued\n");
         }
         queued=1;
         memcpy(recent_visitors[next_visitor],request.visitor,16U);
