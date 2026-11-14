@@ -95,8 +95,46 @@ int main(void)
     input[33U]^=1U;
     assert(sparkles_sl_im_validate(input,128U,own,&im)==SPARKLES_SL_IM_WRONG_RECIPIENT);
     input[33U]^=1U;
+    /* Membership invitation dialog 3: exact group UUID, transaction,
+     * 20-byte (network U32 fee + role UUID) bucket. Fee-bearing and
+     * malformed invites must never be accepted automatically. */
+    {
+        sparkles_sl_group_invitation_t invite={0};
+        input[82U]=SPARKLES_SL_GROUP_INVITE_DIALOG;
+        input[116U]=20U;input[117U]=0U;
+        memset(input+118U,0,20U);
+        input[122U]=7U; /* Nonzero role UUID is not a fee. */
+        assert(sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        assert(!memcmp(invite.group,sender,16U));
+        assert(!memcmp(invite.transaction,conversation,16U));
+        input[121U]=1U; /* Positive L$1 join fee, network order. */
+        assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        input[121U]=0U;
+        input[116U]=19U; /* Wrong bucket size. */
+        assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        input[116U]=20U;
+        input[33U]^=1U; /* Wrong intended avatar. */
+        assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        input[33U]^=1U;
+        assert(!sparkles_sl_group_invitation_decode(input,137U,own,&invite));
+        input[82U]=0U;
+        assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        input[116U]=0U;
+        input[122U]=0U;
+    }
     memcpy(session.agent,own,16U);
     memcpy(session.session,conversation,16U);
+    assert(sparkles_sl_group_invitation_accept_encode(
+             &session,sender,conversation,60U,"MsSparkles Resident",
+             packet,sizeof packet,&used));
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(view.message_id==SPARKLES_SL_IM_MESSAGE_ID);
+    assert(view.payload[82U]==SPARKLES_SL_GROUP_INVITE_ACCEPT_DIALOG);
+    assert(!memcmp(view.payload+33U,sender,16U));
+    assert(!memcmp(view.payload+83U,conversation,16U));
+    assert(!sparkles_sl_group_invitation_accept_encode(
+             &session,sender,(unsigned char[16]){0},60U,
+             "MsSparkles Resident",packet,sizeof packet,&used));
     assert(sparkles_sl_im_encode(&session,sender,conversation,42U,
                                 "MsSparkles Resident","Hi",packet,sizeof packet,&used));
     assert(used==146U && packet[0]==SPARKLES_SL_FLAG_RELIABLE);
