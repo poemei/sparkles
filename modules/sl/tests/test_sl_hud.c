@@ -40,7 +40,7 @@ int main(void)
             "|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FWasteland%2F30%2F158%2F1507|";
         assert(sparkles_sl_hud_parse(raw,owner,&request));
         assert(!strcmp(request.notice.group,"The Abyss Club VIPs"));
-        assert(!strcmp(request.notice.body,"♥|\\nDJ Mochi\\nHost Shroomie"));
+        assert(!strcmp(request.notice.body,"♥|\nDJ Mochi\nHost Shroomie"));
         assert(strstr(request.notice.body,"~~ This message generated")==NULL);
         assert(!sparkles_sl_hud_parse(
             "STNCLUB1|abyss-2|Unknown%20Group|Title|Body|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FWasteland%2F30%2F158%2F1507|",
