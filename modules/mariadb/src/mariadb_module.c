@@ -23,7 +23,6 @@ static int memory_service_registered;
 static int contacts_service_registered;
 static int mutate_service_registered;
 static int group_resolve_registered;
-static int marketing_groups_registered;
 static int show_claim_registered,show_response_registered,show_attempt_registered;
 
 /* Resolve authenticated transport identity to an existing contact. All
@@ -131,77 +130,6 @@ static stnlabz_module_result_t group_resolve_service(
     return STNLABZ_MODULE_OK;
 }
 
-
-/* Resolve a bounded group-name list for authenticated owner marketing.
- * Every group is subsequently rechecked by the SL module before queueing. */
-static stnlabz_module_result_t marketing_groups_service(
-    const void *request,size_t request_size,
-    void *response,size_t response_size,size_t *used,void *ctx)
-{
-    static const char sql[]=
-        "SELECT DISTINCT g.group_name FROM sl_groups g "
-        "JOIN business_groups bg ON bg.group_id=g.id "
-        "JOIN businesses b ON b.id=bg.business_id "
-        "WHERE g.is_active=1 AND g.notices_enabled=1 "
-        "AND bg.notices_enabled=1 AND b.is_active=1 "
-        "AND LOWER(b.sl_owner_uuid)=? "
-        "ORDER BY g.group_name LIMIT 17";
-    const sparkles_sl_marketing_groups_request_t *in=request;
-    sparkles_sl_marketing_groups_reply_t *out=response;
-    const char *platform=NULL,*identity=NULL;
-    MYSQL_STMT *stmt=NULL;
-    MYSQL_BIND param={0},field={0};
-    unsigned long identity_length=36UL,name_length=0U;
-    char name[64]={0};
-    int okay=1,fetch_rc=MYSQL_NO_DATA;
-    (void)ctx;
-    if(used)*used=0U;
-    if(!in||!out||request_size!=sizeof *in||response_size<sizeof *out||
-       !memchr(in->account,0,sizeof in->account))
-        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
-    memset(out,0,sizeof *out);
-    if(!sparkles_mariadb_identity_parts(in->account,&platform,&identity)||
-       strcmp(platform,"second_life"))
-        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
-    param.buffer_type=MYSQL_TYPE_STRING;
-    param.buffer=(void *)identity;
-    param.buffer_length=identity_length;
-    param.length=&identity_length;
-    field.buffer_type=MYSQL_TYPE_STRING;
-    field.buffer=name;
-    field.buffer_length=sizeof name;
-    field.length=&name_length;
-    (void)pthread_mutex_lock(&db_lock);
-    if(!db||mysql_ping(db))okay=0;
-    if(okay)stmt=mysql_stmt_init(db);
-    if(!stmt)okay=0;
-    if(okay&&mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))okay=0;
-    if(okay&&mysql_stmt_bind_param(stmt,&param))okay=0;
-    if(okay&&mysql_stmt_execute(stmt))okay=0;
-    if(okay&&mysql_stmt_bind_result(stmt,&field))okay=0;
-    if(okay&&mysql_stmt_store_result(stmt))okay=0;
-    if(okay) {
-        while((fetch_rc=mysql_stmt_fetch(stmt))==0) {
-            if(!name_length||name_length>=sizeof name||
-               out->count>=SPARKLES_SL_MARKETING_GROUPS_MAX) {
-                okay=0;
-                break;
-            }
-            name[name_length]=0;
-            memcpy(out->names[out->count],name,name_length+1U);
-            ++out->count;
-        }
-        if(okay&&fetch_rc!=MYSQL_NO_DATA)okay=0;
-    }
-    if(stmt)mysql_stmt_close(stmt);
-    (void)pthread_mutex_unlock(&db_lock);
-    if(!okay||!out->count) {
-        memset(out,0,sizeof *out);
-        return STNLABZ_MODULE_ERR_INVALID_STATE;
-    }
-    if(used)*used=sizeof *out;
-    return STNLABZ_MODULE_OK;
-}
 
 /* Only trusted in-process clients may request the next due action.
  * DB-side unique attempts keep retries/restarts from double-posting. */
@@ -1162,32 +1090,6 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
         if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
            !response.matched){++p;++np;} else ok=0;
     }
-    /* Marketing group lookup must fail closed without a valid principal.
-     * No database is required for these negative regression checks. */
-    {
-        sparkles_sl_marketing_groups_request_t request={0};
-        sparkles_sl_marketing_groups_reply_t response={0};
-        size_t used=7U;
-        stnlabz_module_result_t rc;
-        ++e;++ne;
-        rc=marketing_groups_service(&request,sizeof request,&response,
-                                  sizeof response,&used,NULL);
-        if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
-           response.count==0U){++p;++np;} else ok=0;
-        memcpy(request.account,"irc:unverified",15U);
-        used=7U;
-        ++e;++ne;
-        rc=marketing_groups_service(&request,sizeof request,&response,
-                                  sizeof response,&used,NULL);
-        if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
-           response.count==0U){++p;++np;} else ok=0;
-        used=7U;
-        ++e;++ne;
-        rc=marketing_groups_service(&request,sizeof request,&response,
-                                  sizeof response-1U,&used,NULL);
-        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U)
-           {++p;++np;} else ok=0;
-    }
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
@@ -1379,12 +1281,6 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     group_resolve_registered=1;
-    if(!h->register_service(SPARKLES_SL_MARKETING_GROUPS_SERVICE,
-                            marketing_groups_service,NULL)) {
-        (void)stop();
-        return STNLABZ_MODULE_ERR_START_FAILED;
-    }
-    marketing_groups_registered=1;
     if(!h->register_service(SPARKLES_SHOW_CLAIM_SERVICE,shows_claim_service,NULL) ||
        !h->register_service(SPARKLES_SHOW_RESPONSE_SERVICE,shows_response_service,NULL) ||
        !h->register_service(SPARKLES_SHOW_ATTEMPT_SERVICE,shows_attempt_service,NULL)) {
@@ -1418,10 +1314,6 @@ static stnlabz_module_result_t stop(void)
        !host_owner->unregister_service(SPARKLES_SHOW_CLAIM_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
     show_claim_registered=0;
-    if(marketing_groups_registered && host_owner &&
-       !host_owner->unregister_service(SPARKLES_SL_MARKETING_GROUPS_SERVICE,NULL))
-        return STNLABZ_MODULE_ERR_STOP_FAILED;
-    marketing_groups_registered=0;
     if (group_resolve_registered && host_owner &&
         !host_owner->unregister_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -1470,7 +1362,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 4U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 5U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
