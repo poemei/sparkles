@@ -30,6 +30,22 @@ int main(void)
         "STNHUD1|hud-123|Group|Title|Hello%7Cthere|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FDongjak%2F1%2F2%2F3|",owner,&request));
     assert(!sparkles_sl_hud_parse(
         "STNHUD1|hud-123|Group|Title|Hello|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FDongjak%2F1%2F2%2F3|Landmark|Extra",owner,&request));
+    /* Opt-in club notice: preserve Unicode, line breaks and decorative
+     * bars. Do not inject a marketing footer into host-authored text. */
+    {
+        const char *raw=
+            "STNCLUB1|abyss-1|The%20Abyss%20Club%20VIPs"
+            "|Mochi%20live"
+            "|%E2%99%A5%7C%0ADJ%20Mochi%0AHost%20Shroomie"
+            "|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FWasteland%2F30%2F158%2F1507|";
+        assert(sparkles_sl_hud_parse(raw,owner,&request));
+        assert(!strcmp(request.notice.group,"The Abyss Club VIPs"));
+        assert(!strcmp(request.notice.body,"♥|\\nDJ Mochi\\nHost Shroomie"));
+        assert(strstr(request.notice.body,"~~ This message generated")==NULL);
+        assert(!sparkles_sl_hud_parse(
+            "STNCLUB1|abyss-2|Unknown%20Group|Title|Body|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FWasteland%2F30%2F158%2F1507|",
+            owner,&request));
+    }
     puts("SL native HUD parser regression: PASS");
     return 0;
 }
