@@ -95,30 +95,47 @@ int main(void)
     input[33U]^=1U;
     assert(sparkles_sl_im_validate(input,128U,own,&im)==SPARKLES_SL_IM_WRONG_RECIPIENT);
     input[33U]^=1U;
-    /* Membership invitation dialog 3: exact group UUID, transaction,
-     * 20-byte (network U32 fee + role UUID) bucket. Fee-bearing and
-     * malformed invites must never be accepted automatically. */
+    /* Group membership invitation dialog 3 from the simulator.
+     * Modern fee/role binary bucket (20 bytes), legacy M0\0/O0\0,
+     * explicit avatar vs null-recipient, and paid/malformed rejections. */
     {
         sparkles_sl_group_invitation_t invite={0};
         input[82U]=SPARKLES_SL_GROUP_INVITE_DIALOG;
         input[116U]=20U;input[117U]=0U;
         memset(input+118U,0,20U);
-        input[122U]=7U; /* Nonzero role UUID is not a fee. */
+        input[122U]=7U; /* Role UUID is not a fee. */
         assert(sparkles_sl_group_invitation_decode(input,138U,own,&invite));
         assert(!memcmp(invite.group,sender,16U));
         assert(!memcmp(invite.transaction,conversation,16U));
-        input[121U]=1U; /* Positive L$1 join fee, network order. */
+        memset(input+33U,0,16U); /* Simulator may omit recipient. */
+        assert(sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        memcpy(input+33U,own,16U);
+        input[121U]=1U; /* L$1, network order. */
         assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
         input[121U]=0U;
-        input[116U]=19U; /* Wrong bucket size. */
+        input[116U]=19U; /* Wrong binary bucket length. */
         assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
         input[116U]=20U;
-        input[33U]^=1U; /* Wrong intended avatar. */
+        input[33U]^=1U; /* A different recipient. */
         assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
         input[33U]^=1U;
         assert(!sparkles_sl_group_invitation_decode(input,137U,own,&invite));
+        input[116U]=3U;
+        input[118U]='M';input[119U]='0';input[120U]=0U;
+        assert(sparkles_sl_group_invitation_decode(input,121U,own,&invite));
+        input[118U]='O';
+        assert(sparkles_sl_group_invitation_decode(input,121U,own,&invite));
+        input[119U]='1'; /* No automatic fee-bearing join. */
+        assert(!sparkles_sl_group_invitation_decode(input,121U,own,&invite));
+        input[119U]='0';
+        input[120U]='1'; /* No unterminated legacy bucket. */
+        assert(!sparkles_sl_group_invitation_decode(input,121U,own,&invite));
+        input[120U]=0U;
+        input[118U]='X'; /* Unknown role prefix. */
+        assert(!sparkles_sl_group_invitation_decode(input,121U,own,&invite));
+        input[118U]='M';
         input[82U]=0U;
-        assert(!sparkles_sl_group_invitation_decode(input,138U,own,&invite));
+        assert(!sparkles_sl_group_invitation_decode(input,121U,own,&invite));
         input[116U]=0U;
         input[122U]=0U;
     }
