@@ -5,16 +5,21 @@
 #include "sparkles_show.h"
 
 /* Called with the existing MariaDB module connection lock held.
- * Only explicitly registered public shows qualify; a calendar appointment
- * alone is NEVER a public announcement. All timestamps use DB-local NOW().
- * Claims are at-most-once: uncertain delivery is investigated, not retried. */
+ * Appointment DATETIME fields represent America/Los_Angeles show wall time.
+ * The scheduler compares their zone-converted UTC instant to UTC_TIMESTAMP(),
+ * independent of the database session/server timezone. Named time zone
+ * conversion requires populated MariaDB time zone tables; if unavailable,
+ * CONVERT_TZ returns NULL and no reminder is claimed (fail closed).
+ * Only explicitly registered shows qualify. Claims are at-most-once. */
 static const char reminder_sql[] =
     "SELECT e.id, LOWER(e.owner_avatar_uuid), a.title, "
     "DATE_FORMAT(a.start_time,'%Y-%m-%d %H:%i'),e.venue,e.dj_name,0 "
     "FROM show_events e JOIN appointments a ON a.id=e.appointment_id "
     "WHERE e.status='scheduled' AND a.status='scheduled' "
-    "AND a.start_time>DATE_ADD(NOW(), INTERVAL 55 MINUTE) "
-    "AND a.start_time<=DATE_ADD(NOW(), INTERVAL 60 MINUTE) "
+    "AND CONVERT_TZ(a.start_time,'America/Los_Angeles','UTC') "
+    ">DATE_ADD(UTC_TIMESTAMP(), INTERVAL 45 MINUTE) "
+    "AND CONVERT_TZ(a.start_time,'America/Los_Angeles','UTC') "
+    "<=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 60 MINUTE) "
     "AND EXISTS (SELECT 1 FROM contact_identities ci "
     "JOIN appointment_participants ap ON ap.contact_id=ci.contact_id "
     "WHERE ci.platform='second_life' "
