@@ -186,7 +186,9 @@ static stnlabz_module_result_t notice_send_service(
 }
 
 
-/* Simulator object IM: AgentData.AgentID is the owner UUID and\n * MessageBlock.ID identifies the object. Verify BOTH pinned UUIDs.\n * Operator-pinned object UUID, not an IM text claim or an HTTP token.
+/* Simulator object IM: AgentData.AgentID is the owner UUID and
+ * MessageBlock.ID identifies the object. Verify BOTH pinned UUIDs.
+ * Operator-pinned object UUID, not an IM text claim or an HTTP token.
  * Only the operator can install a 0600 hud.conf with the matching
  * operator and HUD object UUIDs. No file -> native HUD actions disabled. */
 static int hud_object_authorized(const unsigned char owner[16],
@@ -210,7 +212,6 @@ static int hud_object_authorized(const unsigned char owner[16],
     if(!f){close(fd);return 0;}
     while(fgets(line,sizeof line,f)) {
         char *end=strchr(line,'\n');
-        size_t len=strlen(line);
         if(!end&&!feof(f)) {seen=0U;break;}
         if(end)*end=0;
         if(!strncmp(line,"operator_uuid=",14U)&&!(seen&1U)&&
@@ -220,7 +221,6 @@ static int hud_object_authorized(const unsigned char owner[16],
                   strlen(line+12U)==36U) {
             memcpy(object_text,line+12U,37U);seen|=2U;
         } else {seen=0U;break;}
-        (void)len;
     }
     if(ferror(f))seen=0U;
     fclose(f);
