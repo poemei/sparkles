@@ -31,6 +31,14 @@ typedef void (*sparkles_sl_presence_fn)(int online,void *context);
 typedef int (*sparkles_sl_group_invite_authorize_fn)(
     const unsigned char group[16],void *context);
 
+typedef struct sparkles_sl_membership_request_tag {
+    unsigned char group[16];
+    unsigned char visitor[16];
+} sparkles_sl_membership_request_t;
+typedef void (*sparkles_sl_membership_result_fn)(
+    const sparkles_sl_membership_request_t *request,
+    int result,void *context);
+
 /* Native-C grid loop. Socket belongs ONLY to this network thread.
  * Core inference is invoked by the owning module's separate dispatcher. */
 void sparkles_sl_grid_run(atomic_int *stop,
@@ -39,5 +47,6 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_reset_fn reset,
                           sparkles_sl_presence_fn presence,
                           sparkles_sl_group_invite_authorize_fn authorize_invite,
+                          sparkles_sl_membership_result_fn membership_result,
                           void *context);
 #endif
