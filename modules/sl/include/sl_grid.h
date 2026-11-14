@@ -11,6 +11,9 @@ typedef struct {
     unsigned int nearby; /* deliver in public channel-zero ChatFromViewer */
     unsigned int start_group; /* initiate group and wait for session confirmation */
     unsigned int notice; /* official group notice, dialog 32, not session chat */
+    unsigned int membership_check; /* GroupMemberData capability query */
+    unsigned int invite_group; /* confirmed nonmember: InviteGroupRequest */
+    unsigned char visitor[16]; /* target for check/invitation */
     char subject[65];
 } sparkles_sl_im_reply_t;
 
