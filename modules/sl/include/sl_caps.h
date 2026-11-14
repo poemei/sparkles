@@ -4,10 +4,6 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-typedef struct {
-    unsigned char group[16];
-    unsigned char visitor[16];
-} sparkles_sl_membership_request_t;
 #define SPARKLES_SL_MEMBER_QUEUE_MAX 16U
 
 typedef struct {
