@@ -249,9 +249,26 @@ int main(void)
     assert(!sparkles_sl_notice_encode(&session,conversation,51U,
            "MsSparkles Resident","Bad|Subject","The River",
            packet,sizeof packet,&used));
-    assert(!sparkles_sl_notice_encode(&session,conversation,51U,
+    /* Body bars are host-authored content; only subject bars delimit
+     * the viewer's group notice title/body boundary. */
+    assert(sparkles_sl_notice_encode(&session,conversation,51U,
            "MsSparkles Resident","Show","Bad|body",
            packet,sizeof packet,&used));
+    assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+    assert(!strcmp((const char *)(view.payload+126U),"Show|Bad|body"));
+    /* A short subject may use the full remaining official notice budget;
+     * do not impose the old arbitrary 448-byte body ceiling. */
+    {
+        char long_body[500];
+        memset(long_body,'x',sizeof long_body-1U);
+        long_body[sizeof long_body-1U]=0;
+        assert(sparkles_sl_notice_encode(&session,conversation,59U,
+               "MsSparkles Resident","DJ",long_body,
+               packet,sizeof packet,&used));
+        assert(!sparkles_sl_notice_encode(&session,conversation,60U,
+               "MsSparkles Resident","A much longer subject",long_body,
+               packet,sizeof packet,&used));
+    }
     assert(!sparkles_sl_notice_encode(&session,conversation,51U,
            "MsSparkles Resident","Show","",
            packet,sizeof packet,&used));
