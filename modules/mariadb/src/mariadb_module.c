@@ -1155,6 +1155,33 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
         if(rc==STNLABZ_MODULE_ERR_NOT_AUTHORIZED && used==0U &&
            !response.matched){++p;++np;} else ok=0;
     }
+    /* Exact-UUID membership-invitation policy fails closed when the
+     * registry cannot be queried; there is no paid-invite override. */
+    {
+        sparkles_sl_group_invite_auth_request_t request={0};
+        sparkles_sl_group_invite_auth_reply_t result={0};
+        size_t used=4U;
+        stnlabz_module_result_t rc;
+        ++e;++ne;
+        rc=group_invite_auth_service(&request,sizeof request,&result,
+                                     sizeof result,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U)
+            {++p;++np;}else ok=0;
+        memcpy(request.group_uuid,"12345678-1234-1234-1234-123456789abc",37U);
+        used=4U;
+        ++e;++ne;
+        rc=group_invite_auth_service(&request,sizeof request,&result,
+                                     sizeof result,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_STATE && used==0U &&
+           !result.allowed){++p;++np;}else ok=0;
+        request.group_uuid[35]='Z';
+        used=4U;
+        ++e;++ne;
+        rc=group_invite_auth_service(&request,sizeof request,&result,
+                                     sizeof result,&used,NULL);
+        if(rc==STNLABZ_MODULE_ERR_INVALID_ARGUMENT && used==0U &&
+           !result.allowed){++p;++np;}else ok=0;
+    }
     q->tests_executed = e;
     q->tests_passed = p;
     q->tests_failed = e - p;
