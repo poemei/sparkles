@@ -23,6 +23,10 @@ typedef int (*sparkles_sl_im_dequeue_fn)(
     sparkles_sl_im_reply_t *reply, void *context);
 typedef void (*sparkles_sl_im_reset_fn)(void *context);
 typedef void (*sparkles_sl_presence_fn)(int online,void *context);
+/* Only exact simulator-delivered group UUIDs may be authorized by the
+ * existing registry. The socket worker never derives policy from names. */
+typedef int (*sparkles_sl_group_invite_authorize_fn)(
+    const unsigned char group[16],void *context);
 
 /* Native-C grid loop. Socket belongs ONLY to this network thread.
  * Core inference is invoked by the owning module's separate dispatcher. */
@@ -31,5 +35,6 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_dequeue_fn dequeue,
                           sparkles_sl_im_reset_fn reset,
                           sparkles_sl_presence_fn presence,
+                          sparkles_sl_group_invite_authorize_fn authorize_invite,
                           void *context);
 #endif
