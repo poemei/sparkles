@@ -30,7 +30,18 @@ int main(void)
     input[32U]=1U;
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[32U]=0U;
+    input[82U]=SPARKLES_SL_OBJECT_IM_DIALOG;
+    assert(!sparkles_sl_im_decode(input,size,own,&im));
+    assert(sparkles_sl_object_im_decode(input,size,own,&im));
+    assert(im.ambient==3U && !memcmp(im.sender,sender,16U));
+    input[32U]=1U;
+    assert(!sparkles_sl_object_im_decode(input,size,own,&im));
+    input[32U]=0U;
+    input[33U]^=1U;
+    assert(!sparkles_sl_object_im_decode(input,size,own,&im));
+    input[33U]^=1U;
     input[82U]=15U;
+    assert(!sparkles_sl_object_im_decode(input,size,own,&im));
     assert(!sparkles_sl_im_decode(input,size,own,&im));
     input[82U]=0U;
     input[33U]^=1U;
