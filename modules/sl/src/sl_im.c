@@ -22,35 +22,51 @@ static int nonzero_uuid(const unsigned char *p)
     for(i=0U;i<16U;++i) any|=p[i];
     return any!=0U;
 }
-/* Group membership invitation: simulator-originated IM dialog 3.
- * FromAgentID carries the group UUID; ID is the invitation transaction.
- * The viewer parses a 20-byte bucket: network-order fee U32 + role UUID.
- * Any nonzero fee, malformed data or additional unexpected bytes fails
- * closed. Invitation contents never reach the conversational model. */
+/* Simulator-originated group invitation IM (dialog 3).
+ * Modern viewer: binary bucket = network-order U32 membership fee and
+ * 16-byte role UUID. Older protocol descriptions also specify an
+ * M/O-prefixed NUL-terminated decimal fee. Only fee=0 is eligible.
+ * ToAgentID can be the logged-in avatar or NULL on simulator events;
+ * any other recipient and any malformed/paid bucket fail closed. */
 int sparkles_sl_group_invitation_decode(const unsigned char *p,size_t n,
     const unsigned char own_agent[16],sparkles_sl_group_invitation_t *invite)
 {
-    size_t pos=103U,name_len,text_len,bucket_len;
-    unsigned int meta_count,i;
+    size_t pos=103U,name_len,text_len,bucket_len,start,i;
+    unsigned int meta_count;
+    unsigned char null_uuid[16]={0};
     if(!p||!own_agent||!invite||n<110U ||
        p[82U]!=SPARKLES_SL_GROUP_INVITE_DIALOG ||
        !nonzero_uuid(p)||!nonzero_uuid(p+83U) ||
-       memcmp(p+33U,own_agent,16U)!=0)return 0;
+       (memcmp(p+33U,own_agent,16U)!=0 &&
+        memcmp(p+33U,null_uuid,16U)!=0))return 0;
     memset(invite,0,sizeof *invite);
     name_len=p[pos++];
-    if(!name_len || name_len>n-pos ||
-       p[pos+name_len-1U]!=0U) return 0;
+    if(!name_len||name_len>n-pos ||
+       p[pos+name_len-1U]!=0U ||
+       memchr(p+pos,0,name_len-1U))return 0;
     pos+=name_len;
     if(n-pos<2U)return 0;
     text_len=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
     pos+=2U;
-    if(!text_len||text_len>n-pos||p[pos+text_len-1U]!=0U)return 0;
+    if(!text_len||text_len>n-pos||p[pos+text_len-1U]!=0U ||
+       memchr(p+pos,0,text_len-1U))return 0;
     pos+=text_len;
     if(n-pos<2U)return 0;
     bucket_len=(size_t)p[pos]|((size_t)p[pos+1U]<<8U);
     pos+=2U;
-    if(bucket_len!=20U || bucket_len>n-pos)return 0;
-    if(p[pos]||p[pos+1U]||p[pos+2U]||p[pos+3U])return 0;
+    if(!bucket_len||bucket_len>n-pos)return 0;
+    start=pos;
+    if(bucket_len==20U) {
+        /* 4-byte big-endian signed fee; zero is the only free value. */
+        if(p[start]||p[start+1U]||p[start+2U]||p[start+3U])return 0;
+    } else {
+        /* Legacy format: M0\0 or O0\0, optionally more ASCII zeroes. */
+        if(bucket_len<3U||bucket_len>16U ||
+           (p[start]!='M'&&p[start]!='O') ||
+           p[start+bucket_len-1U]!=0U)return 0;
+        for(i=1U;i+1U<bucket_len;++i)
+            if(p[start+i]!='0')return 0;
+    }
     pos+=bucket_len;
     if(pos<n) {
         if(n-pos<5U)return 0;
