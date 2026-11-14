@@ -130,8 +130,8 @@ int sparkles_sl_group_links_parse(const char *message,
     size_t len,n;
     if(!message||!out)return 0;
     memset(out,0,sizeof *out);
-    len=strnlen(message,256U);
-    if(len>=256U||strncmp(message,prefix,sizeof prefix-1U))return 0;
+    len=strnlen(message,512U);
+    if(len>=512U||strncmp(message,prefix,sizeof prefix-1U))return 0;
     start=message+sizeof prefix-1U;
     separator=strchr(start,'|');
     if(!separator||(size_t)(separator-start)!=36U||
