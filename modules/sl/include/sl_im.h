@@ -44,8 +44,10 @@ int sparkles_sl_chat_decode(const unsigned char *payload,size_t length,
                            const unsigned char own_agent[16],
                            sparkles_sl_private_im_t *chat);
 
-/* Object-origin IM uses dialog 19. This parser classifies only; it
- * DOES NOT authorize the sender or route it into conversation. */
+/* Object-origin IM uses dialog 19. AgentData.AgentID identifies the
+ * object owner (im.sender); MessageBlock.ID identifies the object
+ * (im.conversation). Both must be checked against server-local pins.
+ * This parser classifies only and grants no authority or conversation. */
 int sparkles_sl_object_im_decode(const unsigned char *payload,size_t length,
                                 const unsigned char own_agent[16],
                                 sparkles_sl_private_im_t *im);
