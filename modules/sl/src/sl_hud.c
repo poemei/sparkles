@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "sl_hud.h"
 #include "sl_wire.h"
 #include <stdio.h>
@@ -43,7 +44,7 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
     char body[449]={0},location[192]={0},original[449]={0};
     char owner[16]={0};
     char *values[6];
-    size_t sizes[6],i,j=0U,len;
+    size_t sizes[6],i,len;
     const char *cursor;
     unsigned char check[16];
     int n;
@@ -63,7 +64,7 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
         sizes[i]=(size_t)(end-cursor);
         if(i<5U&&!sizes[i])return 0;
         values[i]=(char *)cursor;
-        cursor=end+1U;
+        cursor=i==5U?end:end+1U;
     }
     if(!field(values[0],sizes[0],out->request_id,
               sizeof out->request_id,0)||
@@ -95,6 +96,5 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
     if(snprintf(out->notice.account,sizeof out->notice.account,
                 "sl:%s",operator_uuid)>=(int)sizeof out->notice.account)
         return 0;
-    (void)j;
     return 1;
 }
