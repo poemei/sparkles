@@ -5,6 +5,12 @@
 #include <pthread.h>
 
 typedef struct {
+    unsigned char group[16];
+    unsigned char visitor[16];
+} sparkles_sl_membership_request_t;
+#define SPARKLES_SL_MEMBER_QUEUE_MAX 16U
+
+typedef struct {
     char seed_url[2048];
     unsigned char agent[16];
     atomic_int *module_stop;
@@ -15,6 +21,14 @@ typedef struct {
     int *group_confirm_status;
     unsigned char (*shared_joined)[16];
     unsigned int *shared_joined_count;
+    pthread_mutex_t *membership_lock;
+    sparkles_sl_membership_request_t *membership_queue;
+    unsigned int *membership_head;
+    unsigned int *membership_tail;
+    unsigned int *membership_count;
+    /* result: 1=member, 0=confirmed nonmember, -1=unknown */
+    void (*membership_result)(const sparkles_sl_membership_request_t *,
+                              int result,void *context);
     void *context;
 } sparkles_sl_caps_worker_t;
 
