@@ -394,15 +394,15 @@ int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
     if(!subject||!body||!group||!session||!sender_name||!output||!used)
         return 0;
     subject_len=strnlen(subject,65U);
-    body_len=strnlen(body,449U);
-    if(!subject_len||subject_len>=65U||!body_len||body_len>=449U||
+    body_len=strnlen(body,511U);
+    if(!subject_len||subject_len>=65U||!body_len||body_len>=511U||
        subject_len+body_len+1U>510U)return 0;
     /* A vertical bar terminates the subject on the viewer/region side.
      * Refuse ambiguous or control-byte notice content. */
     for(i=0U;i<subject_len;++i)
         if(subject[i]=='|'||subject[i]=='\n'||subject[i]=='\r')return 0;
     for(i=0U;i<body_len;++i)
-        if(body[i]=='|'||body[i]=='\r')return 0;
+        if(body[i]=='\r')return 0;
     memcpy(message,subject,subject_len);
     message[subject_len]='|';
     memcpy(message+subject_len+1U,body,body_len);
