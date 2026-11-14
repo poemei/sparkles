@@ -231,7 +231,9 @@ static int hud_object_authorized(const unsigned char sender[16],
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
 {
-    static char last_request[SPARKLES_SL_HUD_REQUEST_MAX]={0};
+    static char recent_requests[32][SPARKLES_SL_HUD_REQUEST_MAX]={{0}};
+    static size_t next_request=0U;
+    size_t i;
     sparkles_sl_hud_request_t request={0};
     sparkles_sl_notice_send_reply_t response={0};
     char operator_uuid[37]={0};
@@ -246,13 +248,17 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
         fprintf(stderr,"[SL HUD] malformed command rejected\n");
         return;
     }
-    if(!strcmp(request.request_id,last_request)) {
-        fprintf(stderr,"[SL HUD] duplicate command rejected\n");
-        return;
+    for(i=0U;i<32U;++i) {
+        if(!strcmp(request.request_id,recent_requests[i])) {
+            fprintf(stderr,"[SL HUD] recent duplicate command rejected\n");
+            return;
+        }
     }
-    /* Mark this request consumed BEFORE queue attempt. The uncertain
-     * result is never replayed automatically from the same request ID. */
-    memcpy(last_request,request.request_id,sizeof last_request);
+    /* Mark consumed before queue attempt. Recent replay protection is
+     * in-memory and does not survive process restart. */
+    memcpy(recent_requests[next_request],request.request_id,
+           sizeof request.request_id);
+    next_request=(next_request+1U)%32U;
     pthread_mutex_lock(&qlock);
     memcpy(active_private,request.notice.account,
            strlen(request.notice.account)+1U);
