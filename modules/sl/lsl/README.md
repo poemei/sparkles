@@ -1,29 +1,24 @@
-# Sparkles Marketing HUD (native Second Life integration stage)
+# Sparkles Marketing HUD — native Second Life IM integration
 
-The HUD source is [Sparkles_Marketing_HUD.lsl](Sparkles_Marketing_HUD.lsl).
-It does **not** use Corrade, PHP, Discord, a public HTTPS endpoint,
-an HTTP API, or a HUD token. No `sparkles-hud.cfg` is needed.
+`Sparkles_Marketing_HUD.lsl` v1.5.0 uses **Second Life object-to-avatar
+instant messages**, not Corrade, PHP, Discord or an HTTPS endpoint.
+`sparkles-hud.cfg` is not needed.
 
-## Notecards in HUD inventory
+## HUD inventory and configuration
 
-Keep the existing `venues.cfg` and `approved_groups.cfg` files.
-
-`venues.cfg` uses the original five-column format:
+Retain the existing operator-maintained `venues.cfg` and
+`approved_groups.cfg` files without changing their formats:
 
 ```text
+# venues.cfg
 # alias|venue name|slurl|landmark inventory name|enabled
 river|The River|https://maps.secondlife.com/secondlife/The%20River/38/140/30|The River ~ Rock Music at its BEST|1
 stntech|STN Tech Center|https://maps.secondlife.com/secondlife/Dongjak/214/230/52|STN Tech Center|1
 #abyss|The Abyss|https://maps.secondlife.com/secondlife/Wasteland/30/158/1508|The Abyss|1
 ```
 
-The fourth field is an **exact inventory name**, not an inventory UUID.
-The HUD displays it in Preview but Sparkles cannot yet retrieve or attach
-that landmark using the native SL transport.
-
-`approved_groups.cfg` uses the existing four-column format:
-
 ```text
+# approved_groups.cfg
 # set|group name|enabled|delay seconds
 all|Sparkles Entertainment|1|10
 all|Poe's Peeps|1|10
@@ -35,29 +30,64 @@ events|Team Sparkles|1|10
 events|The Abyss Club VIPs|0|10
 ```
 
-Disabled and commented records are excluded from the UI. The HUD
-supports selecting `all` or `events`; the default is `events`.
-These names are **operator selections**, not notice authorization.
-MariaDB remains the authoritative permission source for future sends.
-The delay values are parsed and shown but are **not acted on** because
-native HUD dispatch is not connected.
+Touch the HUD and choose **Agent**. Enter Sparkles' actual legacy
+Second Life avatar username, e.g. `First Resident` or `first.last`.
+The HUD uses `llRequestUserKey` to resolve that name via Second Life;
+it refuses Post if resolution fails. No hardcoded avatar UUID is used.
+Use the Title, Message, Venue and Preview buttons as before. The
+`Set` button chooses `events` or `all`, default `events`.
+The HUD sends **one bounded object IM per enabled group**, respecting the
+configured delay between outgoing submissions. An IM sent by an object
+does not provide an application-level acknowledgment.
 
-## Functional state
+## Native server-side operator pinning (no endpoint or token)
 
-- HUD: Title, Message, Venue, Use Here, Alias/List, Preview, Set,
-  Clear, Status, Reload.
-- Preview: exact operator text, SLURL and the required Sparkles signature.
-- Post: **deliberately fails closed** with a clear "NOT SENT" message.
-  No packet, IM, HTTP request, or fallback is sent.
-- Native SL: private avatar IM handling and independent notice-service
-  code remain. There is currently **no authenticated object-origin HUD
-  command ingress**. A HUD object IM cannot simply impersonate an avatar.
-- The retired local HTTP notice listener and its source/header are
-  removed from the SL build.
-- Inventory retrieval/landmark attachment, native HUD command intake,
-  first/halftime show timers, dispatch pacing and publication receipts
-  remain unimplemented or unverified. Existing inventory packet encoder
-  source does not establish successful attachment.
+On the machine **running the Sparkles Second Life module**, the human
+operator must securely provision the following file, *not commit it*:
 
-A successful GitHub commit is source history, not an LSL compilation,
-native build, live avatar test, or operator acceptance.
+`/opt/sparkles/auth/sl/hud.conf`
+
+```text
+operator_uuid=<actual HUD owner's Second Life avatar UUID>
+object_uuid=<actual HUD object UUID from llGetKey()>
+```
+
+This is a server-local **two-UUID allowlist**, not a URL, token, or
+web service. The module requires the regular file to be owned by its
+effective service user and to be inaccessible to other users (mode
+`0600`, with no symlink). If absent or mismatched, native HUD commands
+are rejected. An object recreated/re-rezzed may have a different UUID;
+the operator must check the actual in-world object ID. The server-side
+operator UUID is never trusted merely because a HUD text field says so.
+
+The native grid receiver separately decodes simulator-origin dialog 19
+object IMs, verifies the pinned sender object UUID, validates strict
+`STNHUD1` escaped request fields, and then uses Sparkles' existing
+single-group notice service and MariaDB business/group authorization.
+Object IMs are **not sent to Core conversation or Ollama inference**.
+Unsupported, oversized and unauthorized commands fail closed.
+
+## Distinguish the evidence
+
+- **HUD submitted an IM**: the LSL function was invoked. This is *not*
+  proof Sparkles received it.
+- **Sparkles queued a notice**: native service validated the request
+  and queued a simulator packet. This is *not* proof of publication.
+- **Actual group notice publication and attached landmark**: unverified.
+  Landmark names from the venue notecard are carried by the object IM
+  and parsed but **no inventory lookup or attachment has been wired**.
+- **Schedule**: existing `approved_groups.cfg` inter-group delays are
+  pacing only. The separate 7:30 PM / 9:00 PM show schedule has not been
+  added here.
+- **Runtime**: operator must compile, deploy and perform in-world tests.
+  GitHub source commits alone do not validate a live simulator message.
+
+### Source build and regression checks
+
+```sh
+make -C modules/sl clean all test
+```
+
+Look for logs prefixed `[SL HUD]` for authorization, parsing and
+queueing decisions; do not interpret a normal UDP acknowledgment as
+proof of group-notice publication.
