@@ -22,7 +22,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 17U
+#define SL_PATCH 18U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -557,11 +557,32 @@ persist_attempt:
     }
     return NULL;
 }
+/* The grid supplied the group UUID inside an authenticated simulator
+ * membership invitation. Authorization is entirely registry-driven;
+ * the bot's UUID is not a business owner UUID and must never be used as
+ * an asserted human identity for an arbitrary message. */
+static int authorize_group_membership_invite(const unsigned char group[16],
+                                              void *unused)
+{
+    sparkles_sl_group_invite_auth_request_t request={0};
+    sparkles_sl_group_invite_auth_reply_t result={0};
+    stnlabz_module_result_t rc;
+    size_t used=0U;
+    (void)unused;
+    if(!group||atomic_load(&stopping)||!atomic_load(&sl_present)||
+       !module_host||!module_host->invoke_service)return 0;
+    sparkles_sl_uuid_format(group,request.group_uuid);
+    if(!request.group_uuid[0])return 0;
+    rc=module_host->invoke_service(SPARKLES_SL_GROUP_INVITE_AUTH_SERVICE,
+         &request,sizeof request,&result,sizeof result,&used);
+    return rc==STNLABZ_MODULE_OK&&used==sizeof result&&result.allowed==1U;
+}
 static void *grid_worker(void *unused)
 {
     (void)unused;
     sparkles_sl_grid_run(&stopping,enqueue_private,
-                         dequeue_reply,reset_queues,presence_update,NULL);
+                         dequeue_reply,reset_queues,presence_update,
+                         authorize_group_membership_invite,NULL);
     return NULL;
 }
 static stnlabz_module_result_t sl_qualify(
