@@ -186,10 +186,11 @@ static stnlabz_module_result_t notice_send_service(
 }
 
 
-/* Operator-pinned object UUID, not an IM text claim or an HTTP token.
+/* Simulator object IM: AgentData.AgentID is the owner UUID and\n * MessageBlock.ID identifies the object. Verify BOTH pinned UUIDs.\n * Operator-pinned object UUID, not an IM text claim or an HTTP token.
  * Only the operator can install a 0600 hud.conf with the matching
  * operator and HUD object UUIDs. No file -> native HUD actions disabled. */
-static int hud_object_authorized(const unsigned char sender[16],
+static int hud_object_authorized(const unsigned char owner[16],
+                                 const unsigned char object[16],
                                  char operator_uuid[37])
 {
     static const char path[]="/opt/sparkles/auth/sl/hud.conf";
@@ -225,7 +226,8 @@ static int hud_object_authorized(const unsigned char sender[16],
     fclose(f);
     if(seen!=3U||!sparkles_sl_uuid_parse(object_text,object_id)||
        !sparkles_sl_uuid_parse(owner_text,owner_id)||
-       memcmp(sender,object_id,16U))return 0;
+       memcmp(object,object_id,16U)||
+       memcmp(owner,owner_id,16U))return 0;
     sparkles_sl_uuid_format(owner_id,operator_uuid);
     return 1;
 }
@@ -240,7 +242,7 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
     size_t used=0U;
     stnlabz_module_result_t rc;
     if(!im||im->ambient!=3U||!module_host||
-       !hud_object_authorized(im->sender,operator_uuid)) {
+       !hud_object_authorized(im->sender,im->conversation,operator_uuid)) {
         fprintf(stderr,"[SL HUD] object command rejected: not authorized\n");
         return;
     }
