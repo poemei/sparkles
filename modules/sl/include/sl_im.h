@@ -12,6 +12,7 @@
 #define SPARKLES_SL_GROUP_INVITE_DIALOG 3U
 #define SPARKLES_SL_GROUP_INVITE_ACCEPT_DIALOG 35U
 #define SPARKLES_SL_GROUP_NOTICE_DIALOG 32U
+#define SPARKLES_SL_INVITE_GROUP_REQUEST_ID 349U
 #define SPARKLES_SL_OBJECT_IM_DIALOG 19U
 #define SPARKLES_SL_CHAT_MESSAGE_ID 139U
 #define SPARKLES_SL_CHAT_SEND_MESSAGE_ID 80U
@@ -114,6 +115,12 @@ int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
 int sparkles_sl_nearby_encode(const sparkles_sl_session_t *session,
                              uint32_t sequence,const char *message,
                              unsigned char *output,size_t capacity,size_t *used);
+/* InviteGroupRequest Low 349. Default Everyone role is null UUID.
+ * Sending a request does not imply membership or successful invitation. */
+int sparkles_sl_group_invite_encode(
+    const sparkles_sl_session_t *session,
+    const unsigned char group[16],const unsigned char visitor[16],
+    uint32_t sequence,unsigned char *output,size_t capacity,size_t *used);
 int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          const unsigned char recipient[16],
                          const unsigned char conversation[16],
