@@ -13,7 +13,7 @@ static const char reminder_sql[] =
     "DATE_FORMAT(a.start_time,'%Y-%m-%d %H:%i'),e.venue,e.dj_name,0 "
     "FROM show_events e JOIN appointments a ON a.id=e.appointment_id "
     "WHERE e.status='scheduled' AND a.status='scheduled' "
-    "AND a.start_time>DATE_ADD(NOW(), INTERVAL 59 MINUTE) "
+    "AND a.start_time>DATE_ADD(NOW(), INTERVAL 55 MINUTE) "
     "AND a.start_time<=DATE_ADD(NOW(), INTERVAL 60 MINUTE) "
     "AND EXISTS (SELECT 1 FROM contact_identities ci "
     "JOIN appointment_participants ap ON ap.contact_id=ci.contact_id "
@@ -23,27 +23,6 @@ static const char reminder_sql[] =
     "AND NOT EXISTS (SELECT 1 FROM show_delivery_attempts d "
     "WHERE d.show_id=e.id AND d.kind='confirmation' AND d.group_id=0) "
     "ORDER BY a.start_time,e.id LIMIT 1";
-
-static const char notice_sql[] =
-    "SELECT e.id, LOWER(g.group_uuid), a.title, "
-    "DATE_FORMAT(a.start_time,'%Y-%m-%d %H:%i'),e.venue,e.dj_name,g.id "
-    "FROM show_events e JOIN appointments a ON a.id=e.appointment_id "
-    "JOIN businesses b ON LOWER(b.sl_owner_uuid)=LOWER(e.owner_avatar_uuid) "
-    "JOIN business_groups bg ON bg.business_id=b.id "
-    "JOIN sl_groups g ON g.id=bg.group_id "
-    "WHERE e.status='scheduled' AND a.status='scheduled' "
-    "AND b.is_active=1 AND bg.notices_enabled=1 "
-    "AND g.is_active=1 AND g.notices_enabled=1 AND g.entertainment_enabled=1 "
-    "AND a.start_time>DATE_ADD(NOW(), INTERVAL 29 MINUTE) "
-    "AND a.start_time<=DATE_ADD(NOW(), INTERVAL 30 MINUTE) "
-    "AND EXISTS (SELECT 1 FROM contact_identities ci "
-    "JOIN appointment_participants ap ON ap.contact_id=ci.contact_id "
-    "WHERE ci.platform='second_life' "
-    "AND LOWER(ci.platform_identifier)=LOWER(e.owner_avatar_uuid) "
-    "AND ap.appointment_id=a.id) "
-    "AND NOT EXISTS (SELECT 1 FROM show_delivery_attempts d "
-    "WHERE d.show_id=e.id AND d.kind='notice' AND d.group_id=g.id) "
-    "ORDER BY a.start_time,e.id,g.id LIMIT 1";
 
 static int decimal_id(const char *s,unsigned long long *out)
 {
@@ -90,9 +69,11 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
     if(!connection||!out)return 0;
     memset(out,0,sizeof *out);
     if(mysql_query(connection,"START TRANSACTION"))return 0;
-    for(type=SPARKLES_SHOW_NOTICE;type>=SPARKLES_SHOW_CONFIRMATION;--type) {
-        if(mysql_query(connection,type==SPARKLES_SHOW_NOTICE?
-                       notice_sql:reminder_sql))goto rollback;
+    /* Unit 1 is an IM reminder only. The operator's HUD owns
+     * all opening and halftime group notices. */
+    for(type=SPARKLES_SHOW_CONFIRMATION;
+        type>=SPARKLES_SHOW_CONFIRMATION;--type) {
+        if(mysql_query(connection,reminder_sql))goto rollback;
         res=mysql_store_result(connection);
         if(!res)goto rollback;
         row=mysql_fetch_row(res);
@@ -114,21 +95,13 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
         sanitize_text(venue,100U,row[4]);
         sanitize_text(dj,80U,row[5]);
         out->action.kind=(unsigned int)type;
-        if(type==SPARKLES_SHOW_NOTICE) {
-            memcpy(out->action.subject,"Show starts in 30 minutes",26U);
-            n=snprintf(out->action.message,sizeof out->action.message,
-               "Join us at %s on %s for %s%s%s. Starting in 30 minutes!",
-               venue,when,title,dj[0]?" - DJ: ":"",dj);
-        } else {
-            n=snprintf(out->action.message,sizeof out->action.message,
-               "Your show at %s is scheduled for %s (%s). "
-               "Are you still good to host? Reply 'show yes' or "
-               "'show cancel' in this private IM.",
-               venue,when,title);
-        }
+        n=snprintf(out->action.message,sizeof out->action.message,
+           "Hey Bish 💜 Your set at %s is coming up at %s (%s). "
+           "Time to fire up your Notices HUD so we can go start some shit!",
+           venue,when,title);
         mysql_free_result(res);res=NULL;
         if(n<1||(size_t)n>=sizeof out->action.message)goto rollback;
-        kind=type==SPARKLES_SHOW_NOTICE?"notice":"confirmation";
+        kind="confirmation";
         n=snprintf(sql,sizeof sql,
            "INSERT IGNORE INTO show_delivery_attempts "
            "(show_id,kind,group_id) VALUES (%llu,'%s',%llu)",
