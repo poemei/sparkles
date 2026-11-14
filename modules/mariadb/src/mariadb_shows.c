@@ -79,7 +79,7 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
         row=mysql_fetch_row(res);
         if(!row) {
             mysql_free_result(res);res=NULL;
-            continue;
+            goto commit_claim;
         }
         if(!row[0]||!row[1]||!row[2]||!row[3]||
            !row[4]||!row[5]||!row[6]||
@@ -114,6 +114,7 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
         out->available=1U;
         break;
     }
+commit_claim:
     if(mysql_query(connection,"COMMIT")) {
         memset(out,0,sizeof *out);
         return 0; /* Unknown commit result: never resend automatically. */
