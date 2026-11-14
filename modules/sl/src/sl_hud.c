@@ -117,3 +117,30 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
         return 0;
     return 1;
 }
+
+/* A links sign requests the fixed Sparkles welcome message, not arbitrary
+ * content or group destinations. Only two fields: visitor UUID and name. */
+int sparkles_sl_group_links_parse(const char *message,
+                                  sparkles_sl_group_links_request_t *out)
+{
+    static const char prefix[]="STNLINK1|";
+    const char *start,*separator;
+    unsigned char zero[16]={0};
+    char uuid[37]={0};
+    size_t len,n;
+    if(!message||!out)return 0;
+    memset(out,0,sizeof *out);
+    len=strnlen(message,256U);
+    if(len>=256U||strncmp(message,prefix,sizeof prefix-1U))return 0;
+    start=message+sizeof prefix-1U;
+    separator=strchr(start,'|');
+    if(!separator||(size_t)(separator-start)!=36U||
+       strchr(separator+1,'|'))return 0;
+    memcpy(uuid,start,36U);
+    if(!sparkles_sl_uuid_parse(uuid,out->visitor)||
+       !memcmp(out->visitor,zero,16U))return 0;
+    n=strlen(separator+1);
+    if(n==0U || !field(separator+1,n,out->display_name,
+                        sizeof out->display_name,0))return 0;
+    return 1;
+}
