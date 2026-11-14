@@ -294,7 +294,6 @@ static void respond(int fd,const char *op,const char *body)
      !form_get_text(body,"message",content,sizeof content)||
      !form_get(body,"venue",venue_name,sizeof venue_name)||
      !form_get(body,"group",target_group,sizeof target_group)||
-     !form_get(body,"landmark",landmark_name,sizeof landmark_name)||
      !form_get(body,"location",location,sizeof location)||
      !form_get(body,"operator_uuid",owner,sizeof owner)||
      !form_get(body,"object_uuid",object,sizeof object)||
@@ -303,6 +302,9 @@ static void respond(int fd,const char *op,const char *body)
      strncmp(location,"https://maps.secondlife.com/secondlife/",39U)) {
     send_json(fd,400,"{\"error\":\"invalid notice fields\"}");return;
   }
+  /* Landmark name is optional for Use Here/manual venues until the
+   * native inventory lookup is implemented. It grants no attachment. */
+  (void)form_get(body,"landmark",landmark_name,sizeof landmark_name);
   for(i=0U;title[i];++i)
     if(title[i]=='|'||(unsigned char)title[i]<32U) {
       send_json(fd,400,"{\"error\":\"invalid title\"}");return;
