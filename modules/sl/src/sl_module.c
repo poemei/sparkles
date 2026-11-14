@@ -659,6 +659,22 @@ static stnlabz_module_result_t sl_qualify(
               STNLABZ_MODULE_ERR_INVALID_ARGUMENT);
     }
 
+    /* Object HUD commands cannot claim authority through their text:
+     * only simulator-classified object IMs with both UUIDs are eligible. */
+    {
+        sparkles_sl_private_im_t hud={0};
+        char owner_uuid[37]={0};
+        unsigned char owner[16]={1U};
+        memcpy(hud.sender,owner,16U);
+        hud.conversation[0]=2U;
+        hud.ambient=0U;
+        CHECK(!hud_simulator_identity(&hud,owner_uuid));
+        hud.ambient=3U;
+        CHECK(hud_simulator_identity(&hud,owner_uuid));
+        CHECK(!strcmp(owner_uuid,"01000000-0000-0000-0000-000000000000"));
+        memset(hud.conversation,0,16U);
+        CHECK(!hud_simulator_identity(&hud,owner_uuid));
+    }
     {
         sparkles_sl_notice_send_request_t req={0};
         sparkles_sl_notice_send_reply_t receipt={0};
