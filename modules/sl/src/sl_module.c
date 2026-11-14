@@ -22,10 +22,10 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 13U
+#define SL_PATCH 14U
 
 #define SL_INBOUND_CAP 128U
-#define SL_OUTBOUND_CAP 8U
+#define SL_OUTBOUND_CAP 24U
 
 static pthread_t worker, dispatcher, show_timer, notice_listener;
 static atomic_int stopping=ATOMIC_VAR_INIT(0);
