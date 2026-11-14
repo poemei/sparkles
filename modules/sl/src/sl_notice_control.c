@@ -362,6 +362,12 @@ static void respond(int fd,const char *op,const char *body)
     "\"publication_confirmed\":false}",
     queued==destinations.count && queued>0U?"queued":
     queued?"partial":"failed",queued,destinations.count);
+  /* Accept a later distinct manual campaign immediately. Retain the last
+   * request identifier to reject accidental duplicate HTTP retries. */
+  pthread_mutex_lock(&state.lock);
+  if(state.phase==NOTICE_QUEUED||state.phase==NOTICE_FAILED)
+    state.phase=NOTICE_IDLE;
+  pthread_mutex_unlock(&state.lock);
   send_json(fd,queued==destinations.count && queued>0U?200:503,reply);
   return;
  }
