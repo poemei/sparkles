@@ -8,7 +8,7 @@ typedef struct {
     char account[128]; /* simulator-verified private IM speaker */
     char group[64];    /* operator-maintained group name, not UUID */
     char subject[65];
-    char body[449];
+    char body[511];
 } sparkles_sl_notice_send_request_t;
 typedef struct {
     unsigned int queued; /* only enqueue, not publish/deliver */
