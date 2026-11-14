@@ -22,6 +22,7 @@ typedef struct {
     sparkles_sl_caps_worker_t *worker;
     char event_url[2048];
     char session_url[2048];
+    char member_url[2048];
     unsigned char joined[CAPS_SESSION_MAX][16];
     unsigned int joined_count;
     long long ack;
@@ -378,6 +379,101 @@ done:
     xmlFreeDoc(doc);
     return 0;
 }
+
+/* Require complete, matching GroupMemberData before declaring nonmembership.
+ * Paginated/truncated responses, mismatched group IDs and unavailable caps
+ * are UNKNOWN, never grounds for an invitation. */
+static int membership_response(caps_state_t *state,const char *body,
+                               size_t length,
+                               const sparkles_sl_membership_request_t *request)
+{
+    xmlDocPtr doc=NULL;
+    xmlNodePtr root,members,node;
+    char agent[37]={0},group[37]={0},count_text[32]={0};
+    char wanted_group[37],wanted_agent[37],wanted_visitor[37];
+    unsigned char scratch[16];
+    char *end=NULL;
+    long member_count;
+    unsigned int seen=0U;
+    int found=0,answer=-1;
+    sparkles_sl_uuid_format(request->group,wanted_group);
+    sparkles_sl_uuid_format(request->visitor,wanted_visitor);
+    memcpy(scratch,state->worker->agent,16U);
+    sparkles_sl_uuid_format(scratch,wanted_agent);
+    root=llsd_map(body,length,&doc);
+    if(!root)return -1;
+    if(!map_text(root,"agent_id",agent,sizeof agent) ||
+       !map_text(root,"group_id",group,sizeof group) ||
+       !map_text(root,"member_count",count_text,sizeof count_text) ||
+       strcmp(group,wanted_group)||strcmp(agent,wanted_agent))goto done;
+    errno=0;
+    member_count=strtol(count_text,&end,10);
+    if(errno||end==count_text||*end||member_count<0||
+       member_count>1000000L)goto done;
+    members=map_get(root,"members");
+    if(!members||xmlStrcmp(members->name,BAD_CAST "map"))goto done;
+    for(node=first_element(members);node;node=node->next) {
+        xmlChar *key;
+        xmlNodePtr value;
+        if(node->type!=XML_ELEMENT_NODE)continue;
+        if(xmlStrcmp(node->name,BAD_CAST "key"))goto done;
+        key=xmlNodeGetContent(node);
+        if(!key)goto done;
+        value=node->next;
+        while(value&&value->type!=XML_ELEMENT_NODE)value=value->next;
+        if(!value || xmlStrcmp(value->name,BAD_CAST "map") ||
+           !sparkles_sl_uuid_parse((const char *)key,scratch)) {
+            xmlFree(key);
+            goto done;
+        }
+        if(!strcmp((const char *)key,wanted_visitor))found=1;
+        xmlFree(key);
+        ++seen;
+        node=value;
+    }
+    if(found)answer=1;
+    else if((long)seen==member_count)answer=0;
+ done:
+    xmlFreeDoc(doc);
+    return answer;
+}
+static void poll_membership(caps_state_t *state,caps_body_t *response)
+{
+    sparkles_sl_membership_request_t request={0};
+    char group_uuid[37],post[256];
+    long status=0;
+    int result=-1,n;
+    sparkles_sl_caps_worker_t *worker=state->worker;
+    pthread_mutex_lock(worker->membership_lock);
+    if(!*worker->membership_count) {
+        pthread_mutex_unlock(worker->membership_lock);
+        return;
+    }
+    request=worker->membership_queue[*worker->membership_head];
+    *worker->membership_head=
+        (*worker->membership_head+1U)%SPARKLES_SL_MEMBER_QUEUE_MAX;
+    --*worker->membership_count;
+    pthread_mutex_unlock(worker->membership_lock);
+    if(valid_cap_url(state->member_url)) {
+        sparkles_sl_uuid_format(request.group,group_uuid);
+        n=snprintf(post,sizeof post,
+          "<llsd><map><key>group_id</key><uuid>%s</uuid></map></llsd>",
+          group_uuid);
+        if(n>0&&(size_t)n<sizeof post) {
+            status=caps_post(state,state->member_url,post,response,0);
+            if(status==200L&&!stopped(state))
+                result=membership_response(state,response->bytes,
+                                           response->length,&request);
+        }
+    }
+    if(stopped(state))return;
+    fprintf(stderr,
+      "[SL CAPS] group membership check: %s; invitation %s\\n",
+      result==1?"member":result==0?"confirmed nonmember":"unknown",
+      result==0?"eligible":"not requested");
+    if(worker->membership_result)
+        worker->membership_result(&request,result,worker->context);
+}
 static int negotiate(caps_state_t *state)
 {
     caps_body_t *response;
@@ -387,7 +483,8 @@ static int negotiate(caps_state_t *state)
     int okay=0;
     static const char request[]=
       "<llsd><array><string>EventQueueGet</string>"
-      "<string>ChatSessionRequest</string></array></llsd>";
+      "<string>ChatSessionRequest</string>"
+       "<string>GroupMemberData</string></array></llsd>";
     response=calloc(1,sizeof *response);
     if(!response)return 0;
     status=caps_post(state,state->worker->seed_url,request,response,0);
@@ -421,6 +518,10 @@ void *sparkles_sl_caps_run(void *argument)
         char request[256];
         long status;
         int n;
+        /* Membership work uses the same simulator capability session.
+         * Bounded to one lookup per iteration to preserve event polling. */
+        poll_membership(state,response);
+        if(stopped(state))break;
         if(state->has_ack)
             n=snprintf(request,sizeof request,
                 "<llsd><map><key>ack</key><integer>%lld</integer>"
