@@ -226,7 +226,7 @@ static int hud_object_authorized(const unsigned char sender[16],
     if(seen!=3U||!sparkles_sl_uuid_parse(object_text,object_id)||
        !sparkles_sl_uuid_parse(owner_text,owner_id)||
        memcmp(sender,object_id,16U))return 0;
-    memcpy(operator_uuid,owner_text,37U);
+    sparkles_sl_uuid_format(owner_id,operator_uuid);
     return 1;
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
