@@ -193,10 +193,14 @@ static stnlabz_module_result_t group_invite_auth_service(
     if(stmt)mysql_stmt_close(stmt);
     (void)pthread_mutex_unlock(&db_lock);
     if(!okay) {
+        fprintf(stderr,"[MARIADB] group invite registry query failed for group=%s; authorization denied\n",in->group_uuid);
         memset(out,0,sizeof *out);
         return STNLABZ_MODULE_ERR_INVALID_STATE;
     }
-    if(!out->allowed)return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    if(!out->allowed) {
+        fprintf(stderr,"[MARIADB] group invite not found as active chat-enabled sl_groups UUID=%s\n",in->group_uuid);
+        return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    }
     if(used)*used=sizeof *out;
     return STNLABZ_MODULE_OK;
 }
