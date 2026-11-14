@@ -64,15 +64,15 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
     MYSQL_ROW row;
     unsigned long long event_id=0ULL,group_id=0ULL;
     const char *kind=NULL;
-    char sql[256],title[160],venue[152],dj[104],when[20];
+    char sql[256],title[160],venue[152],when[20];
     int type,n;
     if(!connection||!out)return 0;
     memset(out,0,sizeof *out);
     if(mysql_query(connection,"START TRANSACTION"))return 0;
     /* Unit 1 is an IM reminder only. The operator's HUD owns
      * all opening and halftime group notices. */
-    for(type=SPARKLES_SHOW_CONFIRMATION;
-        type>=SPARKLES_SHOW_CONFIRMATION;--type) {
+    {
+        type=SPARKLES_SHOW_CONFIRMATION;
         if(mysql_query(connection,reminder_sql))goto rollback;
         res=mysql_store_result(connection);
         if(!res)goto rollback;
@@ -93,7 +93,6 @@ int sparkles_mariadb_show_claim(MYSQL *connection,
          * names fit the native IM limit and retain the full role line. */
         sanitize_text(title,100U,row[2]);
         sanitize_text(venue,100U,row[4]);
-        sanitize_text(dj,80U,row[5]);
         out->action.kind=(unsigned int)type;
         n=snprintf(out->action.message,sizeof out->action.message,
            "Hey Bish 💜 Your set at %s is coming up at %s (%s). "
