@@ -254,6 +254,8 @@ post()
 status()
 {
     say("Sparkles HUD v" + VERSION
+        + "\nHUD object UUID: " + (string)llGetKey()
+        + "\nHUD owner UUID: " + (string)llGetOwner()
         + "\nVenue: " + venue
         + "\nSet: " + active_set
         + "\nVenues loaded: " + (string)llGetListLength(aliases)
