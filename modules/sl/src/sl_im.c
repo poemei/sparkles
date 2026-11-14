@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "sl_im.h"
+#include <stdio.h>
 #include <string.h>
 
 static void u16le(unsigned char *p, unsigned int x)
@@ -196,12 +197,13 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
                             const unsigned char conversation[16],
                             uint32_t sequence, const char *sender_name,
                             const char *message,unsigned int dialog,
+                            const unsigned char *bucket,size_t bucketlen,
                             unsigned char *out, size_t cap, size_t *used)
 {
     size_t textlen, namelen, offset=10U, total;
     /* Viewer group/session packet uses the one-byte empty binary bucket.
      * The previous encoder sent a zero-length bucket for every dialog. */
-    const unsigned int bucketlen=dialog==0U?0U:1U;
+    if(bucketlen && !bucket)return 0;
     if (used) *used=0U;
     if (!session || !recipient || !conversation || !sender_name ||
         !message || !out || !used || !sequence ||
@@ -243,8 +245,10 @@ static int im_encode_dialog(const sparkles_sl_session_t *session,
     offset+=2U;
     memcpy(out+offset,message,textlen);
     offset+=textlen+1U;
-    u16le(out+offset,bucketlen);
-    offset+=2U+bucketlen; /* NUL binary bucket is already zero-filled. */
+    u16le(out+offset,(unsigned int)bucketlen);
+    offset+=2U;
+    if(bucketlen)memcpy(out+offset,bucket,bucketlen);
+    offset+=bucketlen;
     /* New template: EstateBlock.EstateID (4 bytes zero),
      * MetaData block count (1 byte zero). Already zero-filled. */
     offset+=5U;
@@ -260,7 +264,7 @@ int sparkles_sl_im_encode(const sparkles_sl_session_t *session,
                          size_t cap,size_t *used)
 {
     return im_encode_dialog(session,recipient,conversation,sequence,
-                            sender_name,message,0U,out,cap,used);
+                            sender_name,message,0U,NULL,0U,out,cap,used);
 }
 int sparkles_sl_group_start_encode(const sparkles_sl_session_t *session,
                                   const unsigned char group[16],
@@ -270,7 +274,7 @@ int sparkles_sl_group_start_encode(const sparkles_sl_session_t *session,
 {
     return im_encode_dialog(session,group,group,sequence,
                             sender_name,"",SPARKLES_SL_GROUP_START_DIALOG,
-                            output,capacity,used);
+                            (const unsigned char *)"\0",1U,output,capacity,used);
 }
 int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                              const unsigned char conversation[16],
@@ -280,7 +284,7 @@ int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
 {
     return im_encode_dialog(session,conversation,conversation,sequence,
                             sender_name,message,SPARKLES_SL_SESSION_SEND_DIALOG,
-                            out,cap,used);
+                            (const unsigned char *)"\0",1U,out,cap,used);
 }
 
 /* Follows viewer send_group_notice: dialog 32, group recipient,
@@ -312,5 +316,49 @@ int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
     memcpy(message+subject_len+1U,body,body_len);
     message[subject_len+body_len+1U]=0;
     return im_encode_dialog(session,group,group,sequence,sender_name,
-        message,SPARKLES_SL_GROUP_NOTICE_DIALOG,output,capacity,used);
+        message,SPARKLES_SL_GROUP_NOTICE_DIALOG,
+        (const unsigned char *)"\0",1U,output,capacity,used);
+}
+
+/* The viewer sends attached notice inventory as an LLSD XML binary bucket
+ * containing the actual inventory item UUID and its owner UUID. The caller
+ * must resolve a real inventory item, verify landmark type and permissions,
+ * and never invent item IDs from SLURLs or asset UUIDs. */
+int sparkles_sl_notice_landmark_encode(const sparkles_sl_session_t *session,
+                             const unsigned char group[16],
+                             uint32_t sequence,const char *sender_name,
+                             const char *subject,const char *body,
+                             const unsigned char item[16],
+                             unsigned char *output,size_t capacity,size_t *used)
+{
+    char message[512],item_id[37],owner_id[37],xml[320];
+    size_t subject_len,body_len,i;
+    int n;
+    if(used)*used=0U;
+    if(!session||!group||!sender_name||!subject||!body||!item||
+       !output||!used||!nonzero_uuid(item)||!nonzero_uuid(session->agent))
+        return 0;
+    subject_len=strnlen(subject,65U);
+    body_len=strnlen(body,449U);
+    if(!subject_len||subject_len>=65U||!body_len||body_len>=449U||
+       subject_len+body_len+1U>510U)return 0;
+    for(i=0U;i<subject_len;++i)
+        if(subject[i]=='|'||subject[i]=='\\r'||subject[i]=='\\n')return 0;
+    for(i=0U;i<body_len;++i)
+        if(body[i]=='|'||body[i]=='\\r')return 0;
+    memcpy(message,subject,subject_len);
+    message[subject_len]='|';
+    memcpy(message+subject_len+1U,body,body_len);
+    message[subject_len+body_len+1U]=0;
+    sparkles_sl_uuid_format(item,item_id);
+    sparkles_sl_uuid_format(session->agent,owner_id);
+    n=snprintf(xml,sizeof xml,
+       "<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><llsd><map>"
+       "<key>item_id</key><uuid>%s</uuid>"
+       "<key>owner_id</key><uuid>%s</uuid>"
+       "</map></llsd>",item_id,owner_id);
+    if(n<=0||(size_t)n>=sizeof xml)return 0;
+    return im_encode_dialog(session,group,group,sequence,sender_name,
+        message,SPARKLES_SL_GROUP_NOTICE_DIALOG,
+        (const unsigned char *)xml,(size_t)n,output,capacity,used);
 }
