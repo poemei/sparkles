@@ -37,9 +37,9 @@ const char *sparkles_sl_im_validation_name(sparkles_sl_im_validation_t result)
     default: return "unknown";
     }
 }
-sparkles_sl_im_validation_t sparkles_sl_im_validate(
-    const unsigned char *p, size_t n,
-    const unsigned char own_agent[16], sparkles_sl_private_im_t *im)
+static sparkles_sl_im_validation_t validate_incoming_im(
+    const unsigned char *p,size_t n,const unsigned char own_agent[16],
+    sparkles_sl_private_im_t *im,int object_dialog)
 {
     size_t pos=103U, name_size, message_size, bucket_size;
     sparkles_sl_private_im_t candidate;
@@ -62,7 +62,10 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
           nonzero_uuid(p+83U) &&
           memcmp(p+33U,p+83U,16U)==0))
         return SPARKLES_SL_IM_WRONG_RECIPIENT;
-    if (p[82U]!=0U && p[82U]!=SPARKLES_SL_SESSION_SEND_DIALOG)
+    if (object_dialog) {
+        if(p[82U]!=SPARKLES_SL_OBJECT_IM_DIALOG || p[32U]!=0U)
+            return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
+    } else if (p[82U]!=0U && p[82U]!=SPARKLES_SL_SESSION_SEND_DIALOG)
         return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
     if (p[82U]==0U && p[32U]!=0U)
         return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
@@ -71,7 +74,8 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
         return SPARKLES_SL_IM_UNSUPPORTED_DIALOG;
     memcpy(candidate.sender,p,16U);
     memcpy(candidate.conversation,p+83U,16U);
-    candidate.ambient=p[82U]==SPARKLES_SL_SESSION_SEND_DIALOG?2U:0U;
+    candidate.ambient=object_dialog?3U:
+        (p[82U]==SPARKLES_SL_SESSION_SEND_DIALOG?2U:0U);
     name_size=p[pos++];
     if (!name_size || name_size>sizeof candidate.name ||
         name_size>n-pos || p[pos+name_size-1U]!=0U ||
@@ -115,6 +119,18 @@ sparkles_sl_im_validation_t sparkles_sl_im_validate(
     if (pos!=n) return SPARKLES_SL_IM_TRAILING_DATA;
     *im=candidate;
     return SPARKLES_SL_IM_VALID;
+}
+sparkles_sl_im_validation_t sparkles_sl_im_validate(
+    const unsigned char *p,size_t n,const unsigned char own_agent[16],
+    sparkles_sl_private_im_t *im)
+{
+    return validate_incoming_im(p,n,own_agent,im,0);
+}
+int sparkles_sl_object_im_decode(const unsigned char *p,size_t n,
+                                const unsigned char own_agent[16],
+                                sparkles_sl_private_im_t *im)
+{
+    return validate_incoming_im(p,n,own_agent,im,1)==SPARKLES_SL_IM_VALID;
 }
 /* ChatFromSimulator Low 139: variable1 name, UUID source/owner,
  * source_type, chat_type, audible, vector3 position, variable2 text.
