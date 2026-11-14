@@ -287,9 +287,8 @@ int sparkles_sl_session_encode(const sparkles_sl_session_t *session,
                             (const unsigned char *)"\0",1U,out,cap,used);
 }
 
-/* Follows viewer send_group_notice: dialog 32, group recipient,
- * null IM ID and subject|message body with empty one-byte bucket.
- * Do not encode inventory attachments. */
+/* Attachment-free group notices retain the existing one-byte empty bucket.
+ * Inventory-backed notices use sparkles_sl_notice_landmark_encode below. */
 int sparkles_sl_notice_encode(const sparkles_sl_session_t *session,
                              const unsigned char group[16],
                              uint32_t sequence,const char *sender_name,
