@@ -468,7 +468,7 @@ static void poll_membership(caps_state_t *state,caps_body_t *response)
     }
     if(stopped(state))return;
     fprintf(stderr,
-      "[SL CAPS] group membership check: %s; invitation %s\\n",
+      "[SL CAPS] group membership check: %s; invitation %s\n",
       result==1?"member":result==0?"confirmed nonmember":"unknown",
       result==0?"eligible":"not requested");
     if(worker->membership_result)
