@@ -269,6 +269,7 @@ default
 {
     state_entry()
     {
+        llSetObjectName("Sparkles Marketing HUD");
         loadVenues();
         loadGroups();
         say("Sparkles Marketing HUD " + VERSION
