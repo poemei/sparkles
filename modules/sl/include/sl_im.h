@@ -26,7 +26,9 @@ typedef struct {
 } sparkles_sl_private_im_t;
 
 /* Official group-membership invitation, NOT chat-session invitation.
- * Only a zero-fee invite with well-formed 20-byte role/fee bucket qualifies. */
+ * Accept only free modern (20-byte fee/role) or free legacy (M0/O0)
+ * buckets; transaction/group UUIDs come from the authenticated packet.
+ * The decoder returns no authority to bypass registry validation. */
 typedef struct {
     unsigned char group[16];
     unsigned char transaction[16];
