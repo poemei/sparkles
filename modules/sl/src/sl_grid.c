@@ -291,6 +291,14 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 if (!present || !ingress) {
                     report("IM packet ignored: avatar session not ready");
                 } else {
+                    if(view.payload_size>82U &&
+                       view.payload[82U]==SPARKLES_SL_OBJECT_IM_DIALOG &&
+                       sparkles_sl_object_im_decode(view.payload,
+                           view.payload_size,login->circuit.agent,&im)) {
+                        if(ingress(&im,context))
+                            report("object-origin IM admitted to isolated HUD queue");
+                        continue;
+                    }
                     status=sparkles_sl_im_validate(view.payload,
                                    view.payload_size,login->circuit.agent,&im);
                     if (status==SPARKLES_SL_IM_VALID) {
