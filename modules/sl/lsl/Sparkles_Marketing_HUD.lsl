@@ -231,10 +231,12 @@ submit()
 }
 preview()
 {
+    integer count = llGetListLength(dispatch_names);
+    if (!dispatching) count = prepareGroups();
     say("SPARKLES MARKETING PREVIEW\nVenue: " + venue
         + "\nLandmark inventory name: " + landmark
         + "\nMarketing set: " + active_set
-        + "\nEnabled groups: " + (string)prepareGroups()
+        + "\nEnabled groups: " + (string)count
         + "\n\nTitle:\n" + title
         + "\n\nNotice:\n" + noticeBody());
 }
@@ -269,6 +271,11 @@ default
     listen(integer channel,string name,key speaker,string value)
     {
         if (speaker != llGetOwner()) return;
+        if (dispatching && channel == input_channel)
+        { say("Dispatch active. Editing disabled."); return; }
+        if (dispatching && channel == menu_channel &&
+            value != "Status" && value != "Preview")
+        { say("Dispatch active. Editing disabled."); return; }
         if (channel == input_channel)
         {
             integer mode = input_mode;
