@@ -1,4 +1,5 @@
 #include "sl_hud.h"
+#include "sl_wire.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
