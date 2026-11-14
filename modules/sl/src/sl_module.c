@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <strings.h>
 #include <string.h>
+#include <time.h>
 #include "stnlabz_abi/module.h"
 #include "sl_wire.h"
 #include "sl_grid.h"
@@ -22,7 +23,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 22U
+#define SL_PATCH 23U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -196,6 +197,68 @@ static int hud_simulator_identity(const sparkles_sl_private_im_t *im,
     sparkles_sl_uuid_format(im->sender,operator_uuid);
     return 1;
 }
+
+/* Public group-links signage: fixed response content, no arbitrary IM text
+ * or target-group selection from the sign. The simulator authenticates
+ * the object owner's UUID; the touching visitor UUID is supplied by LSL
+ * and cannot independently be proven by object IM. Rate-limit visitors
+ * before queuing outbound messages. This does not send group invitations:
+ * neither membership lookups nor outbound group invite protocol exist. */
+static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
+{
+    static unsigned char recent_visitors[64][16]={{0}};
+    static time_t recent_at[64]={0};
+    static size_t next_visitor=0U;
+    static const char *const sparkles_group=
+        "c7887707-b795-e925-72a4-dcec960380ce";
+    static const char *const team_group=
+        "553469c0-74e9-e50c-a2d3-4eaf7a6063bd";
+    sparkles_sl_group_links_request_t request={0};
+    sparkles_sl_im_reply_t action={0};
+    char owner_uuid[37]={0};
+    time_t now;
+    size_t i;
+    int n,queued=0;
+    if(!im||!hud_simulator_identity(im,owner_uuid)||
+       !sparkles_sl_group_links_parse(im->text,&request)) {
+        fprintf(stderr,"[SL LINKS] malformed object request rejected\\n");
+        return;
+    }
+    now=time(NULL);
+    for(i=0U;i<64U;++i)
+        if(!memcmp(recent_visitors[i],request.visitor,16U) &&
+           now!=((time_t)-1) && recent_at[i]!=0 &&
+           now>=recent_at[i] && now-recent_at[i]<30) {
+            fprintf(stderr,"[SL LINKS] duplicate visitor request suppressed\\n");
+            return;
+        }
+    n=snprintf(action.text,sizeof action.text,
+        "Hi %s 💜\\n\\n"
+        "Thank you for your interest in Sparkles Entertainment and Team Sparkles.\\n\\n"
+        "Sparkles Entertainment\\n"
+        "[secondlife:///app/group/%s/about Join Sparkles Entertainment]\\n\\n"
+        "Team Sparkles\\n"
+        "[secondlife:///app/group/%s/about Join Team Sparkles]\\n\\n"
+        "We look forward to seeing you at our events!",
+        request.display_name,sparkles_group,team_group);
+    if(n<=0||(size_t)n>=sizeof action.text)return;
+    memcpy(action.recipient,request.visitor,16U);
+    memcpy(action.conversation,request.visitor,16U);
+    pthread_mutex_lock(&qlock);
+    if(!atomic_load(&stopping)&&dispatcher_started&&
+       pthread_equal(pthread_self(),dispatcher)&&out_count<SL_OUTBOUND_CAP) {
+        outbound[out_tail]=action;
+        out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
+        ++out_count;
+        queued=1;
+        memcpy(recent_visitors[next_visitor],request.visitor,16U);
+        recent_at[next_visitor]=now;
+        next_visitor=(next_visitor+1U)%64U;
+    }
+    pthread_mutex_unlock(&qlock);
+    fprintf(stderr,"[SL LINKS] visitor links %s; IM delivery unverified\\n",
+            queued?"queued":"not queued");
+}
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
 {
     static char recent_requests[32][SPARKLES_SL_HUD_REQUEST_MAX]={{0}};
@@ -339,7 +402,10 @@ static void *dispatch_worker(void *unused)
         pthread_mutex_unlock(&qlock);
         if (!module_host || !module_host->invoke_service) continue;
         if(im.ambient==3U) {
-            dispatch_hud_im(&im);
+            if(!strncmp(im.text,"STNLINK1|",9U))
+                dispatch_group_links_im(&im);
+            else
+                dispatch_hud_im(&im);
             continue;
         }
         {
