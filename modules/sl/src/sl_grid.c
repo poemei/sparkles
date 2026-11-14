@@ -225,6 +225,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         sparkles_sl_im_ingress_fn ingress,
                         sparkles_sl_im_dequeue_fn dequeue,
                         sparkles_sl_presence_fn presence,
+                        sparkles_sl_group_invite_authorize_fn authorize_invite,
                         void *context)
 {
     struct sockaddr_in sim = {0};
@@ -283,6 +284,51 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
             if (view.message_frequency==2U &&
                 view.message_id==SPARKLES_SL_IM_MESSAGE_ID) {
                 sparkles_sl_private_im_t im;
+                /* Dialog 3 is an invite to join a GROUP, not dialog
+                 * 13-16 group-session control. Only zero-fee invites
+                 * from the simulator can reach the MariaDB registry gate. */
+                if(view.payload_size>82U &&
+                   view.payload[82U]==SPARKLES_SL_GROUP_INVITE_DIALOG) {
+                    sparkles_sl_group_invitation_t invite={0};
+                    size_t j,free_slot=SL_OUTSTANDING_IM;
+                    reliable_t *slot;
+                    size_t encoded=0U;
+                    if(!present || !authorize_invite ||
+                       !sparkles_sl_group_invitation_decode(view.payload,
+                           view.payload_size,login->circuit.agent,&invite)) {
+                        report("group membership invite ignored: session not ready or invalid/fee-bearing invitation");
+                        continue;
+                    }
+                    if(!authorize_invite(invite.group,context)) {
+                        report("group membership invite not authorized by MariaDB registry");
+                        continue;
+                    }
+                    for(j=0U;j<SL_OUTSTANDING_IM;++j)
+                        if(!outbound[j].pending) {
+                            free_slot=j;
+                            break;
+                        }
+                    if(free_slot==SL_OUTSTANDING_IM) {
+                        report("group invite acceptance deferred: reliable window full; invite not accepted");
+                        continue;
+                    }
+                    slot=&outbound[free_slot];
+                    if(!sparkles_sl_group_invitation_accept_encode(
+                           &login->circuit,invite.group,invite.transaction,
+                           next,login->avatar_name,slot->bytes,
+                           sizeof slot->bytes,&encoded) ||
+                       !send_packet(fd,slot->bytes,encoded)) {
+                        report("group invite acceptance encoding/send failed");
+                        continue;
+                    }
+                    slot->length=encoded;
+                    slot->sequence=next++;
+                    slot->attempts=0U;
+                    slot->sent_at=now;
+                    slot->pending=1;
+                    report("authorized free group invitation accepted via dialog 35; membership NOT yet confirmed");
+                    continue;
+                }
                 sparkles_sl_im_validation_t status;
                 report("ImprovedInstantMessage UDP packet received");
                 if (view.payload_size>82U &&
@@ -570,6 +616,7 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_dequeue_fn dequeue,
                           sparkles_sl_im_reset_fn reset,
                           sparkles_sl_presence_fn presence,
+                          sparkles_sl_group_invite_authorize_fn authorize_invite,
                           void *context)
 {
     while (!atomic_load(stop)) {
@@ -580,7 +627,7 @@ void sparkles_sl_grid_run(atomic_int *stop,
             report("grid login failed (credentials, protocol, or network); no avatar presence");
         } else {
             report("grid login response accepted; attempting simulator circuit");
-            (void)grid_session(&login,stop,ingress,dequeue,presence,context);
+            (void)grid_session(&login,stop,ingress,dequeue,presence,authorize_invite,context);
         }
         memset(&login,0,sizeof login);
         if (!atomic_load(stop)) pause_stop(stop,10000U);
