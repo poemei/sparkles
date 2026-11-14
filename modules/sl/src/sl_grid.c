@@ -226,6 +226,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         sparkles_sl_im_dequeue_fn dequeue,
                         sparkles_sl_presence_fn presence,
                         sparkles_sl_group_invite_authorize_fn authorize_invite,
+                        sparkles_sl_membership_result_fn membership_result,
                         void *context)
 {
     struct sockaddr_in sim = {0};
@@ -238,6 +239,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     unsigned char active_groups[64][16]={{0}};
     unsigned int active_group_count=0U;
     pthread_mutex_t group_lock=PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t membership_lock=PTHREAD_MUTEX_INITIALIZER;
+    sparkles_sl_membership_request_t memberships[SPARKLES_SL_MEMBER_QUEUE_MAX]={0};
+    unsigned int member_head=0U,member_tail=0U,member_count=0U;
     reliable_t outbound[SL_OUTSTANDING_IM]={0};
     uint32_t next=1U, recently_seen[128]={0};
     unsigned char ping=0U;
@@ -411,6 +415,12 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         caps.ingress=ingress;
                         caps.context=context;
                         caps.group_lock=&group_lock;
+                        caps.membership_lock=&membership_lock;
+                        caps.membership_queue=memberships;
+                        caps.membership_head=&member_head;
+                        caps.membership_tail=&member_tail;
+                        caps.membership_count=&member_count;
+                        caps.membership_result=membership_result;
                         caps.group_confirm_uuid=group_event_uuid;
                         caps.group_confirm_status=&group_event_status;
                         caps.shared_joined=active_groups;
@@ -488,6 +498,22 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     memset(&pending_action,0,sizeof pending_action);
                     response.start_group=0U;
                 } else if(!dequeue(&response,context))break;
+                if(response.membership_check) {
+                    if(!caps_started) {
+                        report("membership check unavailable: capability worker offline");
+                        continue;
+                    }
+                    pthread_mutex_lock(&membership_lock);
+                    if(member_count<SPARKLES_SL_MEMBER_QUEUE_MAX) {
+                        sparkles_sl_membership_request_t *job=&memberships[member_tail];
+                        memcpy(job->group,response.recipient,16U);
+                        memcpy(job->visitor,response.visitor,16U);
+                        member_tail=(member_tail+1U)%SPARKLES_SL_MEMBER_QUEUE_MAX;
+                        ++member_count;
+                    } else report("membership request queue full; no invitation");
+                    pthread_mutex_unlock(&membership_lock);
+                    continue;
+                }
                 if(response.start_group==1U) {
                     size_t start_size=0U,k;
                     int already_joined=0;
@@ -538,7 +564,11 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                         break;
                     }
                 }
-                if (!(response.nearby ?
+                if (!(response.invite_group ?
+                      sparkles_sl_group_invite_encode(&login->circuit,
+                          response.recipient,response.visitor,next,
+                          slot->bytes,sizeof slot->bytes,&used) :
+                      response.nearby ?
                       sparkles_sl_nearby_encode(&login->circuit,next,
                           response.text,slot->bytes,sizeof slot->bytes,&used) :
                       response.notice ?
@@ -553,14 +583,16 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                       sparkles_sl_im_encode(&login->circuit,response.recipient,
                           response.conversation,next,login->avatar_name,
                           response.text,slot->bytes,sizeof slot->bytes,&used))) {
-                    report(response.nearby?"nearby chat encoding rejected":
+                    report(response.invite_group?"group invite encoding rejected":
+                          response.nearby?"nearby chat encoding rejected":
                           response.notice?"group notice encoding rejected":
                           response.session_chat?"group session reply encoding rejected":
                                                 "private IM reply encoding rejected");
                     continue;
                 }
                 if (!send_packet(fd,slot->bytes,used)) {
-                    report(response.nearby?"nearby chat UDP send failed":
+                    report(response.invite_group?"group invite UDP send failed":
+                           response.nearby?"nearby chat UDP send failed":
                            response.notice?"group notice UDP send failed":
                            response.session_chat?"group session reply UDP send failed":
                                                  "private IM reply UDP send failed");
@@ -574,7 +606,9 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                 slot->session_chat=response.session_chat;
                 slot->nearby=response.nearby;
                 slot->notice=response.notice;
-                report(response.nearby?
+                report(response.invite_group?
+                    "group invite request sent; simulator invitation unconfirmed":
+                    response.nearby?
                     "nearby chat sent on channel zero; awaiting simulator acknowledgment":
                     response.notice?
                     "official group notice sent via UDP dialog 32; delivery NOT confirmed":
@@ -610,6 +644,7 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
     if(caps_started)atomic_store(&caps.session_stop,1);
     if(caps_started)(void)pthread_join(caps_thread,NULL);
     pthread_mutex_destroy(&group_lock);
+    pthread_mutex_destroy(&membership_lock);
     close(fd);
     if (presence)presence(0,context);
     if (present) report("simulator circuit closed; avatar presence lost");
@@ -621,6 +656,7 @@ void sparkles_sl_grid_run(atomic_int *stop,
                           sparkles_sl_im_reset_fn reset,
                           sparkles_sl_presence_fn presence,
                           sparkles_sl_group_invite_authorize_fn authorize_invite,
+                          sparkles_sl_membership_result_fn membership_result,
                           void *context)
 {
     while (!atomic_load(stop)) {
@@ -631,7 +667,8 @@ void sparkles_sl_grid_run(atomic_int *stop,
             report("grid login failed (credentials, protocol, or network); no avatar presence");
         } else {
             report("grid login response accepted; attempting simulator circuit");
-            (void)grid_session(&login,stop,ingress,dequeue,presence,authorize_invite,context);
+            (void)grid_session(&login,stop,ingress,dequeue,presence,
+                               authorize_invite,membership_result,context);
         }
         memset(&login,0,sizeof login);
         if (!atomic_load(stop)) pause_stop(stop,10000U);
