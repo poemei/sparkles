@@ -22,7 +22,7 @@
  * No IRC service ownership and no claimed SL identity from local IPC. */
 #define SL_MAJOR 0U
 #define SL_MINOR 3U
-#define SL_PATCH 19U
+#define SL_PATCH 20U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -575,6 +575,12 @@ static int authorize_group_membership_invite(const unsigned char group[16],
     if(!request.group_uuid[0])return 0;
     rc=module_host->invoke_service(SPARKLES_SL_GROUP_INVITE_AUTH_SERVICE,
          &request,sizeof request,&result,sizeof result,&used);
+    /* Explain precisely which registry gate failed. The group UUID is
+     * a public SL identifier; do not log credentials or invite message. */
+    if(rc!=STNLABZ_MODULE_OK || used!=sizeof result || result.allowed!=1U)
+        fprintf(stderr,
+            "[SL] group invite registry check denied: group=%s service_rc=%d response_bytes=%zu allowed=%u\n",
+            request.group_uuid,(int)rc,used,result.allowed);
     return rc==STNLABZ_MODULE_OK&&used==sizeof result&&result.allowed==1U;
 }
 static void *grid_worker(void *unused)
