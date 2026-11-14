@@ -16,7 +16,7 @@ typedef struct {
  * is simulator-attributed by the transport. */
 typedef struct {
     unsigned char visitor[16];
-    char display_name[96];
+    char display_name[128];
 } sparkles_sl_group_links_request_t;
 int sparkles_sl_group_links_parse(const char *message,
                                   sparkles_sl_group_links_request_t *out);
