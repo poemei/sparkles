@@ -46,6 +46,20 @@ int main(void)
             "STNCLUB1|abyss-2|Unknown%20Group|Title|Body|https%3A%2F%2Fmaps.secondlife.com%2Fsecondlife%2FWasteland%2F30%2F158%2F1507|",
             owner,&request));
     }
+    /* Short subjects may use the remaining simulator notice budget.
+     * A 470-byte original body was incorrectly rejected before v0.3.22. */
+    {
+        char extended[471],wire[1024];
+        memset(extended,'x',470U);
+        extended[470U]=0;
+        snprintf(wire,sizeof wire,
+            "STNCLUB1|abyss-3|The Abyss Club VIPs|DJ|%s|"
+            "https://maps.secondlife.com/secondlife/Wasteland/30/158/1507|",
+            extended);
+        assert(sparkles_sl_hud_parse(wire,owner,&request));
+        assert(strlen(request.notice.body)==470U);
+        assert(!strcmp(request.notice.body,extended));
+    }
     puts("SL native HUD parser regression: PASS");
     return 0;
 }
