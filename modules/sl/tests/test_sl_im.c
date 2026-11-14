@@ -316,6 +316,27 @@ int main(void)
         chat_data[55U]='e';
         assert(sparkles_sl_chat_decode(chat_data,chat_len,own,&im));
     }
+    /* InviteGroupRequest Low 349, Everyone role (null UUID). */
+    {
+        unsigned char group[16]={9U},visitor[16]={10U};
+        assert(sparkles_sl_group_invite_encode(&session,group,visitor,
+               70U,packet,sizeof packet,&used));
+        assert(used==91U);
+        assert(packet[0]==SPARKLES_SL_FLAG_RELIABLE &&
+               packet[6]==0xffU && packet[7]==0xffU &&
+               packet[8]==1U && packet[9]==0x5dU);
+        assert(!memcmp(packet+10U,session.agent,16U));
+        assert(!memcmp(packet+26U,session.session,16U));
+        assert(!memcmp(packet+42U,group,16U));
+        assert(packet[58U]==1U);
+        assert(!memcmp(packet+59U,visitor,16U));
+        assert(!memcmp(packet+75U,(unsigned char[16]){0},16U));
+        assert(!sparkles_sl_group_invite_encode(&session,
+               (unsigned char[16]){0},visitor,70U,
+               packet,sizeof packet,&used));
+        assert(!sparkles_sl_group_invite_encode(&session,
+               group,visitor,70U,packet,20U,&used));
+    }
     puts("SL private IM and nearby chat codec regression: PASS");
     return 0;
 }
