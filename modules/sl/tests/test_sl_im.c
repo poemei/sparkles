@@ -151,6 +151,35 @@ int main(void)
     assert(!memcmp(view.payload+83U,(unsigned char[16]){0},16U));
     assert(!strcmp((const char *)(view.payload+126U),
                    "Show starts soon|The River at 20:00"));
+    /* Attached notice uses the viewer-compatible LLSD inventory bucket. */
+    {
+        unsigned char item[16]={0x8aU,0x3bU,0x29U,0x41U};
+        const unsigned char *payload;
+        size_t pos,bucket_len;
+        char expected[256];
+        char item_id[37],owner_id[37];
+        sparkles_sl_uuid_format(item,item_id);
+        sparkles_sl_uuid_format(session.agent,owner_id);
+        assert(sparkles_sl_notice_landmark_encode(&session,conversation,56U,
+               "MsSparkles Resident","River","Join us at 20:00",item,
+               packet,sizeof packet,&used));
+        assert(sparkles_sl_packet_view(packet,used,decoded,sizeof decoded,&view));
+        payload=view.payload;
+        assert(payload[82U]==SPARKLES_SL_GROUP_NOTICE_DIALOG);
+        assert(!memcmp(payload+83U,(unsigned char[16]){0},16U));
+        pos=103U+(size_t)payload[103U];
+        pos+=2U+(size_t)payload[pos]+((size_t)payload[pos+1U]<<8U);
+        bucket_len=(size_t)payload[pos]|((size_t)payload[pos+1U]<<8U);
+        pos+=2U;
+        assert(bucket_len>80U && pos+bucket_len+5U==view.payload_size);
+        snprintf(expected,sizeof expected,"<uuid>%s</uuid>",item_id);
+        assert(strstr((const char *)payload+pos,expected)!=NULL);
+        snprintf(expected,sizeof expected,"<uuid>%s</uuid>",owner_id);
+        assert(strstr((const char *)payload+pos,expected)!=NULL);
+        assert(!sparkles_sl_notice_landmark_encode(&session,conversation,57U,
+               "MsSparkles Resident","River","Join us",(unsigned char[16]){0},
+               packet,sizeof packet,&used));
+    }
     assert(!sparkles_sl_notice_encode(&session,conversation,51U,
            "MsSparkles Resident","Bad|Subject","The River",
            packet,sizeof packet,&used));
