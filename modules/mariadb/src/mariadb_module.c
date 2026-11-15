@@ -747,6 +747,7 @@ static stnlabz_module_result_t check_service(
     unsigned long lens[2];
     char source[256];
     int n,ok=1,conflict=0;
+    const char *failed_stage=NULL;
     (void)ctx;
     if(used)*used=0U;
     if(!in||request_size!=sizeof *in||!out||response_size<sizeof *out||
@@ -785,20 +786,63 @@ static stnlabz_module_result_t check_service(
     bind[3].buffer_type=MYSQL_TYPE_LONGLONG;
     bind[3].buffer=&guest_id;bind[3].is_unsigned=1;
     (void)pthread_mutex_lock(&db_lock);
-    if(!db||mysql_ping(db)||
-       !sparkles_mariadb_participants_supported(db)||
-       !sparkles_mariadb_contact_id(db,in->account,&contact_id))ok=0;
+    if(!db) {
+        failed_stage="database unavailable";
+        ok=0;
+    } else if(mysql_ping(db)) {
+        failed_stage="database ping";
+        ok=0;
+    } else if(!sparkles_mariadb_participants_supported(db)) {
+        failed_stage="appointment_participants schema";
+        ok=0;
+    } else if(!sparkles_mariadb_contact_id(db,in->account,&contact_id)) {
+        failed_stage="calendar contact lookup";
+        ok=0;
+    }
     guest_id=contact_id;
-    if(ok && in->guest_name[0] &&
-       (!sparkles_mariadb_guest_id(db,in->guest_name,&guest_id)||
-        guest_id==contact_id))ok=0;
-    if(ok)stmt=mysql_stmt_init(db);
-    if(!stmt)ok=0;
-    if(ok&&mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))ok=0;
-    if(ok&&mysql_stmt_bind_param(stmt,bind))ok=0;
-    if(ok&&mysql_stmt_execute(stmt))ok=0;
-    if(ok&&mysql_stmt_store_result(stmt))ok=0;
+    if(ok && in->guest_name[0]) {
+        if(!sparkles_mariadb_guest_id(db,in->guest_name,&guest_id)) {
+            failed_stage="guest lookup";
+            ok=0;
+        } else if(guest_id==contact_id) {
+            failed_stage="guest matches creator";
+            ok=0;
+        }
+    }
+    if(ok) {
+        stmt=mysql_stmt_init(db);
+        if(!stmt) {
+            failed_stage="statement init";
+            ok=0;
+        }
+    }
+    if(ok && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql))) {
+        failed_stage="statement prepare";
+        ok=0;
+    }
+    if(ok && mysql_stmt_bind_param(stmt,bind)) {
+        failed_stage="bind parameters";
+        ok=0;
+    }
+    if(ok && mysql_stmt_execute(stmt)) {
+        failed_stage="statement execute";
+        ok=0;
+    }
+    if(ok && mysql_stmt_store_result(stmt)) {
+        failed_stage="store result";
+        ok=0;
+    }
     if(ok)conflict=mysql_stmt_num_rows(stmt)>0ULL;
+    if(!ok) {
+        fprintf(stderr,
+                "[MARIADB] calendar check failed: stage=%s "
+                "guest_supplied=%u stmt_errno=%u db_errno=%u "
+                "(identity and SQL values withheld)\n",
+                failed_stage?failed_stage:"unknown",
+                in->guest_name[0]?1U:0U,
+                stmt?mysql_stmt_errno(stmt):0U,
+                db?mysql_errno(db):0U);
+    }
     if(stmt)mysql_stmt_close(stmt);
     (void)pthread_mutex_unlock(&db_lock);
     out->status=ok?(conflict?SPARKLES_MARIADB_CHECK_CONFLICT:
