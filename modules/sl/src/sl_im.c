@@ -184,6 +184,19 @@ static sparkles_sl_im_validation_t validate_incoming_im(
     *im=candidate;
     return SPARKLES_SL_IM_VALID;
 }
+/* Second Life delivers some group membership removals as dialog-zero IMs.
+ * Discard only this specific simulator-notification form before Core routing.
+ * Do not derive a calendar request or reply from an ejection event. */
+int sparkles_sl_im_is_membership_notification(const sparkles_sl_private_im_t *im)
+{
+    static const char prefix[]="You have been ejected from '";
+    const char *end;
+    if(!im || im->ambient!=0U ||
+       strncmp(im->text,prefix,sizeof prefix-1U))return 0;
+    end=strchr(im->text+sizeof prefix-1U,'\'');
+    if(!end || end==im->text+sizeof prefix-1U)return 0;
+    return end[1]=='\0' || !strncmp(end+1," by ",4U);
+}
 sparkles_sl_im_validation_t sparkles_sl_im_validate(
     const unsigned char *p,size_t n,const unsigned char own_agent[16],
     sparkles_sl_private_im_t *im)
