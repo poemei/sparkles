@@ -356,6 +356,10 @@ static int grid_session(const sparkles_sl_login_reply_t *login,
                     status=sparkles_sl_im_validate(view.payload,
                                    view.payload_size,login->circuit.agent,&im);
                     if (status==SPARKLES_SL_IM_VALID) {
+                        if(sparkles_sl_im_is_membership_notification(&im)) {
+                            report("simulator group ejection notification ignored; no Core conversation");
+                            continue;
+                        }
                         if (ingress(&im,context))
                             report(im.ambient==2U?
                                    "session chat accepted into Core dispatch queue":
