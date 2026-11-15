@@ -337,6 +337,21 @@ int main(void)
         assert(!sparkles_sl_group_invite_encode(&session,
                group,visitor,70U,packet,20U,&used));
     }
+    /* Group ejection is a simulator notification, never conversation. */
+    memset(&im,0,sizeof im);
+    strcpy(im.text,"You have been ejected from 'The Abyss Club VIPs' by Owner.");
+    assert(sparkles_sl_im_is_membership_notification(&im));
+    strcpy(im.text,"You have been ejected from 'Team Sparkles' by Owner.");
+    assert(sparkles_sl_im_is_membership_notification(&im));
+    strcpy(im.text,"You have been ejected from 'Team Sparkles'");
+    assert(sparkles_sl_im_is_membership_notification(&im));
+    strcpy(im.text,"Please explain: You have been ejected from 'Team Sparkles'");
+    assert(!sparkles_sl_im_is_membership_notification(&im));
+    strcpy(im.text,"Hello");
+    assert(!sparkles_sl_im_is_membership_notification(&im));
+    strcpy(im.text,"You have been ejected from 'Team Sparkles' by Owner.");
+    im.ambient=2U;
+    assert(!sparkles_sl_im_is_membership_notification(&im));
     puts("SL private IM and nearby chat codec regression: PASS");
     return 0;
 }
