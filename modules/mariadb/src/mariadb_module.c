@@ -75,6 +75,7 @@ static stnlabz_module_result_t group_resolve_service(
     unsigned long arg_len[2],uuid_len=0U;
     char uuid[37]={0},account[40]={0};
     int okay=1,rc;
+    const char *failed_step="unknown";
     size_t name_len;
     (void)ctx;
     if(used)*used=0U;
@@ -103,27 +104,72 @@ static stnlabz_module_result_t group_resolve_service(
     field.buffer=uuid;field.buffer_length=sizeof uuid;
     field.length=&uuid_len;
     (void)pthread_mutex_lock(&db_lock);
-    if(!db||mysql_ping(db))okay=0;
-    if(okay)stmt=mysql_stmt_init(db);
-    if(!stmt)okay=0;
-    if(okay && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql)))okay=0;
-    if(okay && mysql_stmt_bind_param(stmt,args))okay=0;
-    if(okay && mysql_stmt_execute(stmt))okay=0;
-    if(okay && mysql_stmt_bind_result(stmt,&field))okay=0;
-    if(okay && mysql_stmt_store_result(stmt))okay=0;
+    if(!db) {
+        failed_step="database unavailable";
+        okay=0;
+    } else if(mysql_ping(db)) {
+        failed_step="database ping";
+        okay=0;
+    }
+    if(okay) {
+        stmt=mysql_stmt_init(db);
+        if(!stmt) {
+            failed_step="statement init";
+            okay=0;
+        }
+    }
+    if(okay && mysql_stmt_prepare(stmt,sql,(unsigned long)strlen(sql))) {
+        failed_step="statement prepare";
+        okay=0;
+    }
+    if(okay && mysql_stmt_bind_param(stmt,args)) {
+        failed_step="bind parameters";
+        okay=0;
+    }
+    if(okay && mysql_stmt_execute(stmt)) {
+        failed_step="statement execute";
+        okay=0;
+    }
+    if(okay && mysql_stmt_bind_result(stmt,&field)) {
+        failed_step="bind result";
+        okay=0;
+    }
+    if(okay && mysql_stmt_store_result(stmt)) {
+        failed_step="store result";
+        okay=0;
+    }
     if(okay && mysql_stmt_num_rows(stmt)==1ULL) {
         rc=mysql_stmt_fetch(stmt);
-        if(rc!=0 || uuid_len!=36UL)okay=0;
-        else {
+        if(rc!=0 || uuid_len!=36UL) {
+            failed_step="fetch group UUID";
+            okay=0;
+        } else {
             uuid[36]=0;
             if(snprintf(account,sizeof account,"sl:%s",uuid)!=(int)39 ||
-               !sparkles_mariadb_identity_parts(account,&platform,&identity))
+               !sparkles_mariadb_identity_parts(account,&platform,&identity)) {
+                failed_step="validate group UUID";
                 okay=0;
-            else {
+            } else {
                 memcpy(out->group_uuid,uuid,sizeof uuid);
                 out->matched=1U;
             }
         }
+    }
+    if(!okay) {
+        fprintf(stderr,
+                "[MARIADB] SL group resolve failed: stage=%s group=%s "
+                "notice=%u stmt_errno=%u stmt_error=%s db_errno=%u db_error=%s\n",
+                failed_step,in->group_name,in->notice,
+                stmt?mysql_stmt_errno(stmt):0U,
+                stmt?mysql_stmt_error(stmt):"none",
+                db?mysql_errno(db):0U,
+                db?mysql_error(db):"database unavailable");
+    } else if(!out->matched) {
+        fprintf(stderr,
+                "[MARIADB] SL group resolve denied: no unique enabled "
+                "authorized group, group=%s notice=%u account=%s rows=%llu\n",
+                in->group_name,in->notice,in->account,
+                stmt?(unsigned long long)mysql_stmt_num_rows(stmt):0ULL);
     }
     if(stmt)mysql_stmt_close(stmt);
     (void)pthread_mutex_unlock(&db_lock);
