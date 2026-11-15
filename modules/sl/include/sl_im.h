@@ -71,6 +71,8 @@ int sparkles_sl_chat_decode(const unsigned char *payload,size_t length,
 int sparkles_sl_object_im_decode(const unsigned char *payload,size_t length,
                                 const unsigned char own_agent[16],
                                 sparkles_sl_private_im_t *im);
+/* Simulator membership-removal notifications are not conversational input. */
+int sparkles_sl_im_is_membership_notification(const sparkles_sl_private_im_t *im);
 int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im);
