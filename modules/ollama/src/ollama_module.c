@@ -130,10 +130,13 @@ static int schedule_guest(const char *text,char name[64])
  * human description, never inferred from an arbitrary calendar title.
  * Strictly supports "host at VENUE with PERSON as my DJ" here; other
  * calendar events remain private until explicitly tagged by the operator. */
+/* Public shows record venue and DJ as roles, never calendar invitees.
+ * Accept "host at VENUE with NAME as my DJ" and the ordinary
+ * "host today at VENUE with DJ NAME [at HH:MM]" form. */
 static int show_details(const char *human,char venue[151],char dj[101])
 {
     char lower[701];
-    const char *at,*with,*role;
+    const char *at,*with,*role,*end;
     size_t i,n,vstart,vend,dstart,dend;
     if(!human||!venue||!dj)return 0;
     venue[0]=dj[0]=0;
@@ -145,19 +148,44 @@ static int show_details(const char *human,char venue[151],char dj[101])
     }
     lower[n]=0;
     at=strstr(lower,"host at ");
-    if(!at)return 0;
-    with=strstr(at+8U," with ");
+    if(at)at+=8U;
+    else {
+        at=strstr(lower,"host today at ");
+        if(!at)return 0;
+        at+=14U;
+    }
+    with=strstr(at," with ");
     if(!with)return 0;
-    role=strstr(with+6U," as my dj");
-    if(!role)return 0;
-    vstart=(size_t)(at-lower)+8U;
+    vstart=(size_t)(at-lower);
     vend=(size_t)(with-lower);
     dstart=(size_t)(with-lower)+6U;
-    dend=(size_t)(role-lower);
+    if(!strncmp(lower+dstart,"dj ",3U)) {
+        dstart+=3U;
+        end=lower+n;
+        /* Stop at an explicit time/date delimiter, not within the DJ name. */
+        for(role=lower+dstart;role+4U<lower+n;++role) {
+            if(!strncmp(role," at ",4U) &&
+               role[4U]>='0' && role[4U]<='9') {
+                end=role;
+                break;
+            }
+            if(!strncmp(role," on ",4U) &&
+               role[4U]>='0' && role[4U]<='9') {
+                end=role;
+                break;
+            }
+        }
+        dend=(size_t)(end-lower);
+    } else {
+        role=strstr(lower+dstart," as my dj");
+        if(!role)return 0;
+        dend=(size_t)(role-lower);
+    }
     while(vstart<vend&&human[vstart]==' ')++vstart;
     while(vend>vstart&&human[vend-1U]==' ')--vend;
     while(dstart<dend&&human[dstart]==' ')++dstart;
-    while(dend>dstart&&human[dend-1U]==' ')--dend;
+    while(dend>dstart&&(human[dend-1U]==' '||
+          human[dend-1U]=='.'||human[dend-1U]==','))--dend;
     if(vend<=vstart||vend-vstart>=151U||
        dend<=dstart||dend-dstart>=101U)return 0;
     for(i=vstart;i<vend;++i)
