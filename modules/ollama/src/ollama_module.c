@@ -82,6 +82,15 @@ static int schedule_guest(const char *text,char name[64])
         if(strncasecmp(p,"with ",5U))continue;
         p+=5U;
         while(*p==' ')++p;
+        /* "with DJ Ray Do Oh" identifies a performer by role, not an
+         * invited calendar guest. The DJ remains part of the show title;
+         * never look up or invite a contact on this wording alone. */
+        if(!strncasecmp(p,"DJ ",3U) && p[3U] &&
+           ((p[3U]>='A'&&p[3U]<='Z') ||
+            (p[3U]>='a'&&p[3U]<='z'))) {
+            name[0]=0;
+            return 0;
+        }
         for(j=0U;j<48U && p[j] &&
             ((p[j]>='A'&&p[j]<='Z')||(p[j]>='a'&&p[j]<='z')||
              p[j]=='-'||p[j]=='\'');++j)
