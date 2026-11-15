@@ -150,18 +150,29 @@ static stnlabz_module_result_t notice_send_service(
         !strcmp(active_private,in->account);
     generation=epoch;
     pthread_mutex_unlock(&qlock);
-    if(!permitted||!module_host||!module_host->invoke_service)
+    if(!permitted||!module_host||!module_host->invoke_service) {
+        fprintf(stderr,"[SL HUD] notice authorization denied before group lookup: "
+                       "dispatcher=%d host=%d group=%s account=%s\n",
+                permitted,module_host&&module_host->invoke_service?1:0,
+                in->group,in->account);
         return STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    }
     memcpy(lookup.account,in->account,strlen(in->account)+1U);
     memcpy(lookup.group_name,in->group,strlen(in->group)+1U);
     lookup.notice=1U;
     rc=module_host->invoke_service(SPARKLES_SL_GROUP_RESOLVE_SERVICE,
           &lookup,sizeof lookup,&found,sizeof found,&used);
     if(rc!=STNLABZ_MODULE_OK||used!=sizeof found||!found.matched||
-       !sparkles_sl_uuid_parse(found.group_uuid,action.recipient))
+       !sparkles_sl_uuid_parse(found.group_uuid,action.recipient)) {
+        fprintf(stderr,"[SL HUD] group lookup failed: group=%s account=%s "
+                       "service_rc=%d response_used=%zu expected=%zu "
+                       "matched=%u uuid=%s\n",
+                in->group,in->account,(int)rc,used,sizeof found,
+                found.matched,found.group_uuid);
         return rc==STNLABZ_MODULE_ERR_INVALID_STATE?
                STNLABZ_MODULE_ERR_INVALID_STATE:
                STNLABZ_MODULE_ERR_NOT_AUTHORIZED;
+    }
     memcpy(action.conversation,action.recipient,16U);
     memcpy(action.subject,in->subject,subject_len+1U);
     memcpy(action.text,in->body,body_len+1U);
@@ -177,7 +188,11 @@ static stnlabz_module_result_t notice_send_service(
         queued=1;
     }
     pthread_mutex_unlock(&qlock);
-    if(!queued)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(!queued) {
+        fprintf(stderr,"[SL HUD] outgoing notice queue refused: "
+                       "group=%s account=%s\n",in->group,in->account);
+        return STNLABZ_MODULE_ERR_INVALID_STATE;
+    }
     out->queued=1U;
     if(response_used)*response_used=sizeof *out;
     return STNLABZ_MODULE_OK;
@@ -347,10 +362,12 @@ static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
     memset(active_private,0,sizeof active_private);
     pthread_mutex_unlock(&qlock);
     fprintf(stderr,
-        "[SL HUD] simulator-attributed object request %s: %s; publication unverified\n",
+        "[SL HUD] simulator-attributed object request %s: %s "
+        "(service_rc=%d response_used=%zu queued=%u); publication unverified\n",
         request.request_id,
         rc==STNLABZ_MODULE_OK&&used==sizeof response&&response.queued?
-        "notice queued":"notice rejected/not queued");
+        "notice queued":"notice rejected/not queued",
+        (int)rc,used,response.queued);
 }
 /* Session chat is shared. Only an explicit address to Sparkles triggers
  * inference; all other session lines are recorded without replies. */
