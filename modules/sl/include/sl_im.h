@@ -73,6 +73,9 @@ int sparkles_sl_object_im_decode(const unsigned char *payload,size_t length,
                                 sparkles_sl_private_im_t *im);
 /* Simulator membership-removal notifications are not conversational input. */
 int sparkles_sl_im_is_membership_notification(const sparkles_sl_private_im_t *im);
+/* Nearby observations are always recorded, but only direct address may
+ * request a spoken response. This guard does not apply to private IMs. */
+int sparkles_sl_nearby_addressed(const char *text);
 int sparkles_sl_im_decode(const unsigned char *payload, size_t length,
                          const unsigned char own_agent[16],
                          sparkles_sl_private_im_t *im);
