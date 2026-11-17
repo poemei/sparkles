@@ -352,6 +352,19 @@ int main(void)
     strcpy(im.text,"You have been ejected from 'Team Sparkles' by Owner.");
     im.ambient=2U;
     assert(!sparkles_sl_im_is_membership_notification(&im));
+    /* Promotional gestures and unrelated speech are observations,
+     * not requests for Sparkles to speak. */
+    assert(!sparkles_sl_nearby_addressed("~~ Stay up to date with the The Mosh Pit ~~"));
+    assert(!sparkles_sl_nearby_addressed("Discord"));
+    assert(!sparkles_sl_nearby_addressed("VIP Group"));
+    assert(!sparkles_sl_nearby_addressed("girlie I know im testing gestures for a new job"));
+    assert(!sparkles_sl_nearby_addressed("The Sparkles Entertainment group is here"));
+    assert(!sparkles_sl_nearby_addressed("SparklesEntertainment is a group"));
+    assert(sparkles_sl_nearby_addressed("Sparkles, what do you think?"));
+    assert(sparkles_sl_nearby_addressed("hey Sparkles!"));
+    assert(sparkles_sl_nearby_addressed("Hi Sparkles, can you hear me?"));
+    assert(sparkles_sl_nearby_addressed("  sparkles: hello"));
+    assert(!sparkles_sl_nearby_addressed(NULL));
     puts("SL private IM and nearby chat codec regression: PASS");
     return 0;
 }
