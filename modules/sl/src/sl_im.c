@@ -187,6 +187,36 @@ static sparkles_sl_im_validation_t validate_incoming_im(
 /* Second Life delivers some group membership removals as dialog-zero IMs.
  * Discard only this specific simulator-notification form before Core routing.
  * Do not derive a calendar request or reply from an ejection event. */
+/* Only directly addressed local chat can request a spoken response.
+ * This is an ingress gate, not a conversational script or reply generator.
+ * Observations remain available to Core without triggering inference. */
+int sparkles_sl_nearby_addressed(const char *text)
+{
+    const char *p=text;
+    static const char name[]="sparkles";
+    size_t i;
+    if(!p)return 0;
+    while(*p==' ' || *p=='\t')++p;
+    if((p[0]=='h'||p[0]=='H') &&
+       (p[1]=='i'||p[1]=='I') && p[2]==' ')p+=3;
+    else if((p[0]=='h'||p[0]=='H') &&
+            (p[1]=='e'||p[1]=='E') &&
+            (p[2]=='y'||p[2]=='Y') && p[3]==' ')p+=4;
+    while(*p==' ')++p;
+    for(i=0U;i<sizeof name-1U;++i) {
+        unsigned char c=(unsigned char)p[i];
+        if(!c)return 0;
+        if(c>='A' && c<='Z')c=(unsigned char)(c+('a'-'A'));
+        if(c!=(unsigned char)name[i])return 0;
+    }
+    return p[sizeof name-1U]=='\0' ||
+           p[sizeof name-1U]==' ' ||
+           p[sizeof name-1U]==',' ||
+           p[sizeof name-1U]==':' ||
+           p[sizeof name-1U]=='!' ||
+           p[sizeof name-1U]=='?' ||
+           p[sizeof name-1U]=='.';
+}
 int sparkles_sl_im_is_membership_notification(const sparkles_sl_private_im_t *im)
 {
     static const char prefix[]="You have been ejected from '";
