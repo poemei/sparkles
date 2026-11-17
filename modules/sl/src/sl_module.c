@@ -543,7 +543,11 @@ static void *dispatch_worker(void *unused)
         }
         /* Public channels never execute slash commands or private tools.
          * Session chat retains its existing explicit-address boundary. */
-        if((im.ambient==1U && im.text[0]=='/') ||
+        /* Observe ordinary nearby speech, but do not send unsolicited
+         * replies to gestures or overheard conversations. Direct address
+         * is required before consuming an Ollama inference slot. */
+        if((im.ambient==1U &&
+            (im.text[0]=='/' || !sparkles_sl_nearby_addressed(im.text))) ||
            (im.ambient==2U && (im.text[0]=='/' ||
                                 !session_addressed(im.text))))continue;
         if(im.ambient==0U) {
