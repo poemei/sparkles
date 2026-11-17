@@ -21,9 +21,12 @@
  * A module start means only that the worker started; grid login and avatar
  * presence require distinct, simulator-observed protocol milestones.
  * No IRC service ownership and no claimed SL identity from local IPC. */
+/* Advance the module descriptor for hotload admission. The prior
+ * 0.3.24 descriptor predates STN-LABZ revision rollover policy;
+ * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
-#define SL_MINOR 3U
-#define SL_PATCH 24U
+#define SL_MINOR 4U
+#define SL_PATCH 0U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
