@@ -1009,4 +1009,147 @@ GitHub commit, compilation, in-world observation, actual publication,
 and operator acceptance are distinct. The operator directs future
 engineering; await a specific new request before additional work.
 
-END OF SPARKLES CONTEXT — 2026-11-13 (America/Los_Angeles)
+======================================================================
+24. 2026-11-14 TO 2026-11-15 — LIVE NOTICES AND CALENDAR CORRECTIONS
+======================================================================
+This later evidence supersedes the older snapshot where it conflicts.
+
+HUD OPERATOR SETTINGS / RESULTS:
+- Operator reported approved_groups.cfg group sets "all" and "events"
+  selecting Sparkles Entertainment and Poe's Peeps enabled, with Team
+  Sparkles and The Abyss Club VIPs disabled. The two sets were
+  functionally equivalent at this time; do not assume changing between
+  them fixes a posting error.
+- Native SL and MariaDB source diagnostics around group notice handling
+  were committed at 755e9fcc9746136b1c6dcf398a7049ddf64728b8
+  and fbc52fa7db0b4dc6970a84d8251368feaa42162b.
+- Operator confirmed a real official notice delivered to Sparkles
+  Entertainment and Poe's Peeps, including the New Elderglen Woods ride
+  footer and Sparkles Entertainment signature. Do not claim delivery
+  to other groups without separate evidence.
+- For the 2026-11-15 16:00-18:00 The River show with DJ Ray Do Oh,
+  operator reported BOTH opening and halftime notices sent successfully.
+  This is live operator evidence for that show, not a claim of universal
+  scheduled-delivery reliability. Preserve the functioning Notices HUD
+  and existing selected groups. Do not initiate unnecessary patches.
+
+CALENDAR NATURAL-LANGUAGE CORRECTION:
+- The phrase "with DJ Ray Do Oh" was mistakenly treated as a guest
+  invitee, causing a guest lookup failure. Ollama scheduling correction
+  committed a171b358a16cef537cbe301ee241dacc061277f5, and natural
+  host/show expression correction 0d7a46bc992e1ece22a6f594440e3e896eab70a7.
+- At 2026-11-15 13:47-13:49 PST, operator asked Sparkles to host
+  The River with DJ Ray Do Oh 16:00-18:00, confirmed the extracted
+  details, and Sparkles replied that the show was saved and registered
+  for timed notices. Save is observed through Sparkles' reply, not a
+  separately verified SQL SELECT.
+- Future host/DJ counterparty IM confirmation and club-management
+  escalation were discussed as potential features only; not authorized
+  for implementation.
+
+======================================================================
+25. 2026-11-15 — SECOND LIFE GROUP EJECTION MISROUTED AS CONVERSATION
+======================================================================
+- Operator supplied MariaDB conversation_context rows 97 and 98:
+  2026-11-15 22:26:23 UTC: "You have been ejected from 'Team Sparkles'..."
+  2026-11-15 22:42:04 UTC: "You have been ejected from 'The Abyss Club VIPs'..."
+  Both recorded as OBSERVATION / SL / UNVERIFIED / PRIVATE / ACTIVE.
+- After the Abyss ejection, Sparkles spontaneously sent the operator
+  "Which appointment date? Reply YYYY-MM-DD or MM/DD/YYYY."
+  Journal around the event showed an ImprovedInstantMessage received,
+  private IM accepted into Core dispatch, Ollama generation, and UDP
+  private reply; SL CAPS event polling also returned HTTP 500. The
+  notification was system-originated, NOT a human conversational request.
+  The exact packet metadata linking all stages was not captured.
+- Root weakness: SL system ejection notifications can arrive as
+  dialog-zero IMs and were allowed into conversational routing.
+- SL source fix committed on GitHub: f327ebbc6c406de58471744a06ea7031183f8ca9
+  (header), e6989d7a0a0c77cc40b480338c09dd941aa4b531
+  (classification), 6e24b5632df230937abf5f74bed345c038947e91
+  (grid pre-dispatch suppression), and
+  bda0cd9f14fa36794111d8855add649563f50699 (tests).
+  This fix matches the observed "You have been ejected from '...'"
+  text format. Do not claim it recognizes every possible SL system event.
+- No proof of runtime acceptance for that exact ejection regression yet.
+  Previously provided guidance to restart the entire Sparkles service
+  for a module-only change was incorrect and was retracted.
+
+======================================================================
+26. 2026-11-16 EVENING PST — NEARBY GESTURE REPLIES, SOURCE FIX, HOTLOAD
+======================================================================
+OPERATOR OBSERVATION:
+- While testing gestures for a new job, operator emitted public nearby
+  messages "~~ Stay up to date with the The Mosh Pit ~~", "Discord",
+  "VIP Group". Roughly two minutes later Sparkles began unsolicited
+  replies: twice "I'm not a Discord bot.", "The Mosh Pit is a group,
+  not a person.", "I don't know who that is.", and other unrelated
+  replies. Even after the operator said "girlie I know im testing
+  gestures for a new job", she responded inappropriately.
+- Source inspection showed nearby chat was recorded as observation AND
+  always sent for conversational inference, with Ollama instructed to
+  choose literal SILENT when not addressed. The model-based silence
+  choice failed in the operator-observed case. SL dispatch is serial,
+  which could contribute to late responses, but exact queue timing
+  was not independently measured.
+- At operator instruction "go fix", a narrow direct-address gate was
+  added to native SL transport after observation persistence and before
+  Core routing, with regression assertions for the operator's gesture
+  phrases. Sources committed:
+    modules/sl/include/sl_im.h 43d08c4af78b8f6432509bde2838ef08c10cd82b
+    modules/sl/src/sl_im.c 6905fc6e151105f53ff196acc36f219df2a874ca
+    modules/sl/src/sl_module.c c2721fcbbd46627a75c0b563e1439c8a0ab824e2
+    modules/sl/tests/test_sl_im.c bcfc009850c32a5fb9cd3ce778cf0feff211b725
+  This currently requires the nearby utterance to BEGIN with
+  "Sparkles" (optionally "hi"/"hey" first), with punctuation/space
+  delimiter. It is intentionally stricter than naturally engaging with
+  all surrounding conversation. It does NOT handle continued turns
+  lacking direct name address; assess only with operator direction and
+  actual tests, not speculative rewrites. Private IM, calendar and
+  HUD workflows were not changed for this correction.
+- Operator's 2026-11-17 07:41:49Z hotload log:
+    MODULE HOTLOAD_DETECTED sequence=18 module=sl
+    MODULE HOTLOAD_DENIED sequence=19 module=sl
+    reason=version_not_incremented_or_regressed
+  The changed SL source still declared version 0.3.24. A follow-up
+  GitHub commit 631ede9c145c56461799e2281d196f16034100d5
+  advanced SL descriptor to 0.4.0 in modules/sl/src/sl_module.c.
+- Subsequently operator reported the SL module was restarted by
+  hotload and Sparkles logged back into Second Life. This is
+  operator-observed SL session recycling, NOT evidence that the entire
+  Sparkles Core process restarted. It is consistent with successful
+  module replacement, but an explicit HOTLOAD_ACTIVE line and live
+  behavior test were not provided in this conversation.
+- Operator logged out and went to bed before retesting gestures.
+  The actual suppression of unsolicited nearby replies remains
+  UNVERIFIED IN WORLD. No further source changes or tests requested.
+
+ENGINEERING / DEPLOYMENT CONTINUITY:
+- STN-Labz module HOTLOAD is integral to deployment. Rebuilding and
+  installing an updated shared object is NOT by itself proof of active
+  hotload. Every replacement must advance the module's descriptor
+  version under applicable version numbering policy, or the hotloader
+  may deny it. Preserve this distinction in instructions.
+- DO NOT reflexively instruct `systemctl restart sparkles.service` for
+  native module-only edits. The operator correctly called out repeated
+  unnecessary restart instructions. An SL-module hotload can disconnect
+  and re-login the avatar while the Core continues running.
+- Previously suggested `make -C modules/sl clean all test` and
+  module install commands; results were not supplied here, and no
+  compiler or test execution was performed by the assistant.
+- Only GitHub source edits and operator-reported runtime observations
+  above are known. Do not infer deployment acceptance from commits.
+
+======================================================================
+27. CURRENT HANDOFF / AUTHORIZATION — 2026-11-16 PST
+======================================================================
+AUTHORIZED THIS TURN: Update only the existing context.txt on GitHub's
+default branch to preserve continuity while the operator rests.
+No new source patches, deployment, login, service restarts, database
+actions, or testing are authorized by this context-file request.
+Latest concern to revisit only when requested: confirm the hotloaded
+SL module version and whether nearby gesture lines now remain silent
+without interfering with directly addressed conversation or notices.
+Respect operator direction, repository AGENTS.md, STN-Labz rules,
+hotload lifecycle, and evidence gates.
+
+END OF SPARKLES CONTEXT — 2026-11-16 (America/Los_Angeles)
