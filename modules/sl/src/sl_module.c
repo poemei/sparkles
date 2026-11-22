@@ -26,7 +26,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 0U
+#define SL_PATCH 1U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
