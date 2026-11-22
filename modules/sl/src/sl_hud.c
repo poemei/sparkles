@@ -148,13 +148,14 @@ rejected:
 #undef REJECT
 }
 
-/* A links sign requests the fixed Sparkles welcome message, not arbitrary
- * content or group destinations. Only two fields: visitor UUID and name. */
+/* The existing STNLINK1 request accepts visitor UUID and display name.
+ * An optional exact "|links" suffix selects the fixed group-links reply.
+ * The original two-field welcome request remains unchanged. */
 int sparkles_sl_group_links_parse(const char *message,
                                   sparkles_sl_group_links_request_t *out)
 {
     static const char prefix[]="STNLINK1|";
-    const char *start,*separator;
+    const char *start,*separator,*name_end;
     unsigned char zero[16]={0};
     char uuid[37]={0};
     size_t len,n;
@@ -164,12 +165,16 @@ int sparkles_sl_group_links_parse(const char *message,
     if(len>=512U||strncmp(message,prefix,sizeof prefix-1U))return 0;
     start=message+sizeof prefix-1U;
     separator=strchr(start,'|');
-    if(!separator||(size_t)(separator-start)!=36U||
-       strchr(separator+1,'|'))return 0;
+    if(!separator||(size_t)(separator-start)!=36U)return 0;
     memcpy(uuid,start,36U);
     if(!sparkles_sl_uuid_parse(uuid,out->visitor)||
        !memcmp(out->visitor,zero,16U))return 0;
-    n=strlen(separator+1);
+    name_end=strchr(separator+1,'|');
+    if(name_end) {
+        if(strcmp(name_end,"|links"))return 0;
+        out->group_links=1;
+    } else name_end=message+len;
+    n=(size_t)(name_end-(separator+1));
     if(n==0U || !field(separator+1,n,out->display_name,
                         sizeof out->display_name,0))return 0;
     return 1;
