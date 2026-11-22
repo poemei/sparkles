@@ -1,5 +1,32 @@
 # Sparkles Marketing HUD — native Second Life IM integration
 
+## Grid Distribution HUD (STNGRID1)
+
+The separate three-button Grid Distribution HUD uses the same
+`approved_groups.cfg` inventory notecard (the `all` set) and sends
+one simulator-attributed object IM per enabled destination, pacing
+submissions by the configured delay:
+
+```text
+STNGRID1|request_id|group_name|title|message
+```
+
+Each field is URL-escaped using LSL `llEscapeURL`. Unlike
+`STNHUD1`, the native parser **does not synthesize a location URL,
+landmark, "Your Ride Awaits" text, or signature**. The decoded
+message—including operator-authored SLURLs, UTF-8 characters, literal
+pipes, and newlines—is passed unchanged to the existing official
+group-notice service. The native code rejects malformed, empty, or
+oversized inputs without truncation. The combined subject, separator,
+and body must fit 510 bytes. The native receiver checks simulator-
+attributed object identity and uses the existing MariaDB group
+authorization before queueing any notice.
+
+Existing `STNHUD1` and `STNCLUB1` behavior and the existing
+Marketing/Notices HUD are unchanged. An object IM submission and
+native queueing are **not** proof of simulator publication.
+
+
 `Sparkles_Marketing_HUD.lsl` v1.5.0 uses **Second Life object-to-avatar
 instant messages**, not Corrade, PHP, Discord or an HTTPS endpoint.
 `sparkles-hud.cfg` is not needed.
