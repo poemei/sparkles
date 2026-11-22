@@ -216,12 +216,10 @@ static int hud_simulator_identity(const sparkles_sl_private_im_t *im,
     return 1;
 }
 
-/* Public group-links signage: fixed response content, no arbitrary IM text
- * or target-group selection from the sign. The simulator authenticates
- * the object owner's UUID; the touching visitor UUID is supplied by LSL
- * and cannot independently be proven by object IM. Rate-limit visitors
- * before queuing outbound messages. This does not send group invitations:
- * neither membership lookups nor outbound group invite protocol exist. */
+/* Public touch signage uses the existing STNLINK1 object request protocol.
+ * The simulator authenticates the sending object's owner; LSL supplies
+ * the visitor UUID, which cannot independently be proven by object IM.
+ * The fixed, operator-directed welcome is sent by Sparkles as private IM. */
 
 /* Called by the capability worker only after an explicit membership result.
  * No result, partial response, or currently-known member causes an invite. */
@@ -252,10 +250,6 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
     static unsigned char recent_visitors[64][16]={{0}};
     static time_t recent_at[64]={0};
     static size_t next_visitor=0U;
-    static const char *const sparkles_group=
-        "c7887707-b795-e925-72a4-dcec960380ce";
-    static const char *const team_group=
-        "553469c0-74e9-e50c-a2d3-4eaf7a6063bd";
     sparkles_sl_group_links_request_t request={0};
     sparkles_sl_im_reply_t action={0};
     char owner_uuid[37]={0};
@@ -264,7 +258,7 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
     int n,queued=0;
     if(!im||!hud_simulator_identity(im,owner_uuid)||
        !sparkles_sl_group_links_parse(im->text,&request)) {
-        fprintf(stderr,"[SL LINKS] malformed object request rejected\n");
+        fprintf(stderr,"[SL WELCOME] malformed object request rejected\\n");
         return;
     }
     now=time(NULL);
@@ -272,18 +266,17 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         if(!memcmp(recent_visitors[i],request.visitor,16U) &&
            now!=((time_t)-1) && recent_at[i]!=0 &&
            now>=recent_at[i] && now-recent_at[i]<30) {
-            fprintf(stderr,"[SL LINKS] duplicate visitor request suppressed\n");
+            fprintf(stderr,"[SL WELCOME] duplicate visitor request suppressed\\n");
             return;
         }
     n=snprintf(action.text,sizeof action.text,
-        "Hi %s 💜\n\n"
-        "Thank you for your interest in Sparkles Entertainment and Team Sparkles.\n\n"
-        "Sparkles Entertainment\n"
-        "[secondlife:///app/group/%s/about Join Sparkles Entertainment]\n\n"
-        "Team Sparkles\n"
-        "[secondlife:///app/group/%s/about Join Team Sparkles]\n\n"
-        "We look forward to seeing you at our events!",
-        request.display_name,sparkles_group,team_group);
+        "Hello! 💜\\n"
+        "Welcome to STN-Labz!\\n"
+        "I'm Sparkles, your Executive AI Assistant.\\n"
+        "I'm here to assist with Second Life business, communications, organization, and general questions.\\n"
+        "Would you like some assistance today?\\n"
+        "Simply reply to this IM and tell me what you need.\\n"
+        "~~ Sparkles AI | STN-Labz ~~");
     if(n<=0||(size_t)n>=sizeof action.text)return;
     memcpy(action.recipient,request.visitor,16U);
     memcpy(action.conversation,request.visitor,16U);
@@ -293,34 +286,13 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         outbound[out_tail]=action;
         out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
         ++out_count;
-        /* Only two fixed group UUIDs. Never accept group selection
-         * from the sign or inferred visitor identity. */
-        if(out_count+2U<=SL_OUTBOUND_CAP) {
-            static const char *const groups[2]={
-                "c7887707-b795-e925-72a4-dcec960380ce",
-                "553469c0-74e9-e50c-a2d3-4eaf7a6063bd"
-            };
-            size_t g;
-            for(g=0U;g<2U;++g) {
-                sparkles_sl_im_reply_t check={0};
-                (void)sparkles_sl_uuid_parse(groups[g],check.recipient);
-                memcpy(check.visitor,request.visitor,16U);
-                check.membership_check=1U;
-                outbound[out_tail]=check;
-                out_tail=(out_tail+1U)%SL_OUTBOUND_CAP;
-                ++out_count;
-            }
-        } else {
-            fprintf(stderr,"[SL LINKS] membership queue full; "
-                    "only welcome links queued\n");
-        }
         queued=1;
         memcpy(recent_visitors[next_visitor],request.visitor,16U);
         recent_at[next_visitor]=now;
         next_visitor=(next_visitor+1U)%64U;
     }
     pthread_mutex_unlock(&qlock);
-    fprintf(stderr,"[SL LINKS] visitor links %s; IM delivery unverified\n",
+    fprintf(stderr,"[SL WELCOME] visitor welcome %s; IM delivery unverified\\n",
             queued?"queued":"not queued");
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
