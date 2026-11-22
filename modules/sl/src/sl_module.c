@@ -26,7 +26,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 1U
+#define SL_PATCH 2U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -821,6 +821,23 @@ static stnlabz_module_result_t sl_qualify(
         CHECK(group_start_service(&req,sizeof req,&receipt,sizeof receipt,
                                   &receipt_used,NULL)==
               STNLABZ_MODULE_ERR_INVALID_ARGUMENT);
+    }
+
+    /* Qualify the actual native grid HUD parser before activation. */
+    {
+        sparkles_sl_hud_request_t req={0};
+        const char *owner="12345678-1234-1234-1234-123456789abc";
+        CHECK(sparkles_sl_hud_parse(
+            "STNGRID1|grid-1763776851-0|Sparkles%20Entertainment"
+            "|STN-Labz%20Test|Visit%0Ahttps%3A%2F%2Fmaps.secondlife.com"
+            "%2Fsecondlife%2FDongjak%2F214%2F230%2F52",owner,&req));
+        CHECK(!strcmp(req.notice.subject,"STN-Labz Test"));
+        CHECK(!strcmp(req.notice.body,
+            "Visit\nhttps://maps.secondlife.com/secondlife/Dongjak/214/230/52"));
+        CHECK(!strcmp(req.notice.group,"Sparkles Entertainment"));
+        CHECK(req.landmark[0]==0);
+        CHECK(!sparkles_sl_hud_parse(
+            "STNGRID1|grid-1|Group|Title|Body|extra",owner,&req));
     }
 
     /* Object HUD commands cannot claim authority through their text:
