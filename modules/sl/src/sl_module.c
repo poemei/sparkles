@@ -26,7 +26,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 4U
+#define SL_PATCH 5U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -249,6 +249,7 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
 {
     static unsigned char recent_visitors[64][16]={{0}};
     static time_t recent_at[64]={0};
+    static int recent_modes[64]={0};
     static size_t next_visitor=0U;
     sparkles_sl_group_links_request_t request={0};
     sparkles_sl_im_reply_t action={0};
@@ -258,25 +259,38 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
     int n,queued=0;
     if(!im||!hud_simulator_identity(im,owner_uuid)||
        !sparkles_sl_group_links_parse(im->text,&request)) {
-        fprintf(stderr,"[SL WELCOME] malformed object request rejected\n");
+        fprintf(stderr,"[SL SIGN] malformed object request rejected\n");
         return;
     }
     now=time(NULL);
     for(i=0U;i<64U;++i)
         if(!memcmp(recent_visitors[i],request.visitor,16U) &&
+           recent_modes[i]==request.group_links &&
            now!=((time_t)-1) && recent_at[i]!=0 &&
            now>=recent_at[i] && now-recent_at[i]<30) {
-            fprintf(stderr,"[SL WELCOME] duplicate visitor request suppressed\n");
+            fprintf(stderr,"[SL SIGN] duplicate visitor request suppressed\n");
             return;
         }
-    n=snprintf(action.text,sizeof action.text,
-        "Hello! 💜\n\n"
-        "Welcome to STN-Labz!\n"
-        "I'm Sparkles, your Executive AI Assistant.\n\n"
-        "I'm here to assist with Second Life business, communications, organization, and general questions.\n\n"
-        "Would you like some assistance today?\n"
-        "Simply reply to this IM and tell me what you need.\n\n"
-        "~~ Sparkles AI | STN-Labz ~~");
+    if(request.group_links) {
+        n=snprintf(action.text,sizeof action.text,
+            "Hi %s 💜\n\n"
+            "Thank you for your interest in Sparkles Entertainment and Team Sparkles.\n\n"
+            "Sparkles Entertainment\n"
+            "[secondlife:///app/group/c7887707-b795-e925-72a4-dcec960380ce/about Join Sparkles Entertainment]\n\n"
+            "Team Sparkles\n"
+            "[secondlife:///app/group/553469c0-74e9-e50c-a2d3-4eaf7a6063bd/about Join Team Sparkles]\n\n"
+            "We look forward to seeing you at our events!",
+            request.display_name);
+    } else {
+        n=snprintf(action.text,sizeof action.text,
+            "Hello! 💜\n\n"
+            "Welcome to STN-Labz!\n"
+            "I'm Sparkles, your Executive AI Assistant.\n\n"
+            "I'm here to assist with Second Life business, communications, organization, and general questions.\n\n"
+            "Would you like some assistance today?\n"
+            "Simply reply to this IM and tell me what you need.\n\n"
+            "~~ Sparkles AI | STN-Labz ~~");
+        }
     if(n<=0||(size_t)n>=sizeof action.text)return;
     memcpy(action.recipient,request.visitor,16U);
     memcpy(action.conversation,request.visitor,16U);
@@ -288,11 +302,13 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
         ++out_count;
         queued=1;
         memcpy(recent_visitors[next_visitor],request.visitor,16U);
+        recent_modes[next_visitor]=request.group_links;
         recent_at[next_visitor]=now;
         next_visitor=(next_visitor+1U)%64U;
     }
     pthread_mutex_unlock(&qlock);
-    fprintf(stderr,"[SL WELCOME] visitor welcome %s; IM delivery unverified\n",
+    fprintf(stderr,"[SL SIGN] visitor %s %s; IM delivery unverified\n",
+            request.group_links?"group links":"welcome",
             queued?"queued":"not queued");
 }
 static void dispatch_hud_im(const sparkles_sl_private_im_t *im)
