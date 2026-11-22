@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot updated: 2026-11-13 late evening PST (America/Los_Angeles); original handoff 2026-11-10
+Snapshot updated: 2026-11-22 PST (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -1152,4 +1152,146 @@ without interfering with directly addressed conversation or notices.
 Respect operator direction, repository AGENTS.md, STN-Labz rules,
 hotload lifecycle, and evidence gates.
 
-END OF SPARKLES CONTEXT — 2026-11-16 (America/Los_Angeles)
+======================================================================
+28. 2026-11-22 — OPERATOR DIRECTION: IRC EXCLUDED FROM SPARKLES WORK
+======================================================================
+The operator explicitly said: "IRC is out of the Question".
+This is the later governing direction for the current Sparkles development
+scope, superseding historical passages that describe IRC as a temporary
+target for further implementation. Do not propose IRC transport work,
+integrations, dependencies, tests, or conversational refinements as a
+requirement for this Second Life work. Preserve the old historical
+records as history; do not infer permission to delete historical source.
+
+======================================================================
+29. 2026-11-22 — SPARKLES SECOND LIFE TOUCH-SIGN PROJECT
+======================================================================
+OPERATOR-DEFINED BEHAVIOR:
+Two distinct in-world touch signs request messages from Sparkles herself.
+The LSL object obtains touching avatar UUID and display name, sends an
+object-origin IM to the Sparkles avatar, and Sparkles' native SL transport
+issues a private visitor IM. The sign must not impersonate Sparkles.
+The LSL files are proprietary and NOT to be posted in GitHub.
+
+1. EXECUTIVE AI ASSISTANT SIGN:
+The requested welcome IM text is exactly:
+
+Hello! 💜
+
+Welcome to STN-Labz!
+I'm Sparkles, your Executive AI Assistant.
+
+I'm here to assist with Second Life business, communications, organization, and general questions.
+
+Would you like some assistance today?
+Simply reply to this IM and tell me what you need.
+
+~~ Sparkles AI | STN-Labz ~~
+
+The early operator-observed transcript (14:40:18 in SL chat) showed
+Sparkles delivering the wording before paragraph spacing was requested.
+The operator subsequently requested professional blank-line formatting,
+and native SL source v0.4.4 was committed with the breaks above.
+There is no separate pasted post-formatting transcript in this session.
+
+Executive Welcome Sign LSL v2.2 sends the EXISTING protocol:
+  STNLINK1|visitor_uuid|escaped_display_name
+The native module generates/sends the welcome. It is not a new command.
+
+2. SPARKLES ENTERTAINMENT / TEAM SPARKLES GROUP SIGN:
+The second sign is specifically for introducing these TWO groups and
+their clickable group-detail links, NOT for repeating the Executive
+Assistant welcome. It sends the same STNLINK1 command with a final
+intent field:
+  STNLINK1|visitor_uuid|escaped_display_name|links
+The fixed native response reads:
+
+Hi [visitor display name] 💜
+
+Thank you for your interest in Sparkles Entertainment and Team Sparkles.
+
+Sparkles Entertainment
+[secondlife:///app/group/c7887707-b795-e925-72a4-dcec960380ce/about Join Sparkles Entertainment]
+
+Team Sparkles
+[secondlife:///app/group/553469c0-74e9-e50c-a2d3-4eaf7a6063bd/about Join Team Sparkles]
+
+We look forward to seeing you at our events!
+
+The proprietary Entertainment/Team Sparkles group sign LSL is v2.3.
+It retains a 30-second visitor cooldown and bounded 64-record history.
+The operator initially reported that this sign produced the same
+Executive Assistant welcome, then reported "fixed thank you" after
+the revised LSL and native intent handling were supplied.
+Treat that as operator-confirmed functional correction, not as a
+pasted exact link-delivery transcript or universal SL acceptance.
+
+PROTOCOL / ARCHITECTURE DECISION:
+The operator expressly objected to creating a new command per
+conversation action. A proposed STNWELCOME1 prefix was rejected.
+The operative request stays STNLINK1, and an optional trailing
+"|links" intent field differentiates the group sign. A plain
+two-field request remains the executive welcome. Do not resurrect
+STNWELCOME1 or expand an ad hoc per-task command vocabulary.
+Sparkles is a language-enabled Executive AI Assistant. This fixed
+operator-requested sign messaging is not a mandate to hardcode
+arbitrary future conversational behavior. Preserve Core/router/
+module/transport boundaries and the shared ABI.
+
+SOURCE LINEAGE ON poemei/sparkles (DEFAULT BRANCH):
+- sl_module.c initial executive-welcome repurpose:
+  257e9cf36cd2badb49d35eedd6ddcc47b5c3df26
+  and newline escape fix 3d6178192c2d819e12146cf3754bfbd3c6c64aaa.
+- Hotload admission denied on a supplied 2026-11-22 log:
+  2026-11-22T22:37:19Z MODULE HOTLOAD_DETECTED module=sl
+  2026-11-22T22:37:19Z MODULE HOTLOAD_DENIED module=sl
+    reason=version_not_incremented_or_regressed
+  The unchanged descriptor was found at 0.4.2; source version
+  advanced to 0.4.3 by 4ef7d0ee73f1e8b700edb2672257bf68db3b8b20.
+- Welcome paragraph spacing and version 0.4.4:
+  f86a1b2d539cf6f330572a70d9d0cd4a9b603bba.
+- Restore separate group-links introduction without a new prefix.
+  The existing STNLINK1 parser now accepts optional "|links";
+  the native module distinguishes response intent, tracks
+  mode-specific 30-second duplicate suppression, and sends the
+  original two groups' links. Source sequence:
+  modules/sl/include/sl_hud.h
+    b4eb50099a823629e87f60909c38a58f0a05a5b0
+  modules/sl/src/sl_hud.c
+    c77fe605069363b282e1f900782fc09193835922
+  modules/sl/src/sl_module.c (SL version 0.4.5)
+    4c66594154a51bdffa4e8179edded87ce086abe0
+  modules/sl/tests/test_sl_hud.c
+    4c86d4b6171fae91962def2d8706d93774f96657
+- Supporting changelog updated 2026-11-22:
+  docs/CHANGELOG.md commit 219245b70ae51915084bfe8aaeb31084b3e522ae.
+
+VERIFICATION / LIMITS:
+- GitHub readback established SL source v0.4.5 and both native
+  response paths. No new native build, automated test execution,
+  final hotload-admission line, or separately captured final
+  group-link IM was supplied in this conversation.
+- Operator provided actual Executive Assistant welcome IM text and
+  later reported the Entertainment group sign corrected.
+- Correct source, active binary, runtime functionality, and broad
+  qualification are different evidence gates. Avoid unsupported
+  claims of verified deployment internals or automatic group joins.
+- Source did not add a new command, Core change, shared ABI change,
+  MariaDB schema change, Ollama change, or GitHub-published LSL.
+
+======================================================================
+30. CURRENT HANDOFF / AUTHORIZATION — 2026-11-22 PST
+======================================================================
+AUTHORIZED IN THIS REQUEST: Update existing context.txt and the
+existing docs/CHANGELOG.md for accurate continuity and change history.
+This authorizes no further application source changes, new protocols,
+LSL publication, deployment, compilation, runtime operations, or
+additional features.
+
+Read AGENTS.md, README.md, docs/ROADMAP.md, and this updated context
+before subsequent development. Use GitHub directly under operator
+direction; do not redirect development into ChatGPT Work. The operator
+controls the next step. Distinguish source, test, installation, live
+operator observation, and acceptance.
+
+END OF SPARKLES CONTEXT — 2026-11-22 (America/Los_Angeles)
