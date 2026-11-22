@@ -118,6 +118,15 @@ int main(void)
         sparkles_sl_uuid_format(link.visitor,uuid);
         assert(!strcmp(uuid,"12345678-1234-1234-1234-123456789abc"));
         assert(!strcmp(link.display_name,"Mochi Resident"));
+        assert(!link.group_links);
+        assert(sparkles_sl_group_links_parse(
+            "STNLINK1|12345678-1234-1234-1234-123456789abc|Mochi%20Resident|links",
+            &link));
+        assert(link.group_links==1);
+        assert(!strcmp(link.display_name,"Mochi Resident"));
+        assert(!sparkles_sl_group_links_parse(
+            "STNLINK1|12345678-1234-1234-1234-123456789abc|Mochi|other",
+            &link));
         assert(!sparkles_sl_group_links_parse(
             "STNLINK1|00000000-0000-0000-0000-000000000000|Mochi",&link));
         assert(!sparkles_sl_group_links_parse(
