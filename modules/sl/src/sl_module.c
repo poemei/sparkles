@@ -26,7 +26,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 3U
+#define SL_PATCH 4U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -270,12 +270,12 @@ static void dispatch_group_links_im(const sparkles_sl_private_im_t *im)
             return;
         }
     n=snprintf(action.text,sizeof action.text,
-        "Hello! 💜\n"
+        "Hello! 💜\n\n"
         "Welcome to STN-Labz!\n"
-        "I'm Sparkles, your Executive AI Assistant.\n"
-        "I'm here to assist with Second Life business, communications, organization, and general questions.\n"
+        "I'm Sparkles, your Executive AI Assistant.\n\n"
+        "I'm here to assist with Second Life business, communications, organization, and general questions.\n\n"
         "Would you like some assistance today?\n"
-        "Simply reply to this IM and tell me what you need.\n"
+        "Simply reply to this IM and tell me what you need.\n\n"
         "~~ Sparkles AI | STN-Labz ~~");
     if(n<=0||(size_t)n>=sizeof action.text)return;
     memcpy(action.recipient,request.visitor,16U);
