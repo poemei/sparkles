@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "sl_hud.h"
 #include "sl_wire.h"
+#include "sl_im.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -52,12 +53,16 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
     const char *cursor;
     unsigned char check[16];
     int n;
+    const char *reason="invalid_arguments";
+    size_t diagnostic_len=0U;
+#define REJECT(why) do { reason=(why); goto rejected; } while(0)
     if(!message||!operator_uuid||!out||
        !sparkles_sl_uuid_parse(operator_uuid,check)||
-       !memcmp(check,owner,16U))return 0;
+       !memcmp(check,owner,16U))REJECT("invalid_operator_identity");
     memset(out,0,sizeof *out);
-    len=strnlen(message,1024U);
-    if(len>=1024U)return 0;
+    len=strnlen(message,SPARKLES_SL_IM_TEXT_MAX);
+    diagnostic_len=len;
+    if(len>=SPARKLES_SL_IM_TEXT_MAX)REJECT("encoded_command_too_long");
     if(!strncmp(message,grid_prefix,sizeof grid_prefix-1U)) {
         grid=1;
         prefix_len=sizeof grid_prefix-1U;
@@ -66,7 +71,8 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
         prefix_len=sizeof club_prefix-1U;
     } else if(!strncmp(message,legacy_prefix,sizeof legacy_prefix-1U)) {
         prefix_len=sizeof legacy_prefix-1U;
-    } else return 0;
+    } else REJECT("unknown_protocol_prefix");
+    if(!grid && len>=1024U)REJECT("legacy_command_too_long");
     cursor=message+prefix_len;
     /* STNGRID1 has four URL-escaped fields: ID, group, title, message.
      * Existing STNHUD1/STNCLUB1 retain their six-field wire contract. */
@@ -76,29 +82,32 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
             const char *end=i+1U==count?message+len:strchr(cursor,'|');
             if(!end||end<cursor||
                (i+1U==count&&memchr(cursor,'|',(size_t)(end-cursor))))
-                return 0;
+                REJECT("incorrect_field_count");
             sizes[i]=(size_t)(end-cursor);
-            if(i+1U<count&&!sizes[i])return 0;
+            if(i+1U<count&&!sizes[i])REJECT("empty_required_field");
             values[i]=(char *)cursor;
             cursor=i+1U==count?end:end+1U;
         }
     }
     if(!field(values[0],sizes[0],out->request_id,
-              sizeof out->request_id,0)||
-       !field(values[1],sizes[1],out->notice.group,
-              sizeof out->notice.group,0)||
-       !field(values[2],sizes[2],out->notice.subject,
-              sizeof out->notice.subject,0)||
-       !field(values[3],sizes[3],original,sizeof original,
+              sizeof out->request_id,0))
+        REJECT("invalid_request_id_field");
+    if(!field(values[1],sizes[1],out->notice.group,
+              sizeof out->notice.group,0))
+        REJECT("invalid_group_field");
+    if(!field(values[2],sizes[2],out->notice.subject,
+              sizeof out->notice.subject,0))
+        REJECT("invalid_title_field");
+    if(!field(values[3],sizes[3],original,sizeof original,
               (club||grid)?2:1))
-        return 0;
+        REJECT("invalid_message_field");
     if(!grid) {
         if(!field(values[4],sizes[4],location,sizeof location,0))
-            return 0;
+            REJECT("invalid_location_field");
         if(sizes[5]&&!field(values[5],sizes[5],out->landmark,
-                            sizeof out->landmark,0))return 0;
+                            sizeof out->landmark,0))REJECT("invalid_landmark_field");
         if(strncmp(location,"https://maps.secondlife.com/secondlife/",39U))
-            return 0;
+            REJECT("invalid_location_url");
     }
     if(grid) {
         /* The grid-wide HUD owns its complete notice body, including
@@ -110,28 +119,33 @@ int sparkles_sl_hud_parse(const char *message,const char *operator_uuid,
          * This path is limited to the two named club destinations; the
          * existing MariaDB group permission gate still applies. */
         if(strcmp(out->notice.group,"The Abyss Club VIPs") &&
-           strcmp(out->notice.group,"Sparkles Entertainment"))return 0;
+           strcmp(out->notice.group,"Sparkles Entertainment"))REJECT("invalid_club_destination");
         n=snprintf(body,sizeof body,"%s",original);
     } else {
         /* Preserve the existing Sparkles Entertainment HUD behavior. */
-        if(strstr(original,signature))return 0;
+        if(strstr(original,signature))REJECT("duplicate_legacy_signature");
         n=snprintf(body,sizeof body,
             "%s\n\nYour Ride Awaits -> %s\n\n%s",original,location,signature);
     }
     if(n<1||(size_t)n>=sizeof body||
-       strlen(out->notice.subject)+(size_t)n+1U>510U)return 0;
+       strlen(out->notice.subject)+(size_t)n+1U>510U)REJECT("decoded_notice_too_long");
     for(i=0U;out->request_id[i];++i)
         if(!((out->request_id[i]>='a'&&out->request_id[i]<='z')||
              (out->request_id[i]>='A'&&out->request_id[i]<='Z')||
              (out->request_id[i]>='0'&&out->request_id[i]<='9')||
-             out->request_id[i]=='-'))return 0;
+             out->request_id[i]=='-'))REJECT("invalid_request_id_character");
     for(i=0U;out->notice.subject[i];++i)
-        if(out->notice.subject[i]=='\n')return 0;
+        if(out->notice.subject[i]=='\n')REJECT("invalid_title_newline");
     memcpy(out->notice.body,body,(size_t)n+1U);
     if(snprintf(out->notice.account,sizeof out->notice.account,
                 "sl:%s",operator_uuid)>=(int)sizeof out->notice.account)
-        return 0;
+        REJECT("invalid_account_size");
     return 1;
+rejected:
+    fprintf(stderr,"[SL HUD] parse rejected: reason=%s encoded_bytes=%zu protocol=%s\n",
+            reason,diagnostic_len,grid?"STNGRID1":club?"STNCLUB1":"legacy_or_unknown");
+    return 0;
+#undef REJECT
 }
 
 /* A links sign requests the fixed Sparkles welcome message, not arbitrary
