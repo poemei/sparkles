@@ -1,5 +1,16 @@
 # Sparkles — Changelog
 
+## 2026-11-22 — Second Life touch signs: executive welcome and entertainment group links
+
+- **Executive welcome, native SL 0.4.3 (GitHub source):** repurposed the existing `STNLINK1|visitor_uuid|escaped_display_name` object-IM handler from entertainment links to the exact operator-supplied Sparkles Executive AI Assistant welcome. Preserved visitor cooldown, private outbound IM transport, and the established command; removed the old group-membership request branch from this sign workflow. Commits: `257e9cf36cd2badb49d35eedd6ddcc47b5c3df26`, formatting correction `3d6178192c2d819e12146cf3754bfbd3c6c64aaa`.
+- **Hotload revision:** a supplied `MODULE HOTLOAD_DENIED ... version_not_incremented_or_regressed` line exposed an unchanged SL descriptor. Advanced the source version from 0.4.2 to 0.4.3 in `4ef7d0ee73f1e8b700edb2672257bf68db3b8b20`. This log alone did not identify the installed descriptor or prove a successful hotload.
+- **Executive welcome formatting, native SL 0.4.4:** inserted paragraph breaks while preserving the operator-approved wording and `STNLINK1`. Commit: `f86a1b2d539cf6f330572a70d9d0cd4a9b603bba`.
+- **Entertainment sign, native SL 0.4.5:** retained **one command** (`STNLINK1`) and added an optional trailing `|links` *intent field* to select a separate Sparkles Entertainment / Team Sparkles introduction with clickable group links; the original two-field request continues to select the executive welcome. The parser, request structure, native dispatch, and parser regression cases were updated. Source commits: `b4eb50099a823629e87f60909c38a58f0a05a5b0`, `c77fe605069363b282e1f900782fc09193835922`, `4c66594154a51bdffa4e8179edded87ce086abe0`, `4c86d4b6171fae91962def2d8706d93774f96657`.
+- **Proprietary LSL (not committed):** Executive Welcome Sign v2.2 sends `STNLINK1|UUID|escaped_name`; Sparkles Entertainment / Team Sparkles Group Introduction Sign v2.3 sends `STNLINK1|UUID|escaped_name|links`. Both signs use object-to-Sparkles `llInstantMessage` and expect Sparkles' native module to send visitor-facing private IMs. The sign holds no login credentials.
+- **Operator observations:** the operator supplied a live Sparkles IM transcript showing the exact executive welcome on 2026-11-22, then subsequently confirmed the revised group-introduction sign was fixed after an earlier test returned the executive welcome instead. These are operator-reported live functional successes for the two sign interactions, not blanket qualification of every SL service, transport behavior, group invitation, or future delivery.
+- **Qualification limits:** GitHub source readback confirmed the 0.4.5 code paths; no native build/test log, deployed descriptor, final hotload success log, or explicit group-link IM transcript was supplied here. LSL remains outside GitHub. No Core, shared ABI, MariaDB, Ollama, or unrelated module changes were part of this increment.
+
+
 ## 2026-11-12 — Show timer and official SL notices (source only)
 
 - Ollama 1.2.8 and MariaDB 1.10.1 additionally register new, explicitly
