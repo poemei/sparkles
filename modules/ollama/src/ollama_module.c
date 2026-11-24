@@ -18,8 +18,8 @@
 #include "ollama_internal.h"
 
 #define OLLAMA_VERSION_MAJOR 1U
-#define OLLAMA_VERSION_MINOR 2U
-#define OLLAMA_VERSION_PATCH 15U
+#define OLLAMA_VERSION_MINOR 3U
+#define OLLAMA_VERSION_PATCH 0U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
