@@ -661,7 +661,7 @@ static void *show_timer_worker(void *unused)
                 if(now>=last_reminder_error+60) {
                     fprintf(stderr,
                         "[SL] private appointment reminder service unavailable; "
-                        "check MariaDB service and migration (rc=%d used=%zu)\\n",
+                        "check MariaDB service and migration (rc=%d used=%zu)\n",
                         (int)rc,reminder_used);
                     last_reminder_error=now;
                 }
