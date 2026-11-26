@@ -1357,4 +1357,27 @@ executive-workflow defects. GitHub source edits only were performed.
 No live DB migration, model retraining, runtime controls, or automatic
 installation was authorized or attempted in this session.
 
+ADDITIONAL OPERATOR REQUIREMENT AND GITHUB SOURCE PATCH — 2026-11-26:
+- The operator verified contacts=0, contact_identities=0,
+  appointments=0, appointment_participants=0 in Sparkles MariaDB.
+  "Schedule access denied" on a private IM was caused by the missing
+  identity/contact prerequisite; a slow (~3m05s) reply remains a
+  separate outstanding performance issue.
+- Human direction: ANY simulator-authenticated private IM must create
+  a contact immediately, without first demanding a self-reported name.
+  Do not answer with arbitrary calendar permission denials as a
+  substitute for the contact onboarding operation.
+- MariaDB 1.10.7 removes the first-name prerequisite for new SL UUID
+  contacts and persists the contact + contact_identity in one DB
+  transaction. The first-name value is an empty string, not a guess;
+  later introductions fill it. No name-only cross-identity merges.
+- SL 0.4.10 invokes this existing contact service for each actual
+  simulator-authenticated private IM before executive routing. On a
+  DB/service enrollment failure it replies with a specific contact
+  storage error without falsely claiming success.
+- Entirely GitHub source edits. No live DB writes or schema changes;
+  native compilation, qualification, deployed versions, actual
+  compatibility with contacts first_name constraints, and end-to-end
+  acceptance remain unverified.
+
 END OF SPARKLES CONTEXT — 2026-11-26 (America/Los_Angeles)
