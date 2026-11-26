@@ -1,5 +1,5 @@
 STN-LABZ / MS. SPARKLES — DEVELOPMENT CONTEXT AND HANDOFF
-Snapshot updated: 2026-11-22 PST (America/Los_Angeles); original handoff 2026-11-10
+Snapshot updated: 2026-11-26 PST (America/Los_Angeles); original handoff 2026-11-10
 Document type: Conversation continuity record; informational, NOT controlled policy
 Repository: https://github.com/poemei/sparkles
 Status: READ / HANDOFF ONLY — this record does not authorize development
@@ -1294,4 +1294,67 @@ direction; do not redirect development into ChatGPT Work. The operator
 controls the next step. Distinguish source, test, installation, live
 operator observation, and acceptance.
 
-END OF SPARKLES CONTEXT — 2026-11-22 (America/Los_Angeles)
+======================================================================
+31. 2026-11-24 TO 2026-11-26 — EXECUTIVE WORKFLOW FAILURES AND SOURCE CORRECTIONS
+======================================================================
+OPERATOR-OBSERVED FAILURES:
+- Second Life private scheduling requests were accepted and recorded in
+  context but Sparkles did not reply. A 2026-11-24 private IM showed
+  [OLLAMA] request failed curl=0 http=404, calendar extraction failed,
+  and SL Core dispatch returned no reply. Source then targeted a
+  missing model name, sparkles-executive-social:latest.
+- On 2026-11-24 10:37 PST the operator sent a hosting request with
+  an explicit conflicting 2023-11-24 date and the word "today".
+  The private IM was accepted and context saved. Subsequent Ollama
+  request failures had curl=28/http=0 after the 120-second deadline.
+- On the operator's local machine, ollama list showed the surviving
+  sparkles-executive:v0.3.1 model; source previously changed to this
+  model and Ollama module 1.3.0.
+- The operator measured cold inference at 5m31.205s and immediate
+  warm inference at 2.496s, CPU 100%, 4096 context. Perpetual
+  model residency was expressly rejected as against on-demand agent
+  loading and resource constraints. Do NOT recommend keep_alive=-1 as
+  the architecture or assert that Ollama alone was the root cause.
+- The operator directed root-cause inspection for unresponsive IMs,
+  missing scheduling, and absent executive IM reminders. Competency
+  must be demonstrated, not inferred from a GitHub patch.
+
+GITHUB SOURCE CORRECTIONS COMMITTED 2026-11-26:
+- Ollama 1.3.1–1.3.3: failed timed calendar extraction produces an
+  explicit failure reply rather than a second general inference;
+  operator-reported date/time-before-venue show utterances are
+  recognized in show_details(), with module qualification cases;
+  explicit dates conflicting with relative today/tomorrow are
+  rejected for clarification; cold on-demand HTTP request budget
+  set to bounded 420 seconds, WITHOUT indefinite model residency.
+  The serial SL dispatch worker still creates latency under slow
+  inference, and cold model load on this machine remains slow.
+- SL 0.4.6–0.4.7: failed Core dispatch for a simulator-verified private
+  IM produces a bounded error reply rather than disappearing.
+  No claim of successful DB action is made by this fallback.
+- MariaDB 1.10.6 + SL 0.4.7: separate private appointment reminder
+  services for accepted Second Life participants, via a dedicated
+  per-appointment/avatar at-most-once attempt ledger and the existing
+  presence-gated SL timer. Calendar reminders target 45–60 minutes
+  before start, in America/Los_Angeles wall time, without treating
+  private calendar entries as public entertainment shows. Registered
+  public shows retain their existing separate process.
+- NEW OPERATOR-APPLIED MIGRATION (NOT EXECUTED):
+  modules/mariadb/sql/20261126_appointment_reminders.sql.
+  Requires a supported named timezone table and existing show registry
+  schema for the general reminder query's exclusion of public shows.
+  Reminders are not live until migration and both changed native
+  modules are built, installed, hotloaded, and operator-tested.
+- Affects include/sparkles_reminder.h, MariaDB/SL Makefiles,
+  native Ollama/MariaDB/SL sources, and docs/CHANGELOG.md.
+  Preserves shared Core ABI and existing STNLINK1 object-sign flow.
+- Actual compilation, native tests, deployed module descriptors,
+  reminder SQL execution, and end-to-end delivery are all UNKNOWN.
+  Do not promote these source corrections to acceptance automatically.
+
+CURRENT AUTHORIZATION: The operator directed correction of the named
+executive-workflow defects. GitHub source edits only were performed.
+No live DB migration, model retraining, runtime controls, or automatic
+installation was authorized or attempted in this session.
+
+END OF SPARKLES CONTEXT — 2026-11-26 (America/Los_Angeles)
