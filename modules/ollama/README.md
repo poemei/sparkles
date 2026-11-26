@@ -1,3 +1,14 @@
+**2026-11-26 — Host/DJ show classifier source correction (Ollama 1.3.4):**
+The operator demonstrated two successful calendar appointment commits that were
+not registered as public shows because the original classifier did not accept
+`Event ... as the Host with DJ NAME at The River`. This explicit role/venue
+wording now sets the existing `public_show` proposal flag before human
+confirmation. The MariaDB create service already registers shows atomically
+with confirmed appointments. Exact operator phrases and negative non-show
+cases were added to qualification. Native testing and live acceptance remain
+outstanding. Existing appointment IDs 1 and 2 require separately reviewed
+show registry reconciliation; no automatic retroactive mutation was added.
+
 **v1.2.8 — Explicit public show registration (GitHub source only):** A confirmed Second Life calendar request with the unambiguous phrasing `host at <venue> with <DJ> as my DJ` now carries the original venue/DJ metadata through the existing human confirmation flow. MariaDB 1.10.1 saves the appointment, owner relationship and `show_events` row in a single transaction. An ordinary meeting remains private; unsupported or ambiguous show phrasing is not silently made public. The source only supports this tightly validated phrase form so far. Existing calendar records require a one-time explicit backfill. MariaDB migration must be installed before creating new registered shows. No native/live qualification yet.
 
 **v1.2.7 — Show scheduling guest-role correction (GitHub source only):** When a show description says `with Manon as my DJ` (or another explicit `as my/the/our DJ/host/performer/singer` role), the performer is preserved as event narrative, not treated as an invited appointment participant requiring a separate `contacts` row. An ordinary `meeting with Manon` still requests guest participation. The appointment checker now reports a denied identity separately from a conflict or an unavailable/failed service, and writes response codes (no contact names or message text) for diagnosis. This does not bypass verified contact/calendar authorization, save without a human confirmation, or implement event notices. Source-level regressions cover staff-vs-guest classification. Native build, SQL behavior and operator acceptance remain unverified.
