@@ -1,3 +1,19 @@
+**2026-11-26 — Private appointment IM reminders (source only):**
+MariaDB 1.10.6 adds separate in-process claim/attempt services for private
+reminders, without changing public-show registration or the Core ABI.
+Operator must apply `sql/20261126_appointment_reminders.sql` to the existing
+database before the service can operate. Eligible recipients are verified
+Second Life identities with an `accepted` appointment_participants row;
+pending/declined guests do not receive these reminders. The separate
+`appointment_reminder_attempts` ledger enforces at-most-once automatic
+attempts per appointment/avatar. The 45–60-minute-before-start window uses
+`CONVERT_TZ` with America/Los_Angeles and UTC; named timezone data must
+be present or the claim fails closed. The query excludes registered
+`show_events`, so the existing show-timer process remains authoritative
+for public-show check-ins. Claims, queued IMs and simulator delivery are
+distinct. Rebuild and hotload MariaDB and SL after applying the migration.
+No live DB change, compilation or operator delivery verification was performed.
+
 **v1.10.1 — Atomic appointment/show registration (source only):** The existing typed appointment create service accepts optional explicit `public_show`, `show_venue` and `show_dj` metadata. It registers `show_events` in the same transaction as the appointment and participant relationship; failures roll back the appointment rather than report a show registered without a calendar record. Explicit `/appointment-add` and ordinary calendar events remain private. Ollama v1.2.8 supplies the metadata only for an unambiguous host-with-DJ show statement. The existing November 13 show predates the increment and still requires a verified manual `show_events` backfill. Both modules must be rebuilt together because their private request struct changed.
 
 **v1.10.0 — Persistent show coordination (GitHub source only):**
