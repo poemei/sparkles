@@ -1329,10 +1329,10 @@ GITHUB SOURCE CORRECTIONS COMMITTED 2026-11-26:
   set to bounded 420 seconds, WITHOUT indefinite model residency.
   The serial SL dispatch worker still creates latency under slow
   inference, and cold model load on this machine remains slow.
-- SL 0.4.6–0.4.7: failed Core dispatch for a simulator-verified private
+- SL 0.4.6–0.4.8: failed Core dispatch for a simulator-verified private
   IM produces a bounded error reply rather than disappearing.
   No claim of successful DB action is made by this fallback.
-- MariaDB 1.10.6 + SL 0.4.7: separate private appointment reminder
+- MariaDB 1.10.6 + SL 0.4.8: separate private appointment reminder
   services for accepted Second Life participants, via a dedicated
   per-appointment/avatar at-most-once attempt ledger and the existing
   presence-gated SL timer. Calendar reminders target 45–60 minutes
