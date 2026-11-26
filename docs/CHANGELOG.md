@@ -1,5 +1,10 @@
 # Sparkles — Changelog
 
+## 2026-11-26 — Automatic authenticated Second Life contact enrollment (GitHub source only)
+
+- **SL 0.4.10 / MariaDB 1.10.7:** Each simulator-authenticated private IM now calls the existing typed contact service before routing executive requests. A previously unseen UUID creates a new contact and identity association transactionally with an empty first-name value and the verified avatar display name where supported. No self-reported name is needed, no arbitrary existing contact is linked, and no change is made to public chat or session authorization. If enrollment fails, a private IM explains that the contact record could not be saved rather than producing an unrelated calendar denial.
+- This corrects the code-level bootstrap defect evidenced by the operator's completely empty contacts/contact_identities/appointments/appointment_participants tables. New contacts do not recover missing historical appointments. The actual contacts schema's empty-first-name compatibility, native build/tests, deployment, and operator acceptance are unverified.
+
 ## 2026-11-26 — Executive communications, scheduling, private reminders (GitHub source only)
 
 - **SL 0.4.6–0.4.8:** A simulator-authenticated private IM that receives an invalid or failed Core response now generates a bounded, noncommittal private failure acknowledgment instead of silently disappearing. The acknowledgment explicitly avoids asserting whether a database operation committed. Group and nearby chat are not sent this private failure reply.
