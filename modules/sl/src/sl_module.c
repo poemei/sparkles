@@ -26,7 +26,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 5U
+#define SL_PATCH 6U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -587,9 +587,15 @@ static void *dispatch_worker(void *unused)
             !memchr(response.text,0,sizeof response.text) ||
             !response.text[0]) {
             if(im.ambient!=1U)
-                fprintf(stderr,"[SL] %s Core dispatch returned no reply\n",
+                fprintf(stderr,"[SL] %s Core dispatch returned no reply\\n",
                         im.ambient==2U?"session chat":"private IM");
-            continue;
+            if(im.ambient!=0U)continue;
+            /* Return a bounded private failure acknowledgement. A failed
+             * Core response does not prove whether a DB action committed. */
+            memset(&response,0,sizeof response);
+            (void)snprintf(response.text,sizeof response.text,
+                "I received your IM, but couldn't verify completion. "
+                "Please check your calendar or notices before retrying.");
         }
         if(im.ambient==2U)
             memcpy(reply.recipient,im.conversation,16U);
