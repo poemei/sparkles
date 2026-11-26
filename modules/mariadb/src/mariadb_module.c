@@ -9,6 +9,7 @@
 #include "sparkles_contacts.h"
 #include "sparkles_sl_group_db.h"
 #include "sparkles_show.h"
+#include "sparkles_reminder.h"
 #include "mariadb_internal.h"
 
 static MYSQL *db;
@@ -24,6 +25,7 @@ static int contacts_service_registered;
 static int mutate_service_registered;
 static int group_resolve_registered,group_invite_registered;
 static int show_claim_registered,show_response_registered,show_attempt_registered;
+static int reminder_claim_registered,reminder_attempt_registered;
 
 /* Resolve authenticated transport identity to an existing contact. All
  * calendar operations share this gate; lookup itself is serialized with
@@ -304,6 +306,44 @@ static stnlabz_module_result_t shows_attempt_service(
         return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
     (void)pthread_mutex_lock(&db_lock);
     if(db&&!mysql_ping(db))ok=sparkles_mariadb_show_attempt(db,in);
+    (void)pthread_mutex_unlock(&db_lock);
+    return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
+}
+
+/* Reminder services use the existing in-process service host and DB lock.
+ * They do not expose appointment data to public chat or the model. */
+static stnlabz_module_result_t reminders_claim_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *used,void *ctx)
+{
+    sparkles_reminder_claim_reply_t *out=response;
+    int ok=0;
+    (void)ctx;
+    if(used)*used=0U;
+    if(request||request_size||!out||response_size<sizeof *out)
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    memset(out,0,sizeof *out);
+    (void)pthread_mutex_lock(&db_lock);
+    if(db&&!mysql_ping(db))
+        ok=sparkles_mariadb_reminder_claim(db,out);
+    (void)pthread_mutex_unlock(&db_lock);
+    if(!ok)return STNLABZ_MODULE_ERR_INVALID_STATE;
+    if(used)*used=sizeof *out;
+    return STNLABZ_MODULE_OK;
+}
+static stnlabz_module_result_t reminders_attempt_service(
+    const void *request,size_t request_size,void *response,
+    size_t response_size,size_t *used,void *ctx)
+{
+    const sparkles_reminder_attempt_request_t *in=request;
+    int ok=0;
+    (void)ctx;(void)response;(void)response_size;
+    if(used)*used=0U;
+    if(!in||request_size!=sizeof *in||!in->attempt_id)
+        return STNLABZ_MODULE_ERR_INVALID_ARGUMENT;
+    (void)pthread_mutex_lock(&db_lock);
+    if(db&&!mysql_ping(db))
+        ok=sparkles_mariadb_reminder_attempt(db,in);
     (void)pthread_mutex_unlock(&db_lock);
     return ok?STNLABZ_MODULE_OK:STNLABZ_MODULE_ERR_INVALID_STATE;
 }
@@ -1493,12 +1533,32 @@ static stnlabz_module_result_t start(const stnlabz_module_host_t *h)
         return STNLABZ_MODULE_ERR_START_FAILED;
     }
     show_claim_registered=show_response_registered=show_attempt_registered=1;
+    if(!h->register_service(SPARKLES_REMINDER_CLAIM_SERVICE,
+                            reminders_claim_service,NULL)) {
+        (void)stop();
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    reminder_claim_registered=1;
+    if(!h->register_service(SPARKLES_REMINDER_ATTEMPT_SERVICE,
+                            reminders_attempt_service,NULL)) {
+        (void)stop();
+        return STNLABZ_MODULE_ERR_START_FAILED;
+    }
+    reminder_attempt_registered=1;
     fprintf(stderr, "[MARIADB] local database connected; seven core tables verified\n");
     return STNLABZ_MODULE_OK;
 }
 
 static stnlabz_module_result_t stop(void)
 {
+    if(reminder_attempt_registered && host_owner &&
+       !host_owner->unregister_service(SPARKLES_REMINDER_ATTEMPT_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    reminder_attempt_registered=0;
+    if(reminder_claim_registered && host_owner &&
+       !host_owner->unregister_service(SPARKLES_REMINDER_CLAIM_SERVICE,NULL))
+        return STNLABZ_MODULE_ERR_STOP_FAILED;
+    reminder_claim_registered=0;
     if(show_attempt_registered && host_owner &&
        !host_owner->unregister_service(SPARKLES_SHOW_ATTEMPT_SERVICE,NULL))
         return STNLABZ_MODULE_ERR_STOP_FAILED;
@@ -1563,7 +1623,7 @@ static stnlabz_module_result_t stop(void)
 }
 
 static const stnlabz_module_descriptor_t descriptor = {
-    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 5U,
+    "mariadb", "Sparkles MariaDB Context Foundation", 1U, 10U, 6U,
     STNLABZ_MODULE_API_MAJOR, STNLABZ_MODULE_API_MINOR,
     qualify, start, stop
 };
