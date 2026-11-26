@@ -6,6 +6,7 @@
 #include "sparkles_sl_group.h"
 #include "sparkles_sl_group_db.h"
 #include "sparkles_show.h"
+#include "sparkles_reminder.h"
 #include <poll.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -26,7 +27,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 6U
+#define SL_PATCH 7U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -632,7 +633,7 @@ static void *show_timer_worker(void *unused)
         size_t used=0U,ignored=0U;
         stnlabz_module_result_t rc;
         uint64_t generation;
-        int capacity_ok=0;
+        int capacity_ok=0,reminder_mode=0;
         (void)poll(NULL,0,3000);
         if(atomic_load(&stopping) || !atomic_load(&sl_present) ||
            !module_host || !module_host->invoke_service)continue;
@@ -643,11 +644,28 @@ static void *show_timer_worker(void *unused)
         if(!capacity_ok)continue;
         rc=module_host->invoke_service(SPARKLES_SHOW_CLAIM_SERVICE,
                         NULL,0U,&result,sizeof result,&used);
-        if(rc!=STNLABZ_MODULE_OK || used!=sizeof result) {
-            /* Legacy databases without show_events simply remain inactive. */
-            continue;
+        if(rc!=STNLABZ_MODULE_OK || used!=sizeof result)
+            memset(&result,0,sizeof result);
+        if(!result.available) {
+            /* Ordinary accepted calendar appointments are not public
+             * shows. Claim a private IM via a separate typed DB service,
+             * never by publishing an entertainment notice. */
+            sparkles_reminder_claim_reply_t reminder={0};
+            size_t reminder_used=0U;
+            rc=module_host->invoke_service(SPARKLES_REMINDER_CLAIM_SERVICE,
+                         NULL,0U,&reminder,sizeof reminder,&reminder_used);
+            if(rc!=STNLABZ_MODULE_OK ||
+               reminder_used!=sizeof reminder || !reminder.available)
+                continue;
+            result.available=1U;
+            reminder_mode=1;
+            result.action.kind=SPARKLES_SHOW_CONFIRMATION;
+            result.action.attempt_id=reminder.attempt_id;
+            memcpy(result.action.recipient_uuid,reminder.recipient_uuid,
+                   sizeof reminder.recipient_uuid);
+            memcpy(result.action.message,reminder.message,
+                   sizeof reminder.message);
         }
-        if(!result.available)continue;
         receipt.attempt_id=result.action.attempt_id;
         if((result.action.kind!=SPARKLES_SHOW_CONFIRMATION &&
             result.action.kind!=SPARKLES_SHOW_NOTICE) ||
@@ -655,7 +673,8 @@ static void *show_timer_worker(void *unused)
            !memchr(result.action.subject,0,sizeof result.action.subject) ||
            !sparkles_sl_uuid_parse(result.action.recipient_uuid,
                                    action.recipient)) {
-            fprintf(stderr,"[SL] invalid claimed show task; marked failed\n");
+            fprintf(stderr,"[SL] invalid claimed %s task; marked failed\n",
+                    reminder_mode?"appointment reminder":"show");
             goto persist_attempt;
         }
         memcpy(action.text,result.action.message,
@@ -678,11 +697,21 @@ static void *show_timer_worker(void *unused)
         }
         pthread_mutex_unlock(&qlock);
 persist_attempt:
-        rc=module_host->invoke_service(SPARKLES_SHOW_ATTEMPT_SERVICE,
-                         &receipt,sizeof receipt,NULL,0U,&ignored);
+        if(reminder_mode) {
+            sparkles_reminder_attempt_request_t reminder_receipt={0};
+            reminder_receipt.attempt_id=receipt.attempt_id;
+            reminder_receipt.queued=receipt.queued;
+            rc=module_host->invoke_service(SPARKLES_REMINDER_ATTEMPT_SERVICE,
+                &reminder_receipt,sizeof reminder_receipt,NULL,0U,&ignored);
+        } else {
+            rc=module_host->invoke_service(SPARKLES_SHOW_ATTEMPT_SERVICE,
+                &receipt,sizeof receipt,NULL,0U,&ignored);
+        }
         if(rc!=STNLABZ_MODULE_OK)
-            fprintf(stderr,"[SL] claimed show attempt status persistence failed\n");
-        fprintf(stderr,"[SL] show task %s; simulator delivery is NOT confirmed\n",
+            fprintf(stderr,"[SL] %s attempt status persistence failed\n",
+                    reminder_mode?"appointment reminder":"show");
+        fprintf(stderr,"[SL] %s task %s; simulator delivery is NOT confirmed\n",
+                reminder_mode?"appointment reminder":"show",
                 receipt.queued?"queued":"not queued");
     }
     return NULL;
