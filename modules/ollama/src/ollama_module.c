@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 3U
-#define OLLAMA_VERSION_PATCH 0U
+#define OLLAMA_VERSION_PATCH 1U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -1218,16 +1218,14 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
     if(rc!=STNLABZ_MODULE_OK||used!=sizeof out||
        !sparkles_schedule_parse(out.text,&plan)) {
         fprintf(stderr,"[OLLAMA] calendar extraction failed or output invalid\\n");
-        return calendar_request(text)
-            ? schedule_reply(reply,ctx,
-                "I couldn't reliably extract the appointments. Please repeat the details.")
-            : 0;
+        /* A recognized timed commitment must never fall through into a
+         * second, ordinary model request after extraction fails. */
+        return schedule_reply(reply,ctx,
+            "I couldn't reliably extract the appointment. Nothing has been scheduled; please repeat the date, start and end times.");
     }
     if(!plan.count)
-        return calendar_request(text)
-            ? schedule_reply(reply,ctx,
-                "I couldn't identify appointment times. Please clarify the event details.")
-            : 0;
+        return schedule_reply(reply,ctx,
+            "I couldn't identify the appointment times. Nothing has been scheduled; please clarify the date and time.");
     {
         int guest=schedule_guest(text,plan.guest_name);
         if(guest<0 || (guest>0 && plan.count!=1U))
