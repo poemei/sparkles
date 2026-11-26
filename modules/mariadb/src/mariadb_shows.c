@@ -3,6 +3,7 @@
 #include <string.h>
 #include "mariadb_internal.h"
 #include "sparkles_show.h"
+#include "sparkles_reminder.h"
 
 /* Called with the existing MariaDB module connection lock held.
  * Appointment DATETIME fields represent America/Los_Angeles show wall time.
@@ -195,5 +196,94 @@ int sparkles_mariadb_show_attempt(MYSQL *connection,
       in->queued?"queued":"failed",in->attempt_id);
     return n>0&&(size_t)n<sizeof query &&
            mysql_query(connection,query)==0 &&
+           mysql_affected_rows(connection)==1ULL;
+}
+
+/* Private reminders for accepted Second Life calendar participants.
+ * These are NOT entertainment shows or public notice permissions.
+ * Claims are transactional and at-most-once per appointment/avatar. */
+static const char appointment_reminder_sql[] =
+    "SELECT a.id,LOWER(ci.platform_identifier),a.title,"
+    "DATE_FORMAT(a.start_time,'%Y-%m-%d %H:%i') "
+    "FROM appointments a "
+    "JOIN appointment_participants ap ON ap.appointment_id=a.id "
+    "AND ap.response_status='accepted' "
+    "JOIN contact_identities ci ON ci.contact_id=ap.contact_id "
+    "AND ci.platform='second_life' "
+    "WHERE a.status='scheduled' "
+    "AND CONVERT_TZ(a.start_time,'America/Los_Angeles','UTC') "
+    ">DATE_ADD(UTC_TIMESTAMP(), INTERVAL 45 MINUTE) "
+    "AND CONVERT_TZ(a.start_time,'America/Los_Angeles','UTC') "
+    "<=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 60 MINUTE) "
+    "AND NOT EXISTS (SELECT 1 FROM appointment_reminder_attempts r "
+    "WHERE r.appointment_id=a.id "
+    "AND LOWER(r.recipient_uuid)=LOWER(ci.platform_identifier)) "
+    "ORDER BY a.start_time,a.id LIMIT 1";
+
+int sparkles_mariadb_reminder_claim(MYSQL *connection,
+                                   sparkles_reminder_claim_reply_t *out)
+{
+    MYSQL_RES *res=NULL;
+    MYSQL_ROW row;
+    char sql[300],title[176];
+    unsigned long long appointment_id=0ULL;
+    int n;
+    if(!connection||!out)return 0;
+    memset(out,0,sizeof *out);
+    if(mysql_query(connection,"START TRANSACTION"))return 0;
+    if(mysql_query(connection,appointment_reminder_sql))goto rollback;
+    res=mysql_store_result(connection);
+    if(!res)goto rollback;
+    row=mysql_fetch_row(res);
+    if(!row) {
+        mysql_free_result(res);
+        res=NULL;
+        if(mysql_query(connection,"COMMIT"))return 0;
+        return 1;
+    }
+    if(!row[0]||!row[1]||!row[2]||!row[3]||
+       !decimal_id(row[0],&appointment_id) || !appointment_id ||
+       !valid_uuid(row[1]) || strlen(row[3])!=16U)goto rollback;
+    memcpy(out->recipient_uuid,row[1],37U);
+    sanitize_text(title,sizeof title,row[2]);
+    n=snprintf(out->message,sizeof out->message,
+        "Calendar reminder: %s starts at %s SLT.",
+        title,row[3]);
+    if(n<=0||(size_t)n>=sizeof out->message)goto rollback;
+    mysql_free_result(res);
+    res=NULL;
+    n=snprintf(sql,sizeof sql,
+        "INSERT IGNORE INTO appointment_reminder_attempts "
+        "(appointment_id,recipient_uuid) VALUES (%llu,'%s')",
+        appointment_id,out->recipient_uuid);
+    if(n<=0||(size_t)n>=sizeof sql||
+       mysql_query(connection,sql)||
+       mysql_affected_rows(connection)!=1ULL)goto rollback;
+    out->attempt_id=mysql_insert_id(connection);
+    if(!out->attempt_id)goto rollback;
+    if(mysql_query(connection,"COMMIT")) {
+        memset(out,0,sizeof *out); /* Uncertain outcome: do not retry. */
+        return 0;
+    }
+    out->available=1U;
+    return 1;
+rollback:
+    if(res)mysql_free_result(res);
+    (void)mysql_query(connection,"ROLLBACK");
+    memset(out,0,sizeof *out);
+    return 0;
+}
+int sparkles_mariadb_reminder_attempt(MYSQL *connection,
+                                    const sparkles_reminder_attempt_request_t *in)
+{
+    char sql[230];
+    int n;
+    if(!connection||!in||!in->attempt_id)return 0;
+    n=snprintf(sql,sizeof sql,
+       "UPDATE appointment_reminder_attempts SET state='%s' "
+       "WHERE id=%llu AND state='claimed'",
+       in->queued?"queued":"failed",in->attempt_id);
+    return n>0&&(size_t)n<sizeof sql &&
+           mysql_query(connection,sql)==0 &&
            mysql_affected_rows(connection)==1ULL;
 }
