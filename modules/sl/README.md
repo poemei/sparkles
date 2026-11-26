@@ -1,5 +1,5 @@
 **2026-11-26 — Private executive IM handling and appointment reminders (GitHub source only):**
-SL 0.4.7 replies to a failed private Core dispatch with a noncommittal
+SL 0.4.8 replies to a failed private Core dispatch with a noncommittal
 error IM instead of silently abandoning it. The existing presence-gated
 timer also claims private accepted-participant appointment reminders
 through the separate MariaDB reminder service, 45–60 minutes before
