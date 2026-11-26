@@ -1,3 +1,16 @@
+**2026-11-26 — UUID-first contact enrollment (GitHub source only):**
+MariaDB 1.10.7 creates a separate contacts row and associated
+`contact_identities` row for the authenticated Second Life UUID on the
+first private IM, even without a volunteered first name. The first-name
+field is deliberately stored as an empty string, not a fabricated name.
+The avatar display name is stored when the schema has a recognized display
+column. Future voluntary first-name introductions update the same contact.
+No self-reported name authorizes linking to an unrelated existing contact.
+The existing contact-membership calendar policy can then recognize the new
+UUID. This depends on the actual contacts table accepting an empty first-name
+value; the operator's database schema and native execution have not been
+verified. No schema or database data were changed here.
+
 **2026-11-26 — Private appointment IM reminders (source only):**
 MariaDB 1.10.6 adds separate in-process claim/attempt services for private
 reminders, without changing public-show registration or the Core ABI.
