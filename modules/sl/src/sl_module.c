@@ -587,7 +587,7 @@ static void *dispatch_worker(void *unused)
             !memchr(response.text,0,sizeof response.text) ||
             !response.text[0]) {
             if(im.ambient!=1U)
-                fprintf(stderr,"[SL] %s Core dispatch returned no reply\\n",
+                fprintf(stderr,"[SL] %s Core dispatch returned no reply\n",
                         im.ambient==2U?"session chat":"private IM");
             if(im.ambient!=0U)continue;
             /* Return a bounded private failure acknowledgement. A failed
