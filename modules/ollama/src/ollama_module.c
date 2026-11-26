@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 3U
-#define OLLAMA_VERSION_PATCH 3U
+#define OLLAMA_VERSION_PATCH 4U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -147,6 +147,41 @@ static int show_details(const char *human,char venue[151],char dj[101])
         lower[i]=(c>='A'&&c<='Z')?(char)(c+('a'-'A')):(char)c;
     }
     lower[n]=0;
+    /* A host role and a named DJ at an explicit venue identify a show,
+     * even when the human places date/time before "as the Host".
+     * Derive only roles stated by the human, never infer public status
+     * from an ordinary appointment title or a model-generated label. */
+    {
+        const char *host=strstr(lower,"as the host with dj ");
+        if(!host)host=strstr(lower,"as host with dj ");
+        if(host) {
+            const char *dj_start=strstr(host," with dj ")+9U;
+            const char *venue_start=strstr(dj_start," at ");
+            size_t dj_begin=(size_t)(dj_start-lower);
+            if(!venue_start)return 0;
+            dstart=dj_begin;
+            dend=(size_t)(venue_start-lower);
+            vstart=dend+4U;
+            vend=n;
+            while(dstart<dend&&human[dstart]==' ')++dstart;
+            while(dend>dstart&&human[dend-1U]==' ')--dend;
+            while(vstart<vend&&human[vstart]==' ')++vstart;
+            while(vend>vstart&&(human[vend-1U]==' '||
+                  human[vend-1U]=='.'||human[vend-1U]==','))--vend;
+            if(dend<=dstart||dend-dstart>=101U||
+               vend<=vstart||vend-vstart>=151U||
+               (lower[vstart]>='0'&&lower[vstart]<='9'))return 0;
+            for(i=dstart;i<dend;++i)
+                if((unsigned char)human[i]<0x20U||human[i]=='|')return 0;
+            for(i=vstart;i<vend;++i)
+                if((unsigned char)human[i]<0x20U||human[i]=='|')return 0;
+            memcpy(dj,human+dstart,dend-dstart);
+            dj[dend-dstart]=0;
+            memcpy(venue,human+vstart,vend-vstart);
+            venue[vend-vstart]=0;
+            return 1;
+        }
+    }
     at=strstr(lower,"host at ");
     if(at)at+=8U;
     else {
@@ -2297,6 +2332,17 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   ++e;
   if(show_details("Sparkles I have to host today, 2026-11-24 at 10AM to 12pm with DJ Mongo at the Mosh Pit",venue,dj) &&
      !strcmp(venue,"the Mosh Pit") && !strcmp(dj,"Mongo"))++p;else ok=0;
+  /* Operator-observed private IM phrasing on 2026-11-26. */
+  ++e;
+  if(show_details("Sparkles I have an Event tomorrow night, 2026-11-27 20:00 to 22:00 as the Host with DJ Manon at The River",venue,dj) &&
+     !strcmp(venue,"The River") && !strcmp(dj,"Manon"))++p;else ok=0;
+  ++e;
+  if(show_details("Sparkles I have an Event Sunday night, 2026-11-29 20:00 to 22:00 as the Host with DJ Kena at The River",venue,dj) &&
+     !strcmp(venue,"The River") && !strcmp(dj,"Kena"))++p;else ok=0;
+  ++e;
+  if(!show_details("I have an appointment tomorrow with DJ Manon at The River",venue,dj))++p;else ok=0;
+  ++e;
+  if(!show_details("I am the host for a meeting at The River",venue,dj))++p;else ok=0;
  }
  /* Named entertainment staff are event details, not invitations. */
  {
