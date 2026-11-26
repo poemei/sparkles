@@ -1,3 +1,14 @@
+**2026-11-26 — First authenticated private IM contact enrollment (GitHub source only):**
+SL 0.4.10 invokes the existing typed MariaDB contacts service with the simulator-issued
+UUID and avatar display name before routing a private IM to executive functions.
+A human-provided first name is not required. If persistence fails, Sparkles sends
+an explicit contact-storage error rather than a generic calendar denial.
+Nearby and group chat do not enroll private calendar contacts.
+MariaDB 1.10.7 stores the contact and UUID identity atomically.
+This is not a cross-account identity merge or an automatic association with
+any prior contact. Builds, live SQL compatibility, deployment and SL acceptance
+remain unverified.
+
 **2026-11-26 — Private executive IM handling and appointment reminders (GitHub source only):**
 SL 0.4.8 replies to a failed private Core dispatch with a noncommittal
 error IM instead of silently abandoning it. The existing presence-gated
