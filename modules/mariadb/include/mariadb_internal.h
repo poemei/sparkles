@@ -6,6 +6,7 @@
 #include "sparkles_memory.h"
 #include "sparkles_contacts.h"
 #include "sparkles_show.h"
+#include "sparkles_reminder.h"
 
 /* Calendar permission: authenticated platform identity linked to contacts. */
 int sparkles_mariadb_identity_parts(const char *account,
@@ -32,6 +33,11 @@ int sparkles_mariadb_show_respond(MYSQL *db,
     sparkles_show_response_reply_t *reply);
 int sparkles_mariadb_show_attempt(MYSQL *db,
     const sparkles_show_attempt_request_t *request);
+/* Distinct private appointment reminders, not show notices. */
+int sparkles_mariadb_reminder_claim(MYSQL *db,
+    sparkles_reminder_claim_reply_t *reply);
+int sparkles_mariadb_reminder_attempt(MYSQL *db,
+    const sparkles_reminder_attempt_request_t *request);
 
 #define SPARKLES_MARIADB_CONFIG "/opt/sparkles/auth/mariadb/mariadb.env"
 #define SPARKLES_MARIADB_HOST "localhost"
