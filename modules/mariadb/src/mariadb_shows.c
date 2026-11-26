@@ -215,6 +215,8 @@ static const char appointment_reminder_sql[] =
     ">DATE_ADD(UTC_TIMESTAMP(), INTERVAL 45 MINUTE) "
     "AND CONVERT_TZ(a.start_time,'America/Los_Angeles','UTC') "
     "<=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 60 MINUTE) "
+    "AND NOT EXISTS (SELECT 1 FROM show_events e "
+    "WHERE e.appointment_id=a.id) "
     "AND NOT EXISTS (SELECT 1 FROM appointment_reminder_attempts r "
     "WHERE r.appointment_id=a.id "
     "AND LOWER(r.recipient_uuid)=LOWER(ci.platform_identifier)) "
