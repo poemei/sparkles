@@ -495,7 +495,7 @@ static void *dispatch_worker(void *unused)
             if(contact_rc!=STNLABZ_MODULE_OK ||
                contact_used!=sizeof enrolled || !enrolled.found) {
                 fprintf(stderr,
-                    "[SL] private IM contact enrollment failed: rc=%d used=%zu found=%u\\n",
+                    "[SL] private IM contact enrollment failed: rc=%d used=%zu found=%u\n",
                     (int)contact_rc,contact_used,enrolled.found);
                 /* Keep the original IM available for Core response; a
                  * later calendar gate still refuses unidentified records. */
