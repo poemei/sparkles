@@ -1,8 +1,9 @@
 #ifndef SPARKLES_CONTACTS_H
 #define SPARKLES_CONTACTS_H
 #include <stddef.h>
-/* Verified transport principal. A name is a voluntary, unverified claim.
- * This service creates contact associations, NOT calendar authorization. */
+/* Verified transport principal. An authenticated private SL IM creates an
+ * isolated UUID-linked contact immediately; a voluntary first name can be
+ * added later. Calendar access resolves this association in MariaDB. */
 #define SPARKLES_CONTACTS_SERVICE "sparkles.mariadb.contacts.identify"
 typedef struct {
     char account[128];      /* native SL transport: sl:<lowercase UUID> */
