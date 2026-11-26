@@ -27,7 +27,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 7U
+#define SL_PATCH 8U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -625,6 +625,8 @@ static void *dispatch_worker(void *unused)
  * Once claimed, a failed/missed send requires operator reconciliation. */
 static void *show_timer_worker(void *unused)
 {
+    /* Throttle missing-migration/service diagnostics, not the timer. */
+    time_t last_reminder_error=0;
     (void)unused;
     while(!atomic_load(&stopping)) {
         sparkles_show_claim_reply_t result={0};
@@ -654,9 +656,18 @@ static void *show_timer_worker(void *unused)
             size_t reminder_used=0U;
             rc=module_host->invoke_service(SPARKLES_REMINDER_CLAIM_SERVICE,
                          NULL,0U,&reminder,sizeof reminder,&reminder_used);
-            if(rc!=STNLABZ_MODULE_OK ||
-               reminder_used!=sizeof reminder || !reminder.available)
+            if(rc!=STNLABZ_MODULE_OK || reminder_used!=sizeof reminder) {
+                time_t now=time(NULL);
+                if(now>=last_reminder_error+60) {
+                    fprintf(stderr,
+                        "[SL] private appointment reminder service unavailable; "
+                        "check MariaDB service and migration (rc=%d used=%zu)\\n",
+                        (int)rc,reminder_used);
+                    last_reminder_error=now;
+                }
                 continue;
+            }
+            if(!reminder.available)continue;
             result.available=1U;
             reminder_mode=1;
             result.action.kind=SPARKLES_SHOW_CONFIRMATION;
