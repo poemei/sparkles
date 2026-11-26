@@ -1,5 +1,12 @@
 # Sparkles — Changelog
 
+## 2026-11-26 — Natural host/DJ show recognition (GitHub source only)
+
+- **Ollama v1.3.4:** Expanded the existing opt-in show classifier to recognize the operator-observed phrases `as the Host with DJ Manon at The River` and `as the Host with DJ Kena at The River` even when date/time appear before the role. This preserves the distinction between a public show and an ordinary private calendar appointment. Added both exact observed utterances and negative appointment/meeting cases to module qualification.
+- The existing MariaDB appointment creation service already commits a verified `show_events` row in the **same transaction** as its confirmed calendar appointment when `public_show` is set. There was no justification for changing Core, transport routing, or DB write permissions.
+- Two operator-confirmed appointments (IDs 1 and 2, Nov 27/29) existed without any show rows, so new parser code cannot recover their historical registration. Added an operator-reviewed `modules/mariadb/sql/20261126_reconcile_two_river_shows.sql` script. The script requires exact IDs, titles, times, scheduled state, existing participant link, and the previously verified SL identity before inserting only missing show registrations. Review before running and manually COMMIT only after row inspection. No live DB writes or migration were performed.
+- GitHub source and qualification cases only; no native build, test execution, hotload, production change, or reminder delivery verification is claimed.
+
 ## 2026-11-26 — Automatic authenticated Second Life contact enrollment (GitHub source only)
 
 - **SL 0.4.10 / MariaDB 1.10.7:** Each simulator-authenticated private IM now calls the existing typed contact service before routing executive requests. A previously unseen UUID creates a new contact and identity association transactionally with an empty first-name value and the verified avatar display name where supported. No self-reported name is needed, no arbitrary existing contact is linked, and no change is made to public chat or session authorization. If enrollment fails, a private IM explains that the contact record could not be saved rather than producing an unrelated calendar denial.
