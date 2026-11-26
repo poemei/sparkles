@@ -24,6 +24,21 @@
 
 The Ollama module implements the established STN-LABZ shared module ABI. Sparkles Core routes ordinary conversation to its registered `chat` controller. Identity and mission questions are answered by the registered `sparkles.identity.answer` service when recognized.
 
+## November 26, 2026 — On-demand model and executive request handling (source only)
+
+The selected local model is `sparkles-executive:v0.3.1`.
+The request budget is 420 seconds to tolerate a measured cold start
+without pinning the model in memory. Normal Ollama idle unloading remains
+unchanged. This does not eliminate cold-start latency, and the existing
+single SL dispatch worker can still delay other conversations.
+
+Timed commitments now return a scheduling-specific failure instead of
+falling through to another inference after malformed/unavailable extraction.
+The show parser accepts the operator-reported clock/date-before-venue
+wording, and contradictory explicit and relative dates are rejected for
+clarification before proposing a mutation. Native tests and SL operator
+acceptance are outstanding.
+
 ## Selected model
 
 **Model:** `sparkles-executive:v0.3.1`
@@ -141,6 +156,6 @@ Source changes have been committed to GitHub. Native compilation, module activat
 
 ## Inference limits (v1.0.14)
 
-The Ollama request uses `num_predict=512`, `CURLOPT_TIMEOUT_MS=120000L` (120 seconds), and the unchanged connection timeout `CURLOPT_CONNECTTIMEOUT_MS=1000L` (1 second). These are source constants, not environment variables.
+The Ollama request uses `num_predict=512`, `CURLOPT_TIMEOUT_MS=420000L` (420 seconds, bounded cold on-demand load), and the unchanged connection timeout `CURLOPT_CONNECTTIMEOUT_MS=1000L` (1 second). These are source constants, not environment variables.
 
 **Known limitation:** `sparkles_llm_response_t.text` remains 512 bytes and Core/IRC replies are also limited to 512 bytes. A longer generated response can exceed the output buffer and cause response parsing to fail; increasing `num_predict` does not by itself permit 512 tokens to be delivered over IRC. The output-size contract and multi-message handling require a separate authorized change. Timeout and answer consistency require operator retesting.
