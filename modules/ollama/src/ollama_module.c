@@ -136,7 +136,7 @@ static int schedule_guest(const char *text,char name[64])
 static int show_details(const char *human,char venue[151],char dj[101])
 {
     char lower[701];
-    const char *at,*with,*role,*end;
+    const char *at,*with,*role,*end,*after_dj=NULL;
     size_t i,n,vstart,vend,dstart,dend;
     if(!human||!venue||!dj)return 0;
     venue[0]=dj[0]=0;
@@ -151,28 +151,52 @@ static int show_details(const char *human,char venue[151],char dj[101])
     if(at)at+=8U;
     else {
         at=strstr(lower,"host today at ");
-        if(!at)return 0;
-        at+=14U;
+        if(at)at+=14U;
     }
-    with=strstr(at," with ");
+    if(at)with=strstr(at," with ");
+    else {
+        /* Also accept an explicit time/date before the venue, e.g.
+         * 'host today, DATE at TIME with DJ Mongo at the Mosh Pit'. */
+        const char *host=strstr(lower,"host today");
+        if(!host)return 0;
+        with=strstr(host," with dj ");
+        if(!with)return 0;
+        after_dj=strstr(with+9U," at ");
+        if(!after_dj || !after_dj[4U] ||
+           (after_dj[4U]>='0'&&after_dj[4U]<='9'))return 0;
+        at=after_dj+4U;
+    }
     if(!with)return 0;
     vstart=(size_t)(at-lower);
     vend=(size_t)(with-lower);
     dstart=(size_t)(with-lower)+6U;
+    if(after_dj) {
+        vstart=(size_t)(after_dj-lower)+4U;
+        vend=n;
+    } else if(vstart<vend &&
+              lower[vstart]>='0'&&lower[vstart]<='9') {
+        /* A clock/date preceding 'at VENUE' is not a venue name. */
+        const char *scan=at,*last=NULL;
+        while((scan=strstr(scan," at ")) && scan<with) {
+            last=scan+4U;
+            scan+=4U;
+        }
+        if(!last || last>=with ||
+           (last[0]>='0'&&last[0]<='9'))return 0;
+        vstart=(size_t)(last-lower);
+    }
     if(!strncmp(lower+dstart,"dj ",3U)) {
         dstart+=3U;
-        end=lower+n;
-        /* Stop at an explicit time/date delimiter, not within the DJ name. */
-        for(role=lower+dstart;role+4U<lower+n;++role) {
-            if(!strncmp(role," at ",4U) &&
-               role[4U]>='0' && role[4U]<='9') {
-                end=role;
-                break;
-            }
-            if(!strncmp(role," on ",4U) &&
-               role[4U]>='0' && role[4U]<='9') {
-                end=role;
-                break;
+        end=after_dj?after_dj:lower+n;
+        if(!after_dj) {
+            /* Stop before a trailing time/date, not within the DJ name. */
+            for(role=lower+dstart;role+4U<lower+n;++role) {
+                if((!strncmp(role," at ",4U)||
+                     !strncmp(role," on ",4U)) &&
+                   role[4U]>='0'&&role[4U]<='9') {
+                    end=role;
+                    break;
+                }
             }
         }
         dend=(size_t)(end-lower);
@@ -182,7 +206,7 @@ static int show_details(const char *human,char venue[151],char dj[101])
         dend=(size_t)(role-lower);
     }
     while(vstart<vend&&human[vstart]==' ')++vstart;
-    while(vend>vstart&&human[vend-1U]==' ')--vend;
+    while(vend>vstart&&(human[vend-1U]==' '||human[vend-1U]=='.'))--vend;
     while(dstart<dend&&human[dstart]==' ')++dstart;
     while(dend>dstart&&(human[dend-1U]==' '||
           human[dend-1U]=='.'||human[dend-1U]==','))--dend;
@@ -2236,6 +2260,12 @@ static stnlabz_module_result_t qualify(stnlabz_module_qualification_result_t *q)
   if(!show_details("I have a meeting at The River with Manon Friday",venue,dj))++p;else ok=0;
   ++e;
   if(!show_details("I need to host at The River with Manon for lunch",venue,dj))++p;else ok=0;
+  ++e;
+  if(show_details("Sparkles, I have to host today at 2pm to 4pm 2023-11-24 at the River with Tayla as my DJ",venue,dj) &&
+     !strcmp(venue,"the River") && !strcmp(dj,"Tayla"))++p;else ok=0;
+  ++e;
+  if(show_details("Sparkles I have to host today, 2026-11-24 at 10AM to 12pm with DJ Mongo at the Mosh Pit",venue,dj) &&
+     !strcmp(venue,"the Mosh Pit") && !strcmp(dj,"Mongo"))++p;else ok=0;
  }
  /* Named entertainment staff are event details, not invitations. */
  {
