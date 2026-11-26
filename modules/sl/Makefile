@@ -7,8 +7,8 @@ ROOT ?= ../..
 BUILD_DIR ?= build
 PREFIX ?= /opt/sparkles
 MODULEDIR ?= $(PREFIX)/modules/sl
-MODULE_USER ?= stnchain
-MODULE_GROUP ?= stnchain
+MODULE_USER ?= stnlabz
+MODULE_GROUP ?= stnlabz
 CPPFLAGS += -I$(ROOT)/include -Iinclude $(shell pkg-config --cflags libxml-2.0 2>/dev/null)
 
 .PHONY: check-deps
