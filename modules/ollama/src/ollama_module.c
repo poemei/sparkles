@@ -19,7 +19,7 @@
 
 #define OLLAMA_VERSION_MAJOR 1U
 #define OLLAMA_VERSION_MINOR 3U
-#define OLLAMA_VERSION_PATCH 2U
+#define OLLAMA_VERSION_PATCH 3U
 
 typedef struct { char *data; size_t used; size_t capacity; } buffer_t;
 static const stnlabz_module_host_t *owner;
@@ -782,6 +782,31 @@ static int date_from_human(const char *text,char date[11])
     if(mktime(&day)==(time_t)-1)return 0;
     return strftime(date,11U,"%Y-%m-%d",&day)==10U;
 }
+/* Explicit dates and relative dates must not silently contradict.
+ * The SL instance's configured local clock supplies 'today'. */
+static int conflicting_relative_date(const char *text)
+{
+    char explicit_date[11],today[11],lower[701];
+    struct tm day;
+    time_t now=time(NULL);
+    size_t i,n;
+    int offset=0;
+    if(!text||!sparkles_schedule_find_date(text,explicit_date) ||
+       (n=strlen(text))>=sizeof lower)return 0;
+    for(i=0U;i<n;++i) {
+        unsigned char c=(unsigned char)text[i];
+        lower[i]=(c>='A'&&c<='Z')?(char)(c+32):(char)c;
+    }
+    lower[n]=0;
+    if(strstr(lower,"tomorrow")||strstr(lower,"tommorrow"))offset=1;
+    else if(!strstr(lower,"today"))return 0;
+    if(!localtime_r(&now,&day))return 0;
+    day.tm_hour=12;day.tm_min=0;day.tm_sec=0;day.tm_isdst=-1;
+    day.tm_mday+=offset;
+    if(mktime(&day)==(time_t)-1 ||
+       strftime(today,sizeof today,"%Y-%m-%d",&day)!=10U)return 0;
+    return strcmp(explicit_date,today)!=0;
+}
 static int mutation_fetch(pending_mutation_t *state)
 {
     sparkles_mariadb_appointments_request_t req={{0}};
@@ -1223,6 +1248,10 @@ static int schedule_conversation(const stnlabz_module_command_t *command,
      * not be reclassified as an appointment. */
     if(!calendar_request(text) && !timed_commitment(text))
         return 0;
+    if(conflicting_relative_date(text))
+        return schedule_reply(reply,ctx,
+            "You gave a calendar date that conflicts with today or tomorrow. "
+            "Which date should I use? Nothing has been scheduled.");
     /* The model proposes only; MariaDB and human confirmation authorize. */
     if(strlen(text)>700U)return 0;
     n=snprintf(prompt,sizeof prompt,
