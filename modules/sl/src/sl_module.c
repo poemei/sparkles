@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "sparkles_route.h"
 #include "sparkles_memory.h"
+#include "sparkles_contacts.h"
 #include "sparkles_sl_group.h"
 #include "sparkles_sl_group_db.h"
 #include "sparkles_show.h"
@@ -27,7 +28,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 8U
+#define SL_PATCH 9U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -475,6 +476,31 @@ static void *dispatch_worker(void *unused)
                    strlen(request.account)+1U);
         }
         memcpy(request.text,im.text,sizeof request.text);
+        /* Every authenticated private IM establishes its own contact
+         * identity BEFORE calendar routing. The avatar UUID comes from
+         * the simulator, never from free-form message content. A failed
+         * enrollment cannot be treated as successful authorization. */
+        if(im.ambient==0U) {
+            sparkles_contact_request_t identify={0};
+            sparkles_contact_reply_t enrolled={0};
+            size_t contact_used=0U;
+            stnlabz_module_result_t contact_rc;
+            memcpy(identify.account,request.account,
+                   strlen(request.account)+1U);
+            memcpy(identify.avatar_name,request.sender,
+                   strlen(request.sender)+1U);
+            contact_rc=module_host->invoke_service(
+                SPARKLES_CONTACTS_SERVICE,&identify,sizeof identify,
+                &enrolled,sizeof enrolled,&contact_used);
+            if(contact_rc!=STNLABZ_MODULE_OK ||
+               contact_used!=sizeof enrolled || !enrolled.found) {
+                fprintf(stderr,
+                    "[SL] private IM contact enrollment failed: rc=%d used=%zu found=%u\\n",
+                    (int)contact_rc,contact_used,enrolled.found);
+                /* Keep the original IM available for Core response; a
+                 * later calendar gate still refuses unidentified records. */
+            }
+        }
         if(im.ambient==2U) {
             char session_id[37];
             sparkles_sl_uuid_format(im.conversation,session_id);
