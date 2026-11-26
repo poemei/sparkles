@@ -1,3 +1,14 @@
+**2026-11-26 — Existing River shows need one-time operator reconciliation:**
+Confirmed appointment IDs 1 and 2 (Nov 27 and Nov 29) were saved as ordinary
+calendar appointments, not show_events. After verifying the two original
+records and linked authenticated SL identity, the operator may review
+`sql/20261126_reconcile_two_river_shows.sql`. It provides an identity-
+and record-constrained insert for only missing show registrations. The
+transaction is deliberately left uncommitted until row inspection.
+The SQL is source-only and has not been applied to the live database.
+New correctly classified, confirmed shows use the already-atomic
+appointment/show creation service; no duplicate appointment is necessary.
+
 **2026-11-26 — UUID-first contact enrollment (GitHub source only):**
 MariaDB 1.10.7 creates a separate contacts row and associated
 `contact_identities` row for the authenticated Second Life UUID on the
