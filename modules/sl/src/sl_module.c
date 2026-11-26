@@ -28,7 +28,7 @@
  * use the next higher, policy-compliant release boundary. */
 #define SL_MAJOR 0U
 #define SL_MINOR 4U
-#define SL_PATCH 9U
+#define SL_PATCH 10U
 
 #define SL_INBOUND_CAP 128U
 #define SL_OUTBOUND_CAP 8U
@@ -443,6 +443,7 @@ static void *dispatch_worker(void *unused)
         size_t used=0U;
         uint64_t generation;
         stnlabz_module_result_t result;
+        int enrollment_failed=0;
         pthread_mutex_lock(&qlock);
         while (!atomic_load(&stopping) && !in_count)
             pthread_cond_wait(&ready,&qlock);
@@ -497,8 +498,7 @@ static void *dispatch_worker(void *unused)
                 fprintf(stderr,
                     "[SL] private IM contact enrollment failed: rc=%d used=%zu found=%u\n",
                     (int)contact_rc,contact_used,enrolled.found);
-                /* Keep the original IM available for Core response; a
-                 * later calendar gate still refuses unidentified records. */
+                enrollment_failed=1;
             }
         }
         if(im.ambient==2U) {
@@ -573,9 +573,18 @@ static void *dispatch_worker(void *unused)
             memcpy(active_private,request.account,sizeof active_private);
             pthread_mutex_unlock(&qlock);
         }
-        /* Only a simulator-verified private IM can answer a show
-         * check-in. Explicit phrases don't hijack normal confirmations. */
-        if(im.ambient==0U &&
+        /* Contact persistence precedes executive actions. If the DB
+         * cannot enroll the verified avatar, report that actual failure
+         * instead of an opaque calendar access denial. */
+        if(im.ambient==0U && enrollment_failed) {
+            (void)snprintf(response.text,sizeof response.text,
+                "I received your IM but couldn't create your contact "
+                "record. Calendar actions are unavailable until that "
+                "database error is resolved.");
+            response.replied=1U;
+            used=sizeof response;
+            result=STNLABZ_MODULE_OK;
+        } else if(im.ambient==0U &&
            (!strcasecmp(im.text,"show yes") ||
             !strcasecmp(im.text,"show cancel"))) {
             sparkles_show_response_request_t answer={0};
