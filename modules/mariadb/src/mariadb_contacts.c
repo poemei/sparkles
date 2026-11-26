@@ -340,14 +340,11 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
            (req->first_name[0] &&
             strcmp(out->first_name,req->first_name)))goto done;
     } else {
-        if(!req->first_name[0]) {
-            /* Unknown avatar is not a verified human contact.
-             * Avoid silently creating a nameless contact. */
-            ok=1;
-            goto done;
-        }
-        /* Name-only matches cannot authorize a link or duplicate a person. */
-        {
+        /* A simulator-authenticated SL UUID is enough to enroll a new
+         * contact. Leave the self-reported first name empty until the
+         * human supplies one; never fabricate a name or adopt the identity
+         * of another contact on the strength of a display-name collision. */
+        if(req->first_name[0]) {
             int collision=existing_contact_collision(db,&s,req->avatar_name,
                                                       req->first_name);
             if(collision>0)
@@ -390,8 +387,8 @@ int sparkles_mariadb_contact_identify(MYSQL *db,
             bind_string(&four[3],(char *)req->avatar_name,&avatar_len);
             if(!prepared_execute(db,sql,four,NULL))goto done;
         } else if(!prepared_execute(db,sql,params,NULL))goto done;
-        /* Read back the committed candidate name in this transaction;
-         * never report an input value that SQL truncated or transformed. */
+        /* A missing first name is legitimate for newly enrolled avatars.
+         * Read back even that empty value; never claim an invented name. */
         if(!get_first(db,&s,&id,out->first_name) ||
            strcmp(out->first_name,req->first_name))goto done;
         out->found=out->saved=1U;
