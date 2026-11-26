@@ -1,3 +1,14 @@
+**2026-11-26 — Private executive IM handling and appointment reminders (GitHub source only):**
+SL 0.4.7 replies to a failed private Core dispatch with a noncommittal
+error IM instead of silently abandoning it. The existing presence-gated
+timer also claims private accepted-participant appointment reminders
+through the separate MariaDB reminder service, 45–60 minutes before
+start. Reminders require the operator-applied MariaDB migration
+`modules/mariadb/sql/20261126_appointment_reminders.sql`; claims
+are not confirmation of simulator delivery. Existing group notice
+and sign workflows remain separate. No native build, module activation,
+database migration or live acceptance is claimed.
+
 ## v0.3.9 — Show confirmation and official Second Life group notices (GitHub source only)
 
 Sparkles' dedicated show timer checks the MariaDB `sparkles.mariadb.shows.claim`
